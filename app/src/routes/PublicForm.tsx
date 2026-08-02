@@ -16,7 +16,7 @@ function formatPhone(input: string): string {
 
 export default function PublicForm() {
   const [stage, setStage] = useState<Stage>('form')
-  const [visitorType, setVisitorType] = useState<'member' | 'visitor' | ''>('')
+  const [visitorType, setVisitorType] = useState<'member' | 'visitor'>('visitor')
   const [firstName, setFirstName] = useState('')
   const [lastName, setLastName] = useState('')
   const [phone, setPhone] = useState('')
@@ -34,7 +34,6 @@ export default function PublicForm() {
 
   async function onSubmit(e: FormEvent) {
     e.preventDefault()
-    if (visitorType === '') return
     setStage('submitting')
     setMessage(null)
     try {
@@ -78,7 +77,7 @@ export default function PublicForm() {
 
   function reset() {
     stopPolling()
-    setVisitorType('')
+    setVisitorType('visitor')
     setFirstName('')
     setLastName('')
     setPhone('')
@@ -131,19 +130,19 @@ export default function PublicForm() {
           <div className="segment">
             <button
               type="button"
-              className={visitorType === 'member' ? 'seg active' : 'seg'}
-              aria-pressed={visitorType === 'member'}
-              onClick={() => setVisitorType('member')}
-            >
-              Member
-            </button>
-            <button
-              type="button"
               className={visitorType === 'visitor' ? 'seg active' : 'seg'}
               aria-pressed={visitorType === 'visitor'}
               onClick={() => setVisitorType('visitor')}
             >
               Visitor
+            </button>
+            <button
+              type="button"
+              className={visitorType === 'member' ? 'seg active' : 'seg'}
+              aria-pressed={visitorType === 'member'}
+              onClick={() => setVisitorType('member')}
+            >
+              Member
             </button>
           </div>
         </div>
@@ -192,9 +191,7 @@ export default function PublicForm() {
             autoComplete="email"
           />
         </label>
-        <button type="submit" disabled={visitorType === ''}>
-          Print my badge
-        </button>
+        <button type="submit">Print my badge</button>
       </form>
     </main>
   )
