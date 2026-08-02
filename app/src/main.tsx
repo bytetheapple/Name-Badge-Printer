@@ -9,6 +9,7 @@ import Login from './routes/admin/Login'
 import SetPassword from './routes/admin/SetPassword'
 import AdminLayout from './routes/admin/AdminLayout'
 import EntriesTable from './routes/admin/EntriesTable'
+import StatusPanel from './routes/admin/StatusPanel'
 import PrinterConfig from './routes/admin/PrinterConfig'
 
 const router = createBrowserRouter([
@@ -25,6 +26,7 @@ const router = createBrowserRouter([
     children: [
       { index: true, element: <Navigate to="/admin/entries" replace /> },
       { path: 'entries', element: <EntriesTable /> },
+      { path: 'status', element: <StatusPanel /> },
       { path: 'config', element: <PrinterConfig /> },
     ],
   },

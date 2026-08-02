@@ -10,6 +10,7 @@ export default function AdminLayout() {
         <div className="admin-brand">Name Badge Admin</div>
         <nav className="admin-nav">
           <NavLink to="/admin/entries">Entries</NavLink>
+          <NavLink to="/admin/status">Status</NavLink>
           <NavLink to="/admin/config">Printer</NavLink>
         </nav>
         <div className="admin-user">
