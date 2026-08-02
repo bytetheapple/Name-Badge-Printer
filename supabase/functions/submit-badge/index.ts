@@ -15,6 +15,22 @@ const restHeaders = {
 
 const EMAIL_RE = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
 
+function triggerGoogleSync(entryId: string) {
+  const task = fetch(`${SUPABASE_URL}/functions/v1/google-sync`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      apikey: SERVICE_ROLE,
+      Authorization: `Bearer ${SERVICE_ROLE}`,
+    },
+    body: JSON.stringify({ entry_id: entryId }),
+  }).catch(() => {});
+  // Keep the function alive until the background request completes.
+  const er = (globalThis as { EdgeRuntime?: { waitUntil?: (p: Promise<unknown>) => void } })
+    .EdgeRuntime;
+  if (er?.waitUntil) er.waitUntil(task);
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
   if (req.method !== "POST") return json({ ok: false, error: "Method not allowed" }, 405);
@@ -65,6 +81,9 @@ Deno.serve(async (req) => {
     return json({ ok: false, error: "Could not start the print." }, 500);
   }
   const [job] = await jobRes.json();
+
+  // Fire-and-forget: push to Google in the background so it never delays printing.
+  triggerGoogleSync(entry.id);
 
   return json({ ok: true, job_id: job.id, entry_id: entry.id });
 });

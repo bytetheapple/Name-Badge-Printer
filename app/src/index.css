@@ -417,6 +417,18 @@ td.actions-cell {
   background: var(--pending-bg);
   color: var(--muted);
 }
+.pill-google-sent {
+  background: var(--ok-bg);
+  color: var(--ok-text);
+}
+.pill-google-failed {
+  background: var(--err-bg);
+  color: var(--err-text);
+}
+.pill-google-pending {
+  background: var(--pending-bg);
+  color: var(--muted);
+}
 
 .qr-box {
   display: inline-block;

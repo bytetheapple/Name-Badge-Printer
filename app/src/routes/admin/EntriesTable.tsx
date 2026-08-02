@@ -9,6 +9,7 @@ export default function EntriesTable() {
   const [from, setFrom] = useState('')
   const [to, setTo] = useState('')
   const [reprinting, setReprinting] = useState<string | null>(null)
+  const [resyncing, setResyncing] = useState<string | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
 
   const load = useCallback(async () => {
@@ -35,6 +36,21 @@ export default function EntriesTable() {
       .insert({ entry_id: entry.id, type: 'badge', status: 'queued' })
     setReprinting(null)
     setNotice(error ? `Reprint failed: ${error.message}` : `Queued a reprint for ${entry.name}.`)
+  }
+
+  async function resync(entry: FormEntry) {
+    setResyncing(entry.id)
+    setNotice(null)
+    const { data, error } = await supabase.functions.invoke('google-sync', {
+      body: { entry_id: entry.id },
+    })
+    setResyncing(null)
+    if (error || !data?.ok) {
+      setNotice(`Google sync failed: ${data?.error ?? error?.message ?? 'unknown error'}`)
+    } else {
+      setNotice(`Synced ${entry.name} to Google.`)
+    }
+    void load()
   }
 
   async function exportXlsx() {
@@ -118,7 +134,19 @@ export default function EntriesTable() {
                   <td>{r.email ?? '—'}</td>
                   <td>{new Date(r.created_at).toLocaleString()}</td>
                   <td>
-                    <span className="pill">{r.google_sync_status}</span>
+                    <span className={`pill pill-google-${r.google_sync_status}`}>
+                      {r.google_sync_status}
+                    </span>
+                    {r.google_sync_status !== 'sent' && (
+                      <button
+                        className="secondary btn-sm"
+                        style={{ marginLeft: 8 }}
+                        onClick={() => resync(r)}
+                        disabled={resyncing === r.id}
+                      >
+                        {resyncing === r.id ? '…' : 'Resync'}
+                      </button>
+                    )}
                   </td>
                   <td className="actions-cell">
                     <button
