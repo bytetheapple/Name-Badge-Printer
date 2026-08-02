@@ -122,7 +122,7 @@ def render_badge(name: str, template: dict | None = None) -> Image.Image:
             inner,
             round(float(t.get("last_name_max_mm", 15)) * MM),
             round(float(t.get("last_name_min_mm", 9)) * MM),
-            bold=True,
+            bold=False,
         )
         if last
         else None
@@ -140,7 +140,7 @@ def render_badge(name: str, template: dict | None = None) -> Image.Image:
         scale = band / total_h
         first_font = _load_font(max(8, int(first_font.size * scale)), bold=True)
         if last_font is not None:
-            last_font = _load_font(max(8, int(last_font.size * scale)), bold=True)
+            last_font = _load_font(max(8, int(last_font.size * scale)), bold=False)
         first_h = _text_h(first_font, first)
         gap = round(gap * scale)
         last_h = _text_h(last_font, last) if last else 0
