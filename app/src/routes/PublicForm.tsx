@@ -6,6 +6,14 @@ type Stage = 'form' | 'submitting' | 'printing' | 'done' | 'error'
 const POLL_MS = 1500
 const TIMEOUT_MS = 30000
 
+/** Progressively format digits as (xxx)yyy-zzzz while typing. */
+function formatPhone(input: string): string {
+  const d = input.replace(/\D/g, '').slice(0, 10)
+  if (d.length < 4) return d ? `(${d}` : ''
+  if (d.length < 7) return `(${d.slice(0, 3)})${d.slice(3)}`
+  return `(${d.slice(0, 3)})${d.slice(3, 6)}-${d.slice(6)}`
+}
+
 export default function PublicForm() {
   const [stage, setStage] = useState<Stage>('form')
   const [visitorType, setVisitorType] = useState<'member' | 'visitor' | ''>('')
@@ -164,7 +172,11 @@ export default function PublicForm() {
           <input
             type="tel"
             value={phone}
-            onChange={(e) => setPhone(e.target.value)}
+            onChange={(e) => setPhone(formatPhone(e.target.value))}
+            placeholder="(123)456-7890"
+            inputMode="tel"
+            pattern="\(\d{3}\)\d{3}-\d{4}"
+            title="Format: (123)456-7890"
             autoComplete="tel"
           />
         </label>
