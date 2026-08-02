@@ -54,37 +54,20 @@ def _load_font(size_px: int, bold: bool = True) -> ImageFont.FreeTypeFont:
     return font
 
 
-def _wrap(draw, words, font, max_width):
-    """Greedily wrap words into lines no wider than max_width."""
-    lines: list[str] = []
-    current = ""
-    for word in words:
-        trial = f"{current} {word}".strip()
-        if not current or draw.textlength(trial, font=font) <= max_width:
-            current = trial
-        else:
-            lines.append(current)
-            current = word
-    if current:
-        lines.append(current)
-    return lines
-
-
-def _fit_multiline(draw, text, max_width, max_height, start_px, min_px, max_lines, bold=True):
-    """Largest font (down to min_px) that fits text within max_width x max_height,
-    wrapping into at most max_lines lines. Returns (lines, font, line_height)."""
-    words = text.split() or [text]
+def _fit_line(draw, text, max_width, start_px, min_px, bold=True):
+    """Largest single-line font (down to min_px) whose width fits max_width."""
     size = start_px
-    while size >= min_px:
+    while size > min_px:
         font = _load_font(size, bold)
-        lines = _wrap(draw, words, font, max_width)
-        widest = max((draw.textlength(line, font=font) for line in lines), default=0)
-        line_h = font.getbbox("Ag")[3]
-        if len(lines) <= max_lines and widest <= max_width and len(lines) * line_h * 1.1 <= max_height:
-            return lines, font, line_h
+        if draw.textlength(text, font=font) <= max_width:
+            return font
         size -= 2
-    font = _load_font(min_px, bold)
-    return _wrap(draw, words, font, max_width)[:max_lines], font, font.getbbox("Ag")[3]
+    return _load_font(min_px, bold)
+
+
+def _text_h(font, text):
+    box = font.getbbox(text)
+    return box[3] - box[1]
 
 
 def render_badge(name: str, template: dict | None = None) -> Image.Image:
@@ -118,23 +101,57 @@ def render_badge(name: str, template: dict | None = None) -> Image.Image:
         bottom -= (box[3] - box[1]) + round(2.5 * MM)
 
     name = (name or "").strip() or " "
-    band = bottom - top
-    lines, nf, line_h = _fit_multiline(
+    # First name large; last name (remaining words) smaller beneath it. Both
+    # centered, and the pair centered vertically in the available band.
+    parts = name.split()
+    first = parts[0] if parts else name
+    last = " ".join(parts[1:])
+
+    first_font = _fit_line(
         draw,
-        name,
+        first,
         inner,
-        band,
-        round(float(t.get("name_max_mm", 24)) * MM),
-        round(float(t.get("name_min_mm", 8)) * MM),
-        int(t.get("name_max_lines", 2)),
+        round(float(t.get("first_name_max_mm", 30)) * MM),
+        round(float(t.get("first_name_min_mm", 12)) * MM),
         bold=True,
     )
-    step = line_h * 1.1
-    total_h = len(lines) * step
-    center = (top + bottom) / 2
-    for i, line in enumerate(lines):
-        cy = center - total_h / 2 + step * (i + 0.5)
-        draw.text((width / 2, cy), line, font=nf, fill="black", anchor="mm")
+    last_font = (
+        _fit_line(
+            draw,
+            last,
+            inner,
+            round(float(t.get("last_name_max_mm", 15)) * MM),
+            round(float(t.get("last_name_min_mm", 9)) * MM),
+            bold=True,
+        )
+        if last
+        else None
+    )
+
+    first_h = _text_h(first_font, first)
+    gap = round(float(t.get("name_gap_mm", 3)) * MM) if last else 0
+    last_h = _text_h(last_font, last) if last else 0
+    total_h = first_h + gap + last_h
+
+    # Shrink both proportionally if the stacked name is taller than the band
+    # between the header and subtitle (so it never collides with them).
+    band = (bottom - top) * 0.96
+    if total_h > band > 0:
+        scale = band / total_h
+        first_font = _load_font(max(8, int(first_font.size * scale)), bold=True)
+        if last_font is not None:
+            last_font = _load_font(max(8, int(last_font.size * scale)), bold=True)
+        first_h = _text_h(first_font, first)
+        gap = round(gap * scale)
+        last_h = _text_h(last_font, last) if last else 0
+        total_h = first_h + gap + last_h
+
+    start_y = (top + bottom) / 2 - total_h / 2
+    draw.text((width / 2, start_y), first, font=first_font, fill="black", anchor="ma")
+    if last:
+        draw.text(
+            (width / 2, start_y + first_h + gap), last, font=last_font, fill="black", anchor="ma"
+        )
 
     return img
 
