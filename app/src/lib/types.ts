@@ -1,0 +1,43 @@
+export interface FormEntry {
+  id: string
+  name: string
+  phone: string | null
+  email: string | null
+  source_ip: string | null
+  google_sync_status: 'pending' | 'sent' | 'failed'
+  google_synced_at: string | null
+  google_error: string | null
+  created_at: string
+}
+
+export interface PrinterConfigRow {
+  id: number
+  printer_ip: string | null
+  port: number
+  label_media: string
+  dpi: number
+  badge_template: Record<string, unknown>
+  updated_at: string
+}
+
+export interface PrinterStatusRow {
+  id: number
+  bridge_last_seen: string | null
+  printer_reachable: boolean | null
+  media_type: string | null
+  media_width: string | null
+  error_state: string | null
+  updated_at: string
+}
+
+export interface PrintJob {
+  id: string
+  entry_id: string | null
+  type: 'badge' | 'test'
+  status: 'queued' | 'printing' | 'printed' | 'failed'
+  attempts: number
+  error: string | null
+  created_at: string
+  claimed_at: string | null
+  printed_at: string | null
+}
