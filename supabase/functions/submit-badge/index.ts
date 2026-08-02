@@ -49,8 +49,16 @@ Deno.serve(async (req) => {
   const visitorType = String(body.visitor_type ?? "").trim();
 
   if (!firstName) return json({ ok: false, error: "Please enter your first name." });
+  if (!lastName) return json({ ok: false, error: "Please enter your last name." });
   if (visitorType !== "member" && visitorType !== "visitor") {
     return json({ ok: false, error: "Please select Member or Visitor." });
+  }
+  // Visitors must provide contact details; members only need their name.
+  if (visitorType === "visitor" && !phone) {
+    return json({ ok: false, error: "Please enter your phone number." });
+  }
+  if (visitorType === "visitor" && !email) {
+    return json({ ok: false, error: "Please enter your email address." });
   }
   if (firstName.length > 60 || lastName.length > 60) {
     return json({ ok: false, error: "That name is too long." });

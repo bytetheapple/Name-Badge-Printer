@@ -148,7 +148,7 @@ export default function PublicForm() {
           </div>
         </div>
         <label>
-          First name
+          First name *
           <input
             type="text"
             value={firstName}
@@ -159,16 +159,17 @@ export default function PublicForm() {
           />
         </label>
         <label>
-          Last name
+          Last name *
           <input
             type="text"
             value={lastName}
             onChange={(e) => setLastName(e.target.value)}
+            required
             autoComplete="family-name"
           />
         </label>
         <label>
-          Phone
+          Phone{visitorType === 'visitor' ? ' *' : ''}
           <input
             type="tel"
             value={phone}
@@ -177,15 +178,17 @@ export default function PublicForm() {
             inputMode="tel"
             pattern="\(\d{3}\)\d{3}-\d{4}"
             title="Format: (123)456-7890"
+            required={visitorType === 'visitor'}
             autoComplete="tel"
           />
         </label>
         <label>
-          Email
+          Email{visitorType === 'visitor' ? ' *' : ''}
           <input
             type="email"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
+            required={visitorType === 'visitor'}
             autoComplete="email"
           />
         </label>
