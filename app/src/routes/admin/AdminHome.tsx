@@ -1,18 +1,23 @@
 import { Link } from 'react-router-dom'
+import { useAuth } from '../../lib/auth'
 import { ConnectionBanner } from '../../components/ConnectionBanner'
 
-/** Placeholder for the admin console (login in Phase 1; config/entries/status in Phases 4-5). */
+/** Admin console home (protected). Config/entries/status arrive in Phases 4-5. */
 export default function AdminHome() {
+  const { session, signOut } = useAuth()
+
   return (
     <main className="page">
       <h1>Admin Console</h1>
-      <p className="muted">
-        Login arrives in Phase 1; printer config, entries table, and status panel in Phases 4-5.
-      </p>
+      <p className="muted">Signed in as {session?.user.email}</p>
       <ConnectionBanner />
-      <p className="links">
+      <p className="muted">Printer config, entries table, and status panel arrive in Phases 4-5.</p>
+      <div className="actions">
+        <button className="secondary" onClick={() => void signOut()}>
+          Sign out
+        </button>
         <Link to="/">← Public form</Link>
-      </p>
+      </div>
     </main>
   )
 }
