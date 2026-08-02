@@ -8,6 +8,7 @@ const TIMEOUT_MS = 30000
 
 export default function PublicForm() {
   const [stage, setStage] = useState<Stage>('form')
+  const [visitorType, setVisitorType] = useState<'member' | 'visitor' | ''>('')
   const [firstName, setFirstName] = useState('')
   const [lastName, setLastName] = useState('')
   const [phone, setPhone] = useState('')
@@ -25,10 +26,17 @@ export default function PublicForm() {
 
   async function onSubmit(e: FormEvent) {
     e.preventDefault()
+    if (visitorType === '') return
     setStage('submitting')
     setMessage(null)
     try {
-      const { job_id } = await submitBadge({ first_name: firstName, last_name: lastName, phone, email })
+      const { job_id } = await submitBadge({
+        visitor_type: visitorType,
+        first_name: firstName,
+        last_name: lastName,
+        phone,
+        email,
+      })
       setStage('printing')
       startPolling(job_id)
     } catch (err) {
@@ -62,6 +70,7 @@ export default function PublicForm() {
 
   function reset() {
     stopPolling()
+    setVisitorType('')
     setFirstName('')
     setLastName('')
     setPhone('')
@@ -109,6 +118,27 @@ export default function PublicForm() {
       <h1>Welcome to Shir Hadash</h1>
       <p className="muted">Enter your details and tap Print to get your name badge.</p>
       <form onSubmit={onSubmit} className="form">
+        <div className="field">
+          <span>I am a…</span>
+          <div className="segment">
+            <button
+              type="button"
+              className={visitorType === 'member' ? 'seg active' : 'seg'}
+              aria-pressed={visitorType === 'member'}
+              onClick={() => setVisitorType('member')}
+            >
+              Member
+            </button>
+            <button
+              type="button"
+              className={visitorType === 'visitor' ? 'seg active' : 'seg'}
+              aria-pressed={visitorType === 'visitor'}
+              onClick={() => setVisitorType('visitor')}
+            >
+              Visitor
+            </button>
+          </div>
+        </div>
         <label>
           First name
           <input
@@ -147,7 +177,9 @@ export default function PublicForm() {
             autoComplete="email"
           />
         </label>
-        <button type="submit">Print my badge</button>
+        <button type="submit" disabled={visitorType === ''}>
+          Print my badge
+        </button>
       </form>
     </main>
   )

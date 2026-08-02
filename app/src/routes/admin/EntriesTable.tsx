@@ -58,6 +58,7 @@ export default function EntriesTable() {
     const data = rows.map((r) => ({
       'First name': r.first_name,
       'Last name': r.last_name ?? '',
+      Type: r.visitor_type === 'member' ? 'Member' : 'Visitor',
       Phone: r.phone ?? '',
       Email: r.email ?? '',
       Submitted: new Date(r.created_at).toLocaleString(),
@@ -108,6 +109,7 @@ export default function EntriesTable() {
             <tr>
               <th>First</th>
               <th>Last</th>
+              <th>Type</th>
               <th>Phone</th>
               <th>Email</th>
               <th>Submitted</th>
@@ -118,13 +120,13 @@ export default function EntriesTable() {
           <tbody>
             {loading ? (
               <tr>
-                <td colSpan={7} className="empty">
+                <td colSpan={8} className="empty">
                   Loading…
                 </td>
               </tr>
             ) : rows.length === 0 ? (
               <tr>
-                <td colSpan={7} className="empty">
+                <td colSpan={8} className="empty">
                   No entries{from || to ? ' in this date range' : ' yet'}.
                 </td>
               </tr>
@@ -133,6 +135,7 @@ export default function EntriesTable() {
                 <tr key={r.id}>
                   <td>{r.first_name}</td>
                   <td>{r.last_name ?? '—'}</td>
+                  <td>{r.visitor_type === 'member' ? 'Member' : 'Visitor'}</td>
                   <td>{r.phone ?? '—'}</td>
                   <td>{r.email ?? '—'}</td>
                   <td>{new Date(r.created_at).toLocaleString()}</td>
@@ -140,7 +143,7 @@ export default function EntriesTable() {
                     <span className={`pill pill-google-${r.google_sync_status}`}>
                       {r.google_sync_status}
                     </span>
-                    {r.google_sync_status !== 'sent' && (
+                    {(r.google_sync_status === 'pending' || r.google_sync_status === 'failed') && (
                       <button
                         className="secondary btn-sm"
                         style={{ marginLeft: 8 }}

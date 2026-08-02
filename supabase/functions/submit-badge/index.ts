@@ -46,8 +46,12 @@ Deno.serve(async (req) => {
   const lastName = String(body.last_name ?? "").trim();
   const phone = String(body.phone ?? "").trim();
   const email = String(body.email ?? "").trim();
+  const visitorType = String(body.visitor_type ?? "").trim();
 
   if (!firstName) return json({ ok: false, error: "Please enter your first name." });
+  if (visitorType !== "member" && visitorType !== "visitor") {
+    return json({ ok: false, error: "Please select Member or Visitor." });
+  }
   if (firstName.length > 60 || lastName.length > 60) {
     return json({ ok: false, error: "That name is too long." });
   }
@@ -67,6 +71,9 @@ Deno.serve(async (req) => {
       last_name: lastName || null,
       phone: phone || null,
       email: email || null,
+      visitor_type: visitorType,
+      // Members are recorded but never sent to Google.
+      google_sync_status: visitorType === "member" ? "skipped" : "pending",
       source_ip: ip,
     }),
   });
@@ -86,8 +93,9 @@ Deno.serve(async (req) => {
   }
   const [job] = await jobRes.json();
 
-  // Fire-and-forget: push to Google in the background so it never delays printing.
-  triggerGoogleSync(entry.id);
+  // Visitors are pushed to Google in the background (never blocks printing);
+  // members are intentionally skipped.
+  if (visitorType === "visitor") triggerGoogleSync(entry.id);
 
   return json({ ok: true, job_id: job.id, entry_id: entry.id });
 });

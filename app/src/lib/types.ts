@@ -4,8 +4,9 @@ export interface FormEntry {
   last_name: string | null
   phone: string | null
   email: string | null
+  visitor_type: 'member' | 'visitor'
   source_ip: string | null
-  google_sync_status: 'pending' | 'sent' | 'failed'
+  google_sync_status: 'pending' | 'sent' | 'failed' | 'skipped'
   google_synced_at: string | null
   google_error: string | null
   created_at: string
