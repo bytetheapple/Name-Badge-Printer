@@ -14,6 +14,8 @@ export default function PrinterConfig() {
   const [labelMedia, setLabelMedia] = useState('62')
   const [header, setHeader] = useState('')
   const [subtitle, setSubtitle] = useState('')
+  const [printRotation, setPrintRotation] = useState(90)
+  const [lengthMm, setLengthMm] = useState(90)
 
   useEffect(() => {
     void (async () => {
@@ -31,6 +33,8 @@ export default function PrinterConfig() {
       setLabelMedia(c.label_media)
       setHeader((t.header as string) ?? 'WELCOME')
       setSubtitle((t.subtitle as string) ?? 'Shir Hadash')
+      setPrintRotation(Number(t.print_rotation ?? 90))
+      setLengthMm(Number(t.length_mm ?? 90))
       setLoading(false)
     })()
   }, [])
@@ -40,7 +44,13 @@ export default function PrinterConfig() {
     setSaving(true)
     setNotice(null)
     setError(null)
-    const badge_template = { ...template, header, subtitle }
+    const badge_template = {
+      ...template,
+      header,
+      subtitle,
+      print_rotation: printRotation,
+      length_mm: lengthMm,
+    }
     const { error } = await supabase
       .from('printer_config')
       .update({ printer_ip: ip.trim() || null, port, label_media: labelMedia, badge_template })
@@ -108,6 +118,36 @@ export default function PrinterConfig() {
           </div>
           <p className="muted" style={{ fontSize: 13 }}>
             The name itself comes from each submission. Header and subtitle are the same on every badge.
+          </p>
+        </section>
+
+        <section className="card">
+          <h2>Badge layout</h2>
+          <div className="grid2">
+            <label className="field">
+              Print orientation
+              <select
+                value={printRotation}
+                onChange={(e) => setPrintRotation(Number(e.target.value))}
+              >
+                <option value={90}>Normal (90°)</option>
+                <option value={270}>Flipped (270°)</option>
+              </select>
+            </label>
+            <label className="field">
+              Badge length (mm)
+              <input
+                type="number"
+                value={lengthMm}
+                min={40}
+                max={200}
+                onChange={(e) => setLengthMm(Number(e.target.value))}
+              />
+            </label>
+          </div>
+          <p className="muted" style={{ fontSize: 13 }}>
+            If the printed text comes out upside down, switch the orientation.
+            Length is the badge size in the direction the label feeds.
           </p>
         </section>
 
