@@ -1,0 +1,28 @@
+# Node
+node_modules/
+dist/
+dist-ssr/
+*.local
+.env
+.env.*
+!.env.example
+
+# Python (print bridge)
+bridge/venv/
+bridge/.venv/
+__pycache__/
+*.pyc
+
+# Supabase local
+supabase/.branches/
+supabase/.temp/
+
+# Claude Code local settings
+.claude/settings.local.json
+
+# OS / editor
+.DS_Store
+*.log
+.vscode/*
+!.vscode/extensions.json
+.idea/
