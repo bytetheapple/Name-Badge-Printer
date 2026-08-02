@@ -417,3 +417,13 @@ td.actions-cell {
   background: var(--pending-bg);
   color: var(--muted);
 }
+
+.qr-box {
+  display: inline-block;
+  padding: 16px;
+  margin: 16px 0;
+  background: #fff;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  line-height: 0;
+}

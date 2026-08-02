@@ -12,6 +12,7 @@ export default function AdminLayout() {
           <NavLink to="/admin/entries">Entries</NavLink>
           <NavLink to="/admin/status">Status</NavLink>
           <NavLink to="/admin/config">Printer</NavLink>
+          <NavLink to="/admin/qr">QR Code</NavLink>
         </nav>
         <div className="admin-user">
           <span className="muted">{session?.user.email}</span>
