@@ -7,7 +7,8 @@ export interface SubmitResult {
 
 /** Submit the public badge form via the submit-badge Edge Function. */
 export async function submitBadge(input: {
-  name: string
+  first_name: string
+  last_name: string
   phone: string
   email: string
 }): Promise<SubmitResult> {

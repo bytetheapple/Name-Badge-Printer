@@ -35,7 +35,7 @@ def handle_job(job: dict, cfg: dict):
             entry = db.get_entry(job["entry_id"]) if job.get("entry_id") else None
             if not entry:
                 raise RuntimeError("no form entry found for this job")
-            image = render_badge(entry.get("name", ""), template)
+            image = render_badge(entry.get("first_name", ""), entry.get("last_name") or "", template)
 
         printer.print_image(
             image,

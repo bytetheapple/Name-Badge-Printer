@@ -12,9 +12,21 @@ import { corsHeaders, json } from "../_shared/cors.ts";
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_ROLE = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const FORM_URL = Deno.env.get("GOOGLE_FORM_RESPONSE_URL") ?? "";
-const F_NAME = Deno.env.get("GOOGLE_ENTRY_NAME") ?? "";
+const F_FIRST = Deno.env.get("GOOGLE_ENTRY_FIRST_NAME") ?? "";
+const F_LAST = Deno.env.get("GOOGLE_ENTRY_LAST_NAME") ?? "";
 const F_PHONE = Deno.env.get("GOOGLE_ENTRY_PHONE") ?? "";
-const F_EMAIL = Deno.env.get("GOOGLE_ENTRY_EMAIL") ?? "";
+// Email is collected via Google's built-in "Collect email addresses"
+// (Responder input) feature, which uses the special `emailAddress` field.
+const COLLECT_EMAIL = (Deno.env.get("GOOGLE_COLLECT_EMAIL") ?? "") === "true";
+// Fixed values for required questions the kiosk doesn't ask about, as a JSON
+// object of { "entry.<id>": "value" }.
+const EXTRA_FIELDS: Record<string, string> = (() => {
+  try {
+    return JSON.parse(Deno.env.get("GOOGLE_EXTRA_FIELDS") ?? "{}");
+  } catch {
+    return {};
+  }
+})();
 
 const restHeaders = {
   apikey: SERVICE_ROLE,
@@ -43,7 +55,7 @@ Deno.serve(async (req) => {
   const entryId = String(body.entry_id ?? "");
   if (!entryId) return json({ ok: false, error: "entry_id required" }, 400);
 
-  if (!FORM_URL || !F_NAME) {
+  if (!FORM_URL || !F_FIRST) {
     // Not configured yet — leave the entry pending rather than marking it failed.
     return json({ ok: false, error: "Google sync is not configured" });
   }
@@ -57,9 +69,11 @@ Deno.serve(async (req) => {
   const entry = rows[0];
 
   const form = new URLSearchParams();
-  form.set(F_NAME, entry.name ?? "");
+  form.set(F_FIRST, entry.first_name ?? "");
+  if (F_LAST && entry.last_name) form.set(F_LAST, entry.last_name);
   if (F_PHONE && entry.phone) form.set(F_PHONE, entry.phone);
-  if (F_EMAIL && entry.email) form.set(F_EMAIL, entry.email);
+  if (COLLECT_EMAIL && entry.email) form.set("emailAddress", entry.email);
+  for (const [key, value] of Object.entries(EXTRA_FIELDS)) form.set(key, value);
 
   try {
     const gres = await fetch(FORM_URL, {

@@ -8,7 +8,8 @@ const TIMEOUT_MS = 30000
 
 export default function PublicForm() {
   const [stage, setStage] = useState<Stage>('form')
-  const [name, setName] = useState('')
+  const [firstName, setFirstName] = useState('')
+  const [lastName, setLastName] = useState('')
   const [phone, setPhone] = useState('')
   const [email, setEmail] = useState('')
   const [message, setMessage] = useState<string | null>(null)
@@ -27,7 +28,7 @@ export default function PublicForm() {
     setStage('submitting')
     setMessage(null)
     try {
-      const { job_id } = await submitBadge({ name, phone, email })
+      const { job_id } = await submitBadge({ first_name: firstName, last_name: lastName, phone, email })
       setStage('printing')
       startPolling(job_id)
     } catch (err) {
@@ -61,7 +62,8 @@ export default function PublicForm() {
 
   function reset() {
     stopPolling()
-    setName('')
+    setFirstName('')
+    setLastName('')
     setPhone('')
     setEmail('')
     setMessage(null)
@@ -108,14 +110,23 @@ export default function PublicForm() {
       <p className="muted">Enter your details and tap Print to get your name badge.</p>
       <form onSubmit={onSubmit} className="form">
         <label>
-          Name
+          First name
           <input
             type="text"
-            value={name}
-            onChange={(e) => setName(e.target.value)}
+            value={firstName}
+            onChange={(e) => setFirstName(e.target.value)}
             required
-            autoComplete="name"
+            autoComplete="given-name"
             autoFocus
+          />
+        </label>
+        <label>
+          Last name
+          <input
+            type="text"
+            value={lastName}
+            onChange={(e) => setLastName(e.target.value)}
+            autoComplete="family-name"
           />
         </label>
         <label>

@@ -42,12 +42,15 @@ Deno.serve(async (req) => {
     return json({ ok: false, error: "Invalid request" }, 400);
   }
 
-  const name = String(body.name ?? "").trim();
+  const firstName = String(body.first_name ?? "").trim();
+  const lastName = String(body.last_name ?? "").trim();
   const phone = String(body.phone ?? "").trim();
   const email = String(body.email ?? "").trim();
 
-  if (!name) return json({ ok: false, error: "Please enter your name." });
-  if (name.length > 100) return json({ ok: false, error: "That name is too long." });
+  if (!firstName) return json({ ok: false, error: "Please enter your first name." });
+  if (firstName.length > 60 || lastName.length > 60) {
+    return json({ ok: false, error: "That name is too long." });
+  }
   if (phone.length > 40) return json({ ok: false, error: "That phone number is too long." });
   if (email && !EMAIL_RE.test(email)) {
     return json({ ok: false, error: "Please enter a valid email address." });
@@ -60,7 +63,8 @@ Deno.serve(async (req) => {
     method: "POST",
     headers: restHeaders,
     body: JSON.stringify({
-      name,
+      first_name: firstName,
+      last_name: lastName || null,
       phone: phone || null,
       email: email || null,
       source_ip: ip,

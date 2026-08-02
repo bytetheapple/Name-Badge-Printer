@@ -35,7 +35,7 @@ export default function EntriesTable() {
       .from('print_jobs')
       .insert({ entry_id: entry.id, type: 'badge', status: 'queued' })
     setReprinting(null)
-    setNotice(error ? `Reprint failed: ${error.message}` : `Queued a reprint for ${entry.name}.`)
+    setNotice(error ? `Reprint failed: ${error.message}` : `Queued a reprint for ${entry.first_name}.`)
   }
 
   async function resync(entry: FormEntry) {
@@ -48,7 +48,7 @@ export default function EntriesTable() {
     if (error || !data?.ok) {
       setNotice(`Google sync failed: ${data?.error ?? error?.message ?? 'unknown error'}`)
     } else {
-      setNotice(`Synced ${entry.name} to Google.`)
+      setNotice(`Synced ${entry.first_name} to Google.`)
     }
     void load()
   }
@@ -56,7 +56,8 @@ export default function EntriesTable() {
   async function exportXlsx() {
     const XLSX = await import('xlsx') // lazy-loaded: keeps xlsx out of the public form bundle
     const data = rows.map((r) => ({
-      Name: r.name,
+      'First name': r.first_name,
+      'Last name': r.last_name ?? '',
       Phone: r.phone ?? '',
       Email: r.email ?? '',
       Submitted: new Date(r.created_at).toLocaleString(),
@@ -105,7 +106,8 @@ export default function EntriesTable() {
         <table className="data">
           <thead>
             <tr>
-              <th>Name</th>
+              <th>First</th>
+              <th>Last</th>
               <th>Phone</th>
               <th>Email</th>
               <th>Submitted</th>
@@ -116,20 +118,21 @@ export default function EntriesTable() {
           <tbody>
             {loading ? (
               <tr>
-                <td colSpan={6} className="empty">
+                <td colSpan={7} className="empty">
                   Loading…
                 </td>
               </tr>
             ) : rows.length === 0 ? (
               <tr>
-                <td colSpan={6} className="empty">
+                <td colSpan={7} className="empty">
                   No entries{from || to ? ' in this date range' : ' yet'}.
                 </td>
               </tr>
             ) : (
               rows.map((r) => (
                 <tr key={r.id}>
-                  <td>{r.name}</td>
+                  <td>{r.first_name}</td>
+                  <td>{r.last_name ?? '—'}</td>
                   <td>{r.phone ?? '—'}</td>
                   <td>{r.email ?? '—'}</td>
                   <td>{new Date(r.created_at).toLocaleString()}</td>

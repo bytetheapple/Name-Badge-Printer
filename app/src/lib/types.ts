@@ -1,6 +1,7 @@
 export interface FormEntry {
   id: string
-  name: string
+  first_name: string
+  last_name: string | null
   phone: string | null
   email: string | null
   source_ip: string | null

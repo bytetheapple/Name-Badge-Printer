@@ -70,7 +70,7 @@ def _text_h(font, text):
     return box[3] - box[1]
 
 
-def render_badge(name: str, template: dict | None = None) -> Image.Image:
+def render_badge(first: str, last: str = "", template: dict | None = None) -> Image.Image:
     t = template or {}
     header = t.get("header", "WELCOME")
     subtitle = t.get("subtitle", "Shir Hadash")
@@ -100,12 +100,10 @@ def render_badge(name: str, template: dict | None = None) -> Image.Image:
         box = sf.getbbox(str(subtitle))
         bottom -= (box[3] - box[1]) + round(2.5 * MM)
 
-    name = (name or "").strip() or " "
-    # First name large; last name (remaining words) smaller beneath it. Both
-    # centered, and the pair centered vertically in the available band.
-    parts = name.split()
-    first = parts[0] if parts else name
-    last = " ".join(parts[1:])
+    # First name large; last name smaller beneath it. Both centered, and the
+    # pair centered vertically in the available band.
+    first = (first or "").strip() or " "
+    last = (last or "").strip()
 
     first_font = _fit_line(
         draw,
@@ -160,14 +158,15 @@ def render_test_badge(template: dict | None = None) -> Image.Image:
     """A badge used by the admin 'test print' button."""
     t = dict(template or {})
     stamp = datetime.now().strftime("%Y-%m-%d %H:%M")
-    return render_badge(stamp, {**t, "header": "TEST PRINT", "subtitle": "Name Badge Printer"})
+    return render_badge(stamp, "", {**t, "header": "TEST PRINT", "subtitle": "Name Badge Printer"})
 
 
 if __name__ == "__main__":
     import sys
 
-    who = sys.argv[1] if len(sys.argv) > 1 else "Sarah Goldberg"
-    out = sys.argv[2] if len(sys.argv) > 2 else "sample-badge.png"
-    image = render_badge(who, {})
+    first = sys.argv[1] if len(sys.argv) > 1 else "Sarah"
+    last = sys.argv[2] if len(sys.argv) > 2 else "Goldberg"
+    out = sys.argv[3] if len(sys.argv) > 3 else "sample-badge.png"
+    image = render_badge(first, last, {})
     image.save(out)
     print(f"wrote {out} {image.size}")
