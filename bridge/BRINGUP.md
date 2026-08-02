@@ -78,18 +78,17 @@ credentials, and your Supabase **service_role** key
 
 ## 6. Dial-in (the physical tweaks)
 
-- [ ] **Orientation** — if the text is upside-down or rotated the wrong way, flip
-      it. In Supabase → Table Editor → `printer_config` → `badge_template`, set
-      `"print_rotation": 270` (default is 90). Re-run a test print.
-- [ ] **Size / length** — if the badge is too long/short, adjust
-      `"length_mm"` (default 90) in the same `badge_template`.
+- [ ] **Orientation** — if the text is upside-down, go to admin → **Printer** →
+      **Badge layout** → **Print orientation** and switch to *Flipped (270°)*,
+      Save, then re-run a test print.
+- [ ] **Size / length** — if the badge is too long/short, set **Badge length
+      (mm)** in the same Badge layout section.
 - [ ] **Media** — make sure the Printer tab's label media matches the roll you
       loaded.
 - [ ] Print a **real badge**: submit from the form (or Reprint an entry) and
       check name sizing looks right on the actual label.
 
-> Ask me and I can add proper **admin controls** for orientation/length/font
-> sizes so you don't have to edit JSON — recommended before go-live.
+> The bridge picks up config changes within a few seconds — no restart needed.
 
 ## 7. Make it run on boot (systemd)
 
@@ -126,5 +125,5 @@ credentials, and your Supabase **service_role** key
 | Job stuck `queued` | Bridge not running; start it / check the service |
 | Job `failed` | Read the error in the Status page's recent-jobs table |
 | Blank/garbled text | DejaVu font missing — `sudo apt install -y fonts-dejavu` |
-| Text rotated wrong | Set `print_rotation` to 270 in `badge_template` |
-| Badge wrong length | Adjust `length_mm` in `badge_template` |
+| Text rotated wrong | Admin → Printer → Badge layout → Print orientation → Flipped |
+| Badge wrong length | Admin → Printer → Badge layout → Badge length (mm) |
