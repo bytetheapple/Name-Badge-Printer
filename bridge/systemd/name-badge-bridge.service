@@ -1,0 +1,18 @@
+[Unit]
+Description=Name Badge Print Bridge
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+# Adjust User and paths to match your Pi (username set in Raspberry Pi Imager,
+# and wherever you cloned the repo).
+User=pi
+WorkingDirectory=/home/pi/name-badge-printer/bridge
+ExecStart=/home/pi/name-badge-printer/bridge/venv/bin/python bridge.py
+EnvironmentFile=/home/pi/name-badge-printer/bridge/.env
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

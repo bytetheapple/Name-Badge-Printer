@@ -1,0 +1,7 @@
+# Print bridge dependencies.
+# Pillow pinned <10 for brother_ql compatibility (it uses Image.ANTIALIAS,
+# removed in Pillow 10).
+requests>=2.31,<3
+Pillow>=9.4,<10
+brother_ql==0.9.4
+python-dotenv>=1.0,<2
