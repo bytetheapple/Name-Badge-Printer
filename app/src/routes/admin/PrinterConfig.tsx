@@ -2,7 +2,15 @@ import { useCallback, useEffect, useState, type FormEvent } from 'react'
 import { supabase } from '../../lib/supabase'
 import type { Printer, PrinterConfigRow } from '../../lib/types'
 
-function PrinterCard({ printer, onChanged }: { printer: Printer; onChanged: () => void }) {
+function PrinterCard({
+  printer,
+  canDelete,
+  onChanged,
+}: {
+  printer: Printer
+  canDelete: boolean
+  onChanged: () => void
+}) {
   const [name, setName] = useState(printer.name)
   const [location, setLocation] = useState(printer.location ?? '')
   const [ip, setIp] = useState(printer.printer_ip ?? '')
@@ -58,11 +66,13 @@ function PrinterCard({ printer, onChanged }: { printer: Printer; onChanged: () =
 
   return (
     <form className="card" onSubmit={save}>
-      <div className="printer-card-head">
-        <button type="button" className="secondary btn-sm" onClick={remove} disabled={deleting}>
-          {deleting ? 'Deleting…' : 'Delete'}
-        </button>
-      </div>
+      {canDelete && (
+        <div className="printer-card-head">
+          <button type="button" className="secondary btn-sm" onClick={remove} disabled={deleting}>
+            {deleting ? 'Deleting…' : 'Delete'}
+          </button>
+        </div>
+      )}
       <div className="grid2">
         <label className="field">
           Name
@@ -188,7 +198,12 @@ export default function PrinterConfig() {
       {printers.length === 0 && <p className="muted">No printers yet. Add one to start.</p>}
       <div className="config-form">
         {printers.map((p) => (
-          <PrinterCard key={p.id} printer={p} onChanged={loadPrinters} />
+          <PrinterCard
+            key={p.id}
+            printer={p}
+            canDelete={printers.length > 1}
+            onChanged={loadPrinters}
+          />
         ))}
       </div>
 
