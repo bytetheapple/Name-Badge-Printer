@@ -60,9 +60,10 @@ credentials, and your Supabase **service_role** key
 
 ## 4. Set the printer IP in the app
 
-- [ ] In the admin console → **Printer** tab, enter the printer's IP and confirm
-      the port (9100) and label media, then **Save**. The bridge reads this from
-      Supabase — no need to hard-code it on the Pi.
+- [ ] In the admin console → **Printer** tab you'll see the seeded **Main
+      Printer** (rename it if you like). Set its **IP address** and **port**
+      (9100), then **Save**. Add more printers here if you have them. The bridge
+      reads this from Supabase — no need to hard-code anything on the Pi.
 
 ## 5. First run (foreground, watch the logs)
 
@@ -73,8 +74,8 @@ credentials, and your Supabase **service_role** key
       ```
 - [ ] In the admin **Status** page, confirm within ~15s:
       - **Bridge: Online**
-      - **Printer: Reachable** (+ media type/width showing)
-- [ ] Click **Send test print**. A test badge should come out.
+      - your printer shows **Reachable** (+ media type/width)
+- [ ] Click the printer's **Test print** button. A test badge should come out.
 
 ## 6. Dial-in (the physical tweaks)
 
@@ -109,8 +110,8 @@ credentials, and your Supabase **service_role** key
 
 ## 8. Go live
 
-- [ ] From the production site, open `/admin/qr`, **Download PNG**, print it, and
-      post it by the printer.
+- [ ] From the production site, open `/admin/qr`, **choose the printer**,
+      **Download PNG**, print it, and post it by that printer.
 - [ ] Full end-to-end: scan the QR on a phone → fill the form → badge prints, and
       the entry appears in the admin table (and Google, for visitors).
 

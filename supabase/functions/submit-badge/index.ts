@@ -70,6 +70,18 @@ Deno.serve(async (req) => {
 
   const ip = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? null;
 
+  // Resolve the target printer: the one named in the QR link, or the first one.
+  let printerId: string | null = String(body.printer_id ?? "").trim() || null;
+  {
+    const q = printerId
+      ? `id=eq.${printerId}&select=id`
+      : `select=id&order=created_at.asc&limit=1`;
+    const pr = await fetch(`${SUPABASE_URL}/rest/v1/printers?${q}`, { headers: restHeaders });
+    const rows = pr.ok ? await pr.json() : [];
+    printerId = rows.length ? rows[0].id : null;
+  }
+  if (!printerId) return json({ ok: false, error: "No printer is configured." }, 500);
+
   // 1. Save the entry.
   const entryRes = await fetch(`${SUPABASE_URL}/rest/v1/form_entries`, {
     method: "POST",
@@ -80,6 +92,7 @@ Deno.serve(async (req) => {
       phone: phone || null,
       email: email || null,
       visitor_type: visitorType,
+      printer_id: printerId,
       // Members are recorded but never sent to Google.
       google_sync_status: visitorType === "member" ? "skipped" : "pending",
       source_ip: ip,
@@ -94,7 +107,12 @@ Deno.serve(async (req) => {
   const jobRes = await fetch(`${SUPABASE_URL}/rest/v1/print_jobs`, {
     method: "POST",
     headers: restHeaders,
-    body: JSON.stringify({ entry_id: entry.id, type: "badge", status: "queued" }),
+    body: JSON.stringify({
+      entry_id: entry.id,
+      printer_id: printerId,
+      type: "badge",
+      status: "queued",
+    }),
   });
   if (!jobRes.ok) {
     return json({ ok: false, error: "Could not start the print." }, 500);

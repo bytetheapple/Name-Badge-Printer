@@ -1,25 +1,39 @@
 import { useEffect, useRef, useState } from 'react'
+import { supabase } from '../../lib/supabase'
+import type { Printer } from '../../lib/types'
 import logoUrl from '../../assets/shir-hadash-logo.png'
 
 export default function QrCode() {
-  const [url, setUrl] = useState(`${window.location.origin}/`)
+  const [printers, setPrinters] = useState<Printer[]>([])
+  const [selected, setSelected] = useState('')
   const [error, setError] = useState<string | null>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
+
+  useEffect(() => {
+    void (async () => {
+      const { data, error } = await supabase.from('printers').select('*').order('created_at')
+      if (error) {
+        setError(error.message)
+        return
+      }
+      const list = (data ?? []) as Printer[]
+      setPrinters(list)
+      if (list.length) setSelected(list[0].id)
+    })()
+  }, [])
+
+  const url = selected
+    ? `${window.location.origin}/?printer=${selected}`
+    : `${window.location.origin}/`
 
   useEffect(() => {
     let cancelled = false
     void (async () => {
       try {
-        // qrcode is lazy-loaded so it stays out of the public form bundle.
         const QRCode = (await import('qrcode')).default
         const canvas = canvasRef.current
         if (!canvas || cancelled) return
-        // High error correction ('H', ~30%) so the centered logo doesn't break scanning.
-        await QRCode.toCanvas(canvas, url || ' ', {
-          width: 600,
-          margin: 2,
-          errorCorrectionLevel: 'H',
-        })
+        await QRCode.toCanvas(canvas, url, { width: 600, margin: 2, errorCorrectionLevel: 'H' })
         if (!cancelled) await drawLogo(canvas)
       } catch (e) {
         setError((e as Error).message)
@@ -42,7 +56,6 @@ export default function QrCode() {
     const x = (size - logoW) / 2
     const y = (size - logoH) / 2
     const pad = Math.round(size * 0.03)
-    // White backing box so the logo reads cleanly over the QR modules.
     ctx.fillStyle = '#ffffff'
     ctx.fillRect(x - pad, y - pad, logoW + pad * 2, logoH + pad * 2)
     ctx.drawImage(img, x, y, logoW, logoH)
@@ -51,8 +64,10 @@ export default function QrCode() {
   function download() {
     const canvas = canvasRef.current
     if (!canvas) return
+    const printer = printers.find((p) => p.id === selected)
+    const slug = (printer?.name ?? 'qr').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')
     const link = document.createElement('a')
-    link.download = 'name-badge-qr.png'
+    link.download = `name-badge-qr-${slug}.png`
     link.href = canvas.toDataURL('image/png')
     link.click()
   }
@@ -61,22 +76,39 @@ export default function QrCode() {
     <>
       <h1>QR Code</h1>
       <p className="muted">
-        Print this and post it by the printer. Scanning it opens the badge form.
+        Pick a printer, then print this QR and post it by that printer. Scanning it opens the badge
+        form and routes the badge to this printer.
       </p>
 
-      <label className="field" style={{ maxWidth: 480 }}>
-        Form URL
-        <input value={url} onChange={(e) => setUrl(e.target.value)} />
-      </label>
+      {printers.length === 0 ? (
+        <div className="notice">Add a printer on the Printer tab first.</div>
+      ) : (
+        <label className="field" style={{ maxWidth: 360 }}>
+          Printer
+          <select value={selected} onChange={(e) => setSelected(e.target.value)}>
+            {printers.map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.name}
+                {p.location ? ` — ${p.location}` : ''}
+              </option>
+            ))}
+          </select>
+        </label>
+      )}
 
       {error && <div className="error">{error}</div>}
 
       <div className="qr-box">
         <canvas ref={canvasRef} style={{ width: 280, height: 280, maxWidth: '100%' }} />
       </div>
+      <p className="muted small" style={{ wordBreak: 'break-all', maxWidth: 400 }}>
+        {url}
+      </p>
 
       <div className="toolbar">
-        <button onClick={download}>Download PNG</button>
+        <button onClick={download} disabled={!selected}>
+          Download PNG
+        </button>
       </div>
     </>
   )

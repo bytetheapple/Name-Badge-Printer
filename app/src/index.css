@@ -454,6 +454,20 @@ td.actions-cell {
   border-color: var(--accent);
 }
 
+.section-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 8px 0 12px;
+}
+.printer-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
 .qr-box {
   display: inline-block;
   padding: 16px;

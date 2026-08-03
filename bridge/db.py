@@ -89,5 +89,20 @@ def get_entry(entry_id):
     return rows[0] if rows else None
 
 
-def update_status(fields):
+def update_bridge(fields):
     _patch("printer_status", {"id": "eq.1"}, fields, return_rows=False)
+
+
+def get_printer(printer_id):
+    if not printer_id:
+        return None
+    rows = _get("printers", {"id": f"eq.{printer_id}", "select": "*"})
+    return rows[0] if rows else None
+
+
+def list_printers():
+    return _get("printers", {"select": "*", "order": "created_at.asc"})
+
+
+def update_printer(printer_id, fields):
+    _patch("printers", {"id": f"eq.{printer_id}"}, fields, return_rows=False)

@@ -37,32 +37,40 @@ def handle_job(job: dict, cfg: dict):
                 raise RuntimeError("no form entry found for this job")
             image = render_badge(entry.get("first_name", ""), entry.get("last_name") or "", template)
 
+        target = db.get_printer(job.get("printer_id")) if job.get("printer_id") else None
+        if not target or not target.get("printer_ip"):
+            raise RuntimeError("no printer assigned to this job (or its IP is unset)")
+
         printer.print_image(
             image,
-            cfg.get("printer_ip"),
-            cfg.get("port", 9100),
+            target["printer_ip"],
+            target.get("port", 9100),
             cfg.get("label_media", "62"),
             rotation=int(template.get("print_rotation", 90)),
         )
         db.finish_job(job_id)
-        _log(f"printed job {job_id} (type={job.get('type')})")
+        _log(f"printed job {job_id} on '{target.get('name')}' (type={job.get('type')})")
     except Exception as e:  # noqa: BLE001 - report every failure back to the DB
         db.fail_job(job_id, e)
         _log(f"FAILED job {job_id}: {e}", err=True)
 
 
-def write_heartbeat(cfg: dict):
-    ip = cfg.get("printer_ip")
-    status = printer.query_status(ip, cfg.get("port", 9100)) if ip else {"reachable": False}
-    db.update_status(
-        {
-            "bridge_last_seen": _now(),
-            "printer_reachable": bool(status.get("reachable")),
-            "media_type": status.get("media_type"),
-            "media_width": status.get("media_width"),
-            "error_state": status.get("error_state"),
-        }
-    )
+def write_heartbeat():
+    now = _now()
+    db.update_bridge({"bridge_last_seen": now})
+    for p in db.list_printers():
+        ip = p.get("printer_ip")
+        status = printer.query_status(ip, p.get("port", 9100)) if ip else {"reachable": False}
+        db.update_printer(
+            p["id"],
+            {
+                "reachable": bool(status.get("reachable")),
+                "media_type": status.get("media_type"),
+                "media_width": status.get("media_width"),
+                "error_state": status.get("error_state"),
+                "last_checked": now,
+            },
+        )
 
 
 def main():
@@ -83,7 +91,7 @@ def main():
 
             now = time.monotonic()
             if now - last_heartbeat >= config.HEARTBEAT_INTERVAL:
-                write_heartbeat(cfg)
+                write_heartbeat()
                 last_heartbeat = now
         except Exception as e:  # noqa: BLE001 - keep the loop alive through transient errors
             _log(f"loop error: {e}", err=True)

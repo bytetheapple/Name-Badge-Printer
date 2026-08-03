@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { getJobStatus, submitBadge } from '../lib/api'
 
 type Stage = 'form' | 'submitting' | 'printing' | 'done' | 'error'
@@ -23,6 +24,8 @@ export default function PublicForm() {
   const [email, setEmail] = useState('')
   const [message, setMessage] = useState<string | null>(null)
   const pollRef = useRef<number | null>(null)
+  const [searchParams] = useSearchParams()
+  const printerId = searchParams.get('printer')
 
   function stopPolling() {
     if (pollRef.current !== null) {
@@ -43,6 +46,7 @@ export default function PublicForm() {
         last_name: lastName,
         phone,
         email,
+        printer_id: printerId,
       })
       setStage('printing')
       startPolling(job_id)

@@ -1,38 +1,46 @@
 import { useCallback, useEffect, useState } from 'react'
 import { supabase } from '../../lib/supabase'
-import type { PrinterStatusRow, PrintJob } from '../../lib/types'
+import type { Printer, PrinterStatusRow, PrintJob } from '../../lib/types'
 
 // The bridge heartbeats every ~15s; treat it as online if seen within 45s.
 const BRIDGE_FRESH_MS = 45000
 
 export default function StatusPanel() {
-  const [status, setStatus] = useState<PrinterStatusRow | null>(null)
+  const [bridge, setBridge] = useState<PrinterStatusRow | null>(null)
+  const [printers, setPrinters] = useState<Printer[]>([])
   const [jobs, setJobs] = useState<PrintJob[]>([])
   const [notice, setNotice] = useState<string | null>(null)
-  const [testing, setTesting] = useState(false)
-  const [, setTick] = useState(0) // forces re-render so freshness recomputes
+  const [testing, setTesting] = useState<string | null>(null)
+  const [, setTick] = useState(0)
 
-  const loadStatus = useCallback(async () => {
+  const loadBridge = useCallback(async () => {
     const { data } = await supabase.from('printer_status').select('*').eq('id', 1).single()
-    if (data) setStatus(data as PrinterStatusRow)
+    if (data) setBridge(data as PrinterStatusRow)
   }, [])
-
+  const loadPrinters = useCallback(async () => {
+    const { data } = await supabase.from('printers').select('*').order('created_at')
+    setPrinters((data ?? []) as Printer[])
+  }, [])
   const loadJobs = useCallback(async () => {
     const { data } = await supabase
       .from('print_jobs')
-      .select('*')
+      .select('*, printer:printers(name)')
       .order('created_at', { ascending: false })
       .limit(10)
     setJobs((data ?? []) as PrintJob[])
   }, [])
 
   useEffect(() => {
-    void loadStatus()
+    void loadBridge()
+    void loadPrinters()
     void loadJobs()
     const channel = supabase
       .channel('status-panel')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'printer_status' }, () =>
-        loadStatus(),
+        loadBridge(),
+      )
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'printers' }, () =>
+        loadPrinters(),
       )
       .on('postgres_changes', { event: '*', schema: 'public', table: 'print_jobs' }, () => loadJobs())
       .subscribe()
@@ -41,65 +49,94 @@ export default function StatusPanel() {
       void supabase.removeChannel(channel)
       window.clearInterval(timer)
     }
-  }, [loadStatus, loadJobs])
+  }, [loadBridge, loadPrinters, loadJobs])
 
-  async function testPrint() {
-    setTesting(true)
+  async function testPrint(printerId: string) {
+    setTesting(printerId)
     setNotice(null)
-    const { error } = await supabase.from('print_jobs').insert({ type: 'test', status: 'queued' })
-    setTesting(false)
+    const { error } = await supabase
+      .from('print_jobs')
+      .insert({ type: 'test', status: 'queued', printer_id: printerId })
+    setTesting(null)
     setNotice(error ? `Could not queue test print: ${error.message}` : 'Test print queued.')
     void loadJobs()
   }
 
-  const lastSeen = status?.bridge_last_seen ? new Date(status.bridge_last_seen).getTime() : null
+  const lastSeen = bridge?.bridge_last_seen ? new Date(bridge.bridge_last_seen).getTime() : null
   const bridgeOnline = lastSeen !== null && Date.now() - lastSeen < BRIDGE_FRESH_MS
-  const reachable = status?.printer_reachable
 
   return (
     <>
       <h1>Status</h1>
       {notice && <div className="notice">{notice}</div>}
 
-      <div className="status-cards">
-        <div className={`status-card ${bridgeOnline ? 'ok' : 'bad'}`}>
-          <div className="status-label">Bridge</div>
-          <div className="status-value">
-            {bridgeOnline ? 'Online' : lastSeen ? 'Offline' : 'Never connected'}
-          </div>
-          <div className="muted small">
-            {lastSeen ? `Last seen ${new Date(lastSeen).toLocaleTimeString()}` : 'Waiting for the print bridge'}
-          </div>
+      <div
+        className={`status-card ${bridgeOnline ? 'ok' : 'bad'}`}
+        style={{ marginBottom: 20, maxWidth: 400 }}
+      >
+        <div className="status-label">Bridge</div>
+        <div className="status-value">
+          {bridgeOnline ? 'Online' : lastSeen ? 'Offline' : 'Never connected'}
         </div>
-
-        <div className={`status-card ${!bridgeOnline ? '' : reachable ? 'ok' : 'bad'}`}>
-          <div className="status-label">Printer</div>
-          <div className="status-value">
-            {!bridgeOnline ? 'Unknown' : reachable ? 'Reachable' : 'Not reachable'}
-          </div>
-          <div className="muted small">
-            {status?.media_type
-              ? `Media: ${status.media_type}${status.media_width ? ` (${status.media_width})` : ''}`
-              : 'No media info yet'}
-          </div>
+        <div className="muted small">
+          {lastSeen ? `Last seen ${new Date(lastSeen).toLocaleTimeString()}` : 'Waiting for the print bridge'}
         </div>
       </div>
 
-      {status?.error_state && <div className="error">Printer error: {status.error_state}</div>}
+      <h2>Printers</h2>
+      {printers.length === 0 ? (
+        <p className="muted">No printers configured. Add one on the Printer tab.</p>
+      ) : (
+        <div className="status-cards" style={{ gridTemplateColumns: '1fr' }}>
+          {printers.map((p) => {
+            const reachable = bridgeOnline ? p.reachable : null
+            return (
+              <div
+                key={p.id}
+                className={`status-card ${reachable == null ? '' : reachable ? 'ok' : 'bad'}`}
+              >
+                <div className="printer-row">
+                  <div>
+                    <div className="status-value" style={{ fontSize: 18 }}>
+                      {p.name}
+                      {p.location ? ` · ${p.location}` : ''}
+                    </div>
+                    <div className="muted small">
+                      {reachable == null
+                        ? 'Status unknown (bridge offline)'
+                        : reachable
+                          ? 'Reachable'
+                          : 'Not reachable'}
+                      {p.media_type ? ` · ${p.media_type}${p.media_width ? ` (${p.media_width})` : ''}` : ''}
+                      {p.printer_ip ? ` · ${p.printer_ip}:${p.port}` : ' · no IP set'}
+                    </div>
+                    {p.error_state && (
+                      <div className="small" style={{ color: 'var(--err-text)' }}>
+                        Error: {p.error_state}
+                      </div>
+                    )}
+                  </div>
+                  <button
+                    className="btn-sm"
+                    onClick={() => testPrint(p.id)}
+                    disabled={testing === p.id}
+                  >
+                    {testing === p.id ? 'Queuing…' : 'Test print'}
+                  </button>
+                </div>
+              </div>
+            )
+          })}
+        </div>
+      )}
 
-      <div className="toolbar" style={{ marginTop: 20 }}>
-        <button onClick={testPrint} disabled={testing}>
-          {testing ? 'Queuing…' : 'Send test print'}
-        </button>
-        <span className="muted small">Queues a test badge for the bridge to print.</span>
-      </div>
-
-      <h2 style={{ marginTop: 8 }}>Recent print jobs</h2>
+      <h2 style={{ marginTop: 20 }}>Recent print jobs</h2>
       <div className="table-wrap">
         <table className="data">
           <thead>
             <tr>
               <th>Type</th>
+              <th>Printer</th>
               <th>Status</th>
               <th>Created</th>
               <th>Error</th>
@@ -108,7 +145,7 @@ export default function StatusPanel() {
           <tbody>
             {jobs.length === 0 ? (
               <tr>
-                <td colSpan={4} className="empty">
+                <td colSpan={5} className="empty">
                   No print jobs yet.
                 </td>
               </tr>
@@ -116,6 +153,7 @@ export default function StatusPanel() {
               jobs.map((j) => (
                 <tr key={j.id}>
                   <td>{j.type}</td>
+                  <td>{j.printer?.name ?? '—'}</td>
                   <td>
                     <span className={`pill pill-${j.status}`}>{j.status}</span>
                   </td>

@@ -15,7 +15,10 @@ export default function EntriesTable() {
   const load = useCallback(async () => {
     setLoading(true)
     setError(null)
-    let q = supabase.from('form_entries').select('*').order('created_at', { ascending: false })
+    let q = supabase
+      .from('form_entries')
+      .select('*, printer:printers(name)')
+      .order('created_at', { ascending: false })
     if (from) q = q.gte('created_at', new Date(`${from}T00:00:00`).toISOString())
     if (to) q = q.lte('created_at', new Date(`${to}T23:59:59.999`).toISOString())
     const { data, error } = await q
@@ -33,7 +36,7 @@ export default function EntriesTable() {
     setNotice(null)
     const { error } = await supabase
       .from('print_jobs')
-      .insert({ entry_id: entry.id, type: 'badge', status: 'queued' })
+      .insert({ entry_id: entry.id, printer_id: entry.printer_id, type: 'badge', status: 'queued' })
     setReprinting(null)
     setNotice(error ? `Reprint failed: ${error.message}` : `Queued a reprint for ${entry.first_name}.`)
   }
@@ -59,6 +62,7 @@ export default function EntriesTable() {
       'First name': r.first_name,
       'Last name': r.last_name ?? '',
       Type: r.visitor_type === 'member' ? 'Member' : 'Visitor',
+      Printer: r.printer?.name ?? '',
       Phone: r.phone ?? '',
       Email: r.email ?? '',
       Submitted: new Date(r.created_at).toLocaleString(),
@@ -110,6 +114,7 @@ export default function EntriesTable() {
               <th>First</th>
               <th>Last</th>
               <th>Type</th>
+              <th>Printer</th>
               <th>Phone</th>
               <th>Email</th>
               <th>Submitted</th>
@@ -120,13 +125,13 @@ export default function EntriesTable() {
           <tbody>
             {loading ? (
               <tr>
-                <td colSpan={8} className="empty">
+                <td colSpan={9} className="empty">
                   Loading…
                 </td>
               </tr>
             ) : rows.length === 0 ? (
               <tr>
-                <td colSpan={8} className="empty">
+                <td colSpan={9} className="empty">
                   No entries{from || to ? ' in this date range' : ' yet'}.
                 </td>
               </tr>
@@ -136,6 +141,7 @@ export default function EntriesTable() {
                   <td>{r.first_name}</td>
                   <td>{r.last_name ?? '—'}</td>
                   <td>{r.visitor_type === 'member' ? 'Member' : 'Visitor'}</td>
+                  <td>{r.printer?.name ?? '—'}</td>
                   <td>{r.phone ?? '—'}</td>
                   <td>{r.email ?? '—'}</td>
                   <td>{new Date(r.created_at).toLocaleString()}</td>

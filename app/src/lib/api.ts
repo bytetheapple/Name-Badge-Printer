@@ -12,6 +12,7 @@ export async function submitBadge(input: {
   last_name: string
   phone: string
   email: string
+  printer_id: string | null
 }): Promise<SubmitResult> {
   const { data, error } = await supabase.functions.invoke('submit-badge', { body: input })
   if (error) throw new Error('Could not reach the server. Please try again.')
