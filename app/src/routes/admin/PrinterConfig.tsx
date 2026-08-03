@@ -7,25 +7,43 @@ function PrinterCard({ printer, onChanged }: { printer: Printer; onChanged: () =
   const [location, setLocation] = useState(printer.location ?? '')
   const [ip, setIp] = useState(printer.printer_ip ?? '')
   const [port, setPort] = useState(printer.port)
+  const [saved, setSaved] = useState({
+    name: printer.name,
+    location: printer.location ?? '',
+    ip: printer.printer_ip ?? '',
+    port: printer.port,
+  })
   const [saving, setSaving] = useState(false)
   const [deleting, setDeleting] = useState(false)
   const [msg, setMsg] = useState<string | null>(null)
+
+  const dirty =
+    name !== saved.name || location !== saved.location || ip !== saved.ip || port !== saved.port
 
   async function save(e: FormEvent) {
     e.preventDefault()
     setSaving(true)
     setMsg(null)
+    const next = { name: name.trim() || 'Unnamed', location: location.trim(), ip: ip.trim(), port }
     const { error } = await supabase
       .from('printers')
       .update({
-        name: name.trim() || 'Unnamed',
-        location: location.trim() || null,
-        printer_ip: ip.trim() || null,
-        port,
+        name: next.name,
+        location: next.location || null,
+        printer_ip: next.ip || null,
+        port: next.port,
       })
       .eq('id', printer.id)
     setSaving(false)
-    setMsg(error ? `Error: ${error.message}` : 'Saved.')
+    if (error) {
+      setMsg(`Error: ${error.message}`)
+      return
+    }
+    // Normalize the visible values and mark the card clean (hides Save).
+    setName(next.name)
+    setLocation(next.location)
+    setIp(next.ip)
+    setSaved(next)
     onChanged()
   }
 
@@ -40,6 +58,11 @@ function PrinterCard({ printer, onChanged }: { printer: Printer; onChanged: () =
 
   return (
     <form className="card" onSubmit={save}>
+      <div className="printer-card-head">
+        <button type="button" className="secondary btn-sm" onClick={remove} disabled={deleting}>
+          {deleting ? 'Deleting…' : 'Delete'}
+        </button>
+      </div>
       <div className="grid2">
         <label className="field">
           Name
@@ -73,15 +96,16 @@ function PrinterCard({ printer, onChanged }: { printer: Printer; onChanged: () =
           />
         </label>
       </div>
-      {msg && <p className="muted small">{msg}</p>}
-      <div className="actions" style={{ justifyContent: 'flex-start' }}>
-        <button type="submit" className="btn-sm" disabled={saving}>
-          {saving ? 'Saving…' : 'Save'}
-        </button>
-        <button type="button" className="secondary btn-sm" onClick={remove} disabled={deleting}>
-          {deleting ? 'Deleting…' : 'Delete'}
-        </button>
-      </div>
+      {(msg || dirty) && (
+        <div className="printer-card-foot">
+          {msg && <span className="error">{msg}</span>}
+          {dirty && (
+            <button type="submit" className="btn-sm" disabled={saving}>
+              {saving ? 'Saving…' : 'Save'}
+            </button>
+          )}
+        </div>
+      )}
     </form>
   )
 }
