@@ -29,13 +29,16 @@ def handle_job(job: dict, cfg: dict):
     job_id = job["id"]
     try:
         template = cfg.get("badge_template") or {}
+        label = cfg.get("label_media", "62")
         if job.get("type") == "test":
-            image = render_test_badge(template)
+            image = render_test_badge(template, label)
         else:
             entry = db.get_entry(job["entry_id"]) if job.get("entry_id") else None
             if not entry:
                 raise RuntimeError("no form entry found for this job")
-            image = render_badge(entry.get("first_name", ""), entry.get("last_name") or "", template)
+            image = render_badge(
+                entry.get("first_name", ""), entry.get("last_name") or "", template, label
+            )
 
         target = db.get_printer(job.get("printer_id")) if job.get("printer_id") else None
         if not target or not target.get("printer_ip"):

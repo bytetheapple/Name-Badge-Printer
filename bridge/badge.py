@@ -10,11 +10,29 @@ from datetime import datetime
 from PIL import Image, ImageDraw, ImageFont
 
 import config
+from brother_ql.labels import ALL_LABELS
 
 DPI = 300
 MM = DPI / 25.4  # pixels per millimetre (~11.81)
 
 _FONT_CACHE: dict = {}
+_LABELS = {label.identifier: label for label in ALL_LABELS}
+
+
+def _label_render_size(label: str, length_mm: float) -> tuple[int, int]:
+    """(width, height) in dots for the readable *landscape* badge image.
+
+    width = feed/length direction, height = across the print head. Continuous
+    rolls have a fixed head width and an admin-set length; die-cut labels are a
+    fixed size in both dimensions.
+    """
+    spec = _LABELS.get(label)
+    if spec is None:
+        return round(length_mm * MM), 696  # fallback: 62 mm continuous
+    head_px, feed_px = spec.dots_printable
+    if "ENDLESS" in str(spec.form_factor):
+        return round(length_mm * MM), head_px
+    return feed_px, head_px  # die-cut: fixed in both dimensions
 
 
 def _load_font(size_px: int, bold: bool = True) -> ImageFont.FreeTypeFont:
@@ -70,16 +88,17 @@ def _text_h(font, text):
     return box[3] - box[1]
 
 
-def render_badge(first: str, last: str = "", template: dict | None = None) -> Image.Image:
+def render_badge(
+    first: str, last: str = "", template: dict | None = None, label: str = "62"
+) -> Image.Image:
     t = template or {}
     header = t.get("header", "WELCOME")
     subtitle = t.get("subtitle", "Shir Hadash")
 
-    # The badge length (feed direction) is variable; the roll's cross-direction is
-    # a fixed number of printable dots (696 for a 62 mm roll at 300 dpi). Rendering
-    # the roll dimension in exact dots avoids brother_ql resampling the image.
-    width = round(float(t.get("length_mm", 90)) * MM)
-    height = int(t.get("roll_px", 696))
+    # Size the readable landscape image to the label: continuous rolls use the
+    # admin length, die-cut labels (e.g. 60x86 / DK-1234) are fixed. Rendering at
+    # the label's exact printable dots avoids brother_ql resampling the image.
+    width, height = _label_render_size(label, float(t.get("length_mm", 90)))
     margin = round(float(t.get("margin_mm", 6)) * MM)
     inner = width - 2 * margin
 
@@ -154,7 +173,7 @@ def render_badge(first: str, last: str = "", template: dict | None = None) -> Im
     return img
 
 
-def render_test_badge(template: dict | None = None) -> Image.Image:
+def render_test_badge(template: dict | None = None, label: str = "62") -> Image.Image:
     """A badge used by the admin 'test print' button."""
     t = dict(template or {})
     now = datetime.now()
@@ -162,6 +181,7 @@ def render_test_badge(template: dict | None = None) -> Image.Image:
         now.strftime("%Y-%m-%d"),
         now.strftime("%H:%M"),
         {**t, "header": "TEST PRINT", "subtitle": "Name Badge Printer"},
+        label,
     )
 
 
@@ -171,6 +191,7 @@ if __name__ == "__main__":
     first = sys.argv[1] if len(sys.argv) > 1 else "Sarah"
     last = sys.argv[2] if len(sys.argv) > 2 else "Goldberg"
     out = sys.argv[3] if len(sys.argv) > 3 else "sample-badge.png"
-    image = render_badge(first, last, {})
+    label = sys.argv[4] if len(sys.argv) > 4 else "62"
+    image = render_badge(first, last, {}, label)
     image.save(out)
     print(f"wrote {out} {image.size}")
