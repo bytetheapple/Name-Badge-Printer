@@ -55,21 +55,32 @@ def check_reachable(ip: str, port: int = 9100, timeout: float = 2.0) -> bool:
 
 def query_status(ip: str, port: int = 9100, timeout: float = 3.0) -> dict:
     """Return {reachable, error_state, media_type, media_width}."""
-    unknown = {"reachable": False, "error_state": None, "media_type": None, "media_width": None}
+    down = {"reachable": False, "error_state": None, "media_type": None, "media_width": None}
     if not ip:
-        return unknown
-    try:
-        with socket.create_connection((ip, int(port)), timeout=timeout) as s:
-            s.sendall(STATUS_REQUEST)
-            s.settimeout(timeout)
-            data = s.recv(32)
-    except OSError:
-        return unknown
+        return down
 
-    if not data or len(data) < 32:
-        # Reachable, but no parseable status (printer may be mid-job).
-        return {"reachable": True, "error_state": None, "media_type": None, "media_width": None}
-    return _parse_status(data)
+    # Reachability = can we open the print port. Do NOT tie it to the status read:
+    # some QL-820NWB firmware/modes don't answer the status request even though
+    # printing works fine, so a missing reply must not read as "unreachable".
+    try:
+        s = socket.create_connection((ip, int(port)), timeout=timeout)
+    except OSError:
+        return down
+
+    data = b""
+    try:
+        s.sendall(STATUS_REQUEST)
+        s.settimeout(timeout)
+        data = s.recv(32)
+    except OSError:
+        data = b""
+    finally:
+        s.close()
+
+    if data and len(data) >= 32:
+        return _parse_status(data)
+    # Connected but no parseable status -> reachable, media unknown.
+    return {"reachable": True, "error_state": None, "media_type": None, "media_width": None}
 
 
 def _parse_status(d: bytes) -> dict:
