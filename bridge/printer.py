@@ -99,6 +99,25 @@ def _parse_status(d: bytes) -> dict:
     }
 
 
+def _relax_media_validation(instructions: bytes) -> bytes:
+    """Clear the media kind/width *validation* bits in the print-information
+    command (ESC i z), so the printer prints with whatever roll is loaded.
+
+    Some QL-820NWB units report "wrong roll type" and refuse to print even when
+    the correct roll is installed and the job declares it correctly. Since our
+    label size is fixed, we disable the printer-side media check. The declared
+    width value stays in the command; only the "validate against sensed media"
+    flags are cleared.
+    """
+    marker = b"\x1b\x69\x7a"  # ESC i z
+    i = instructions.find(marker)
+    if i < 0 or i + 3 >= len(instructions):
+        return instructions
+    flags = instructions[i + 3]
+    relaxed = flags & ~0x02 & ~0x04  # clear PI_KIND and PI_WIDTH
+    return instructions[: i + 3] + bytes([relaxed]) + instructions[i + 4 :]
+
+
 def print_image(img, ip: str, port: int = 9100, label: str = "62", cut: bool = True, rotation: int = 90):
     """Rasterize and send a PIL image to the printer. Raises on failure.
 
@@ -127,6 +146,9 @@ def print_image(img, ip: str, port: int = 9100, label: str = "62", cut: bool = T
         hq=True,
         cut=cut,
     )
+    # Some QL-820NWB units reject a matching roll as "wrong roll type"; disable
+    # the printer-side media validation so it prints what's actually loaded.
+    instructions = _relax_media_validation(instructions)
     result = send(
         instructions=instructions,
         printer_identifier=f"tcp://{ip}:{int(port)}",
