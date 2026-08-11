@@ -1,7 +1,8 @@
 # Print bridge dependencies.
-# Pillow pinned <10 for brother_ql compatibility (it uses Image.ANTIALIAS,
-# removed in Pillow 10).
+# brother_ql_next is a maintained fork of brother_ql that works with modern
+# Pillow and Python 3.11+ (the original pins to Pillow <10). It imports as
+# `brother_ql`, so no code changes are needed.
 requests>=2.31,<3
-Pillow>=9.4,<10
-brother_ql==0.9.4
+Pillow>=11
+brother-ql-next>=0.12
 python-dotenv>=1.0,<2
