@@ -157,8 +157,12 @@ def render_badge(first: str, last: str = "", template: dict | None = None) -> Im
 def render_test_badge(template: dict | None = None) -> Image.Image:
     """A badge used by the admin 'test print' button."""
     t = dict(template or {})
-    stamp = datetime.now().strftime("%Y-%m-%d %H:%M")
-    return render_badge(stamp, "", {**t, "header": "TEST PRINT", "subtitle": "Name Badge Printer"})
+    now = datetime.now()
+    return render_badge(
+        now.strftime("%Y-%m-%d"),
+        now.strftime("%H:%M"),
+        {**t, "header": "TEST PRINT", "subtitle": "Name Badge Printer"},
+    )
 
 
 if __name__ == "__main__":

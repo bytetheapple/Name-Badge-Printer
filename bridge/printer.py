@@ -160,7 +160,10 @@ def print_image(img, ip: str, port: int = 9100, label: str = "62", cut: bool = T
         backend_identifier="network",
         blocking=True,
     )
-    # brother_ql returns a dict; surface a hard failure if the send didn't complete.
-    if isinstance(result, dict) and result.get("did_print") is False:
+    # This unit doesn't return status over the network, so brother_ql can't
+    # confirm did_print/printer_state (both come back empty even on a successful
+    # print). Treat a completed send as success; a genuine network failure raises
+    # from send() above, or comes back with instructions_sent False.
+    if isinstance(result, dict) and result.get("instructions_sent") is False:
         raise RuntimeError(f"printer send failed: {result}")
     return result
