@@ -131,6 +131,11 @@ def print_image(img, ip: str, port: int = 9100, label: str = "62", cut: bool = T
 
     printable = img.rotate(rotation, expand=True) if rotation else img
 
+    # A two-color roll (e.g. DK-22251 62mm black/red) is selected via a label id
+    # ending in "red". It needs the two-color job format so the printer accepts
+    # the roll, even when the badge itself is black-only (empty red plane).
+    two_color = label.endswith("red")
+
     qlr = BrotherQLRaster(MODEL)
     qlr.exception_on_warning = True
     instructions = convert(
@@ -141,7 +146,7 @@ def print_image(img, ip: str, port: int = 9100, label: str = "62", cut: bool = T
         threshold=70.0,
         dither=False,
         compress=False,
-        red=False,
+        red=two_color,
         dpi_600=False,
         hq=True,
         cut=cut,

@@ -234,6 +234,7 @@ export default function PrinterConfig() {
               Label media
               <select value={labelMedia} onChange={(e) => setLabelMedia(e.target.value)}>
                 <option value="62">62mm continuous</option>
+                <option value="62red">62mm continuous — black/red (DK-22251)</option>
                 <option value="29">29mm continuous</option>
                 <option value="62x100">62mm × 100mm die-cut</option>
                 <option value="62x29">62mm × 29mm die-cut</option>
