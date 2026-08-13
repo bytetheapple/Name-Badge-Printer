@@ -135,7 +135,10 @@ Deno.serve(async (req) => {
       },
     );
     const upData = await up.json();
-    if (!up.ok) return json({ ok: false, error: `Drive upload failed: ${JSON.stringify(upData)}` }, 500);
+    if (!up.ok) {
+      console.error("upload-selfie: Drive upload failed:", JSON.stringify(upData));
+      return json({ ok: false, error: `Drive upload failed: ${JSON.stringify(upData)}` }, 500);
+    }
 
     if (entryId && upData.webViewLink) {
       await fetch(`${SUPABASE_URL}/rest/v1/form_entries?id=eq.${entryId}`, {
@@ -146,6 +149,7 @@ Deno.serve(async (req) => {
     }
     return json({ ok: true, file_id: upData.id, link: upData.webViewLink ?? null });
   } catch (e) {
+    console.error("upload-selfie error:", e);
     return json({ ok: false, error: String(e).slice(0, 300) }, 500);
   }
 });
