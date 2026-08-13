@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { getJobStatus, submitBadge } from '../lib/api'
 
-type Stage = 'form' | 'submitting' | 'printing' | 'done' | 'error'
+type Stage = 'choose' | 'form' | 'submitting' | 'printing' | 'done' | 'error'
 
 const POLL_MS = 1500
 const TIMEOUT_MS = 30000
@@ -16,7 +16,7 @@ function formatPhone(input: string): string {
 }
 
 export default function PublicForm() {
-  const [stage, setStage] = useState<Stage>('form')
+  const [stage, setStage] = useState<Stage>('choose')
   const [visitorType, setVisitorType] = useState<'member' | 'visitor'>('visitor')
   const [firstName, setFirstName] = useState('')
   const [lastName, setLastName] = useState('')
@@ -34,6 +34,12 @@ export default function PublicForm() {
     }
   }
   useEffect(() => stopPolling, [])
+
+  function choose(type: 'member' | 'visitor') {
+    setVisitorType(type)
+    setMessage(null)
+    setStage('form')
+  }
 
   async function onSubmit(e: FormEvent) {
     e.preventDefault()
@@ -81,13 +87,30 @@ export default function PublicForm() {
 
   function reset() {
     stopPolling()
-    setVisitorType('visitor')
     setFirstName('')
     setLastName('')
     setPhone('')
     setEmail('')
     setMessage(null)
-    setStage('form')
+    setStage('choose')
+  }
+
+  // Step 1 — what the QR code lands on.
+  if (stage === 'choose') {
+    return (
+      <main className="page">
+        <h1>Welcome to Shir Hadash</h1>
+        <p className="big">Are you a member or a visitor?</p>
+        <div className="choice">
+          <button className="choice-btn" onClick={() => choose('member')}>
+            I am a Member
+          </button>
+          <button className="choice-btn" onClick={() => choose('visitor')}>
+            I am a Visitor
+          </button>
+        </div>
+      </main>
+    )
   }
 
   if (stage === 'printing' || stage === 'submitting') {
@@ -124,32 +147,17 @@ export default function PublicForm() {
     )
   }
 
+  // Step 2 — details form.
   return (
     <main className="page">
       <h1>Welcome to Shir Hadash</h1>
-      <p className="muted">Enter your details and tap Print to get your name badge.</p>
+      <p className="muted">
+        Signing in as <strong>{visitorType === 'member' ? 'Member' : 'Visitor'}</strong> ·{' '}
+        <button type="button" className="linklike" onClick={() => setStage('choose')}>
+          change
+        </button>
+      </p>
       <form onSubmit={onSubmit} className="form">
-        <div className="field">
-          <span>I am a…</span>
-          <div className="segment">
-            <button
-              type="button"
-              className={visitorType === 'visitor' ? 'seg active' : 'seg'}
-              aria-pressed={visitorType === 'visitor'}
-              onClick={() => setVisitorType('visitor')}
-            >
-              Visitor
-            </button>
-            <button
-              type="button"
-              className={visitorType === 'member' ? 'seg active' : 'seg'}
-              aria-pressed={visitorType === 'member'}
-              onClick={() => setVisitorType('member')}
-            >
-              Member
-            </button>
-          </div>
-        </div>
         <label>
           First name *
           <input
