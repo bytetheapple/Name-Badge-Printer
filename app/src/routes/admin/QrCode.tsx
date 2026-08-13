@@ -72,6 +72,49 @@ export default function QrCode() {
     link.click()
   }
 
+  async function printLabel() {
+    const canvas = canvasRef.current
+    if (!canvas) return
+    const { jsPDF } = await import('jspdf') // lazy-loaded so it stays out of the main bundle
+
+    const doc = new jsPDF({ unit: 'in', format: 'letter', orientation: 'portrait' })
+    const pageW = 8.5
+    const boxW = 3
+    const boxH = 5
+    const boxX = (pageW - boxW) / 2
+    const boxY = (11 - boxH) / 2
+    const cx = pageW / 2
+
+    // Framed 3in x 5in label
+    doc.setLineWidth(0.03)
+    doc.rect(boxX, boxY, boxW, boxH)
+
+    // Top heading
+    doc.setFont('helvetica', 'bold')
+    doc.setFontSize(22)
+    doc.text('Welcome to', cx, boxY + 0.7, { align: 'center' })
+    doc.text('Shir Hadash', cx, boxY + 1.1, { align: 'center' })
+
+    // QR (branded, from the on-screen canvas) centered in the box
+    const qrSize = 2.4
+    const qrX = (pageW - qrSize) / 2
+    const qrY = boxY + (boxH - qrSize) / 2
+    doc.addImage(canvas.toDataURL('image/png'), 'PNG', qrX, qrY, qrSize, qrSize)
+
+    // Bottom instruction
+    doc.setFont('helvetica', 'normal')
+    doc.setFontSize(15)
+    const lines = doc.splitTextToSize('Scan the QR code to print a Name Tag', boxW - 0.5)
+    doc.text(lines, cx, boxY + boxH - 0.75, { align: 'center' })
+
+    const printer = printers.find((p) => p.id === selected)
+    const slug = (printer?.name ?? 'label')
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-|-$/g, '')
+    doc.save(`welcome-label-${slug}.pdf`)
+  }
+
   return (
     <>
       <h1>QR Code</h1>
@@ -108,6 +151,9 @@ export default function QrCode() {
       <div className="toolbar">
         <button onClick={download} disabled={!selected}>
           Download PNG
+        </button>
+        <button className="secondary" onClick={printLabel} disabled={!selected}>
+          Print Label
         </button>
       </div>
     </>
