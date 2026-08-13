@@ -5,6 +5,7 @@ name auto-sized to fill the middle, and a subtitle at the bottom. Dimensions and
 text come from the badge_template JSON stored in printer_config (with sensible
 defaults), so the look can be tuned from the admin console without code changes.
 """
+import os
 from datetime import datetime
 
 from PIL import Image, ImageDraw, ImageFont
@@ -16,6 +17,17 @@ DPI = 300
 MM = DPI / 25.4  # pixels per millimetre (~11.81)
 
 _FONT_CACHE: dict = {}
+_ASSETS = os.path.join(os.path.dirname(os.path.abspath(__file__)), "assets")
+
+
+def _load_header_image(name: str):
+    """Load a header graphic (RGBA) from bridge/assets/, or None if missing."""
+    try:
+        return Image.open(os.path.join(_ASSETS, name)).convert("RGBA")
+    except (OSError, ValueError):
+        return None
+
+
 _LABELS = {label.identifier: label for label in ALL_LABELS}
 
 
@@ -108,7 +120,20 @@ def render_badge(
     top = margin
     bottom = height - margin
 
-    if header:
+    # Header: a logo image (if header_image is set and found) takes priority over
+    # the text header. Either advances `top` so the name sits below it.
+    header_image = t.get("header_image")
+    logo = _load_header_image(str(header_image)) if header_image else None
+    if logo is not None:
+        target_h = round(height * float(t.get("header_image_frac", 0.28)))
+        logo_w = round(target_h * logo.width / logo.height)
+        if logo_w > inner:
+            logo_w = inner
+            target_h = round(logo_w * logo.height / logo.width)
+        logo_r = logo.resize((logo_w, target_h), Image.LANCZOS)
+        img.paste(logo_r, ((width - logo_w) // 2, top), logo_r)
+        top += target_h + round(4 * MM)
+    elif header:
         hf = _load_font(round(float(t.get("header_mm", 4)) * MM), bold=True)
         draw.text((width / 2, top), str(header).upper(), font=hf, fill="black", anchor="ma")
         top += hf.getbbox(str(header).upper())[3] + round(2.5 * MM)

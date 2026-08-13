@@ -478,6 +478,18 @@ td.actions-cell {
   cursor: pointer;
 }
 
+.check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  color: var(--text-h);
+  cursor: pointer;
+}
+.check input {
+  width: auto;
+}
+
 .section-head {
   display: flex;
   align-items: center;

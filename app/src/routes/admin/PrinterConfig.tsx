@@ -129,6 +129,7 @@ export default function PrinterConfig() {
   const [labelMedia, setLabelMedia] = useState('62')
   const [header, setHeader] = useState('')
   const [subtitle, setSubtitle] = useState('')
+  const [useLogo, setUseLogo] = useState(false)
   const [printRotation, setPrintRotation] = useState(90)
   const [lengthMm, setLengthMm] = useState(90)
   const [savingCfg, setSavingCfg] = useState(false)
@@ -150,6 +151,7 @@ export default function PrinterConfig() {
         setLabelMedia(c.label_media)
         setHeader((t.header as string) ?? 'WELCOME')
         setSubtitle((t.subtitle as string) ?? 'Shir Hadash')
+        setUseLogo(Boolean(t.header_image))
         setPrintRotation(Number(t.print_rotation ?? 90))
         setLengthMm(Number(t.length_mm ?? 90))
       }
@@ -172,6 +174,7 @@ export default function PrinterConfig() {
       ...template,
       header,
       subtitle,
+      header_image: useLogo ? 'shir-hadash-logo.png' : '',
       print_rotation: printRotation,
       length_mm: lengthMm,
     }
@@ -215,16 +218,34 @@ export default function PrinterConfig() {
 
         <section className="card">
           <h2>Badge text</h2>
-          <div className="grid2">
+          <label className="check">
+            <input
+              type="checkbox"
+              checked={useLogo}
+              onChange={(e) => setUseLogo(e.target.checked)}
+            />
+            Use Shir Hadash logo as header
+          </label>
+          <div className="grid2" style={{ marginTop: 12 }}>
             <label className="field">
               Header (top line)
-              <input value={header} onChange={(e) => setHeader(e.target.value)} maxLength={24} />
+              <input
+                value={header}
+                onChange={(e) => setHeader(e.target.value)}
+                maxLength={24}
+                disabled={useLogo}
+              />
             </label>
             <label className="field">
               Subtitle (bottom line)
               <input value={subtitle} onChange={(e) => setSubtitle(e.target.value)} maxLength={40} />
             </label>
           </div>
+          {useLogo && (
+            <p className="muted small" style={{ marginTop: 8 }}>
+              The logo replaces the header text. Clear the Subtitle to leave the footer blank.
+            </p>
+          )}
         </section>
 
         <section className="card">
