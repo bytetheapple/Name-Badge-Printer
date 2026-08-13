@@ -20,6 +20,28 @@ export async function submitBadge(input: {
   return { job_id: data.job_id, entry_id: data.entry_id }
 }
 
+export type SelfieMode = 'off' | 'optional' | 'required'
+
+/** Public config the visitor form needs (selfie mode). */
+export async function getPublicConfig(): Promise<{ selfie_mode: SelfieMode }> {
+  try {
+    const { data } = await supabase.functions.invoke('public-config', { body: {} })
+    return { selfie_mode: (data?.selfie_mode ?? 'off') as SelfieMode }
+  } catch {
+    return { selfie_mode: 'off' }
+  }
+}
+
+/** Upload a visitor selfie to Google Drive (fire-and-forget from the caller). */
+export async function uploadSelfie(input: {
+  entry_id: string
+  first_name: string
+  last_name: string
+  image: string
+}): Promise<void> {
+  await supabase.functions.invoke('upload-selfie', { body: input })
+}
+
 export type JobStatus = 'queued' | 'printing' | 'printed' | 'failed'
 
 /** Poll a single print job's status via the job-status Edge Function. */

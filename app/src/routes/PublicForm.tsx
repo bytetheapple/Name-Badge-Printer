@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { useSearchParams } from 'react-router-dom'
-import { getJobStatus, submitBadge } from '../lib/api'
+import { getJobStatus, getPublicConfig, submitBadge, uploadSelfie, type SelfieMode } from '../lib/api'
+import { SelfieCapture } from '../components/SelfieCapture'
 
-type Stage = 'choose' | 'form' | 'submitting' | 'printing' | 'done' | 'error'
+type Stage = 'choose' | 'form' | 'selfie' | 'submitting' | 'printing' | 'done' | 'error'
 
 const POLL_MS = 1500
 const TIMEOUT_MS = 30000
@@ -23,9 +24,14 @@ export default function PublicForm() {
   const [phone, setPhone] = useState('')
   const [email, setEmail] = useState('')
   const [message, setMessage] = useState<string | null>(null)
+  const [selfieMode, setSelfieMode] = useState<SelfieMode>('off')
   const pollRef = useRef<number | null>(null)
   const [searchParams] = useSearchParams()
   const printerId = searchParams.get('printer')
+
+  useEffect(() => {
+    void getPublicConfig().then((c) => setSelfieMode(c.selfie_mode))
+  }, [])
 
   function stopPolling() {
     if (pollRef.current !== null) {
@@ -41,12 +47,21 @@ export default function PublicForm() {
     setStage('form')
   }
 
-  async function onSubmit(e: FormEvent) {
+  function onFormSubmit(e: FormEvent) {
     e.preventDefault()
+    // Visitors get the selfie step (when enabled); members always print directly.
+    if (visitorType === 'visitor' && selfieMode !== 'off') {
+      setStage('selfie')
+    } else {
+      void doSubmit()
+    }
+  }
+
+  async function doSubmit(selfie?: string) {
     setStage('submitting')
     setMessage(null)
     try {
-      const { job_id } = await submitBadge({
+      const { job_id, entry_id } = await submitBadge({
         visitor_type: visitorType,
         first_name: firstName,
         last_name: lastName,
@@ -54,6 +69,15 @@ export default function PublicForm() {
         email,
         printer_id: printerId,
       })
+      // Upload the selfie in the background — never block or delay the badge.
+      if (selfie) {
+        void uploadSelfie({
+          entry_id,
+          first_name: firstName,
+          last_name: lastName,
+          image: selfie,
+        }).catch(() => {})
+      }
       setStage('printing')
       startPolling(job_id)
     } catch (err) {
@@ -113,6 +137,17 @@ export default function PublicForm() {
     )
   }
 
+  if (stage === 'selfie') {
+    return (
+      <SelfieCapture
+        optional={selfieMode === 'optional'}
+        onAccept={(img) => void doSubmit(img)}
+        onSkip={() => void doSubmit()}
+        onBack={() => setStage('form')}
+      />
+    )
+  }
+
   if (stage === 'printing' || stage === 'submitting') {
     return (
       <main className="page">
@@ -157,7 +192,7 @@ export default function PublicForm() {
           change
         </button>
       </p>
-      <form onSubmit={onSubmit} className="form">
+      <form onSubmit={onFormSubmit} className="form">
         <label>
           First name *
           <input
@@ -203,7 +238,9 @@ export default function PublicForm() {
             autoComplete="email"
           />
         </label>
-        <button type="submit">Print my badge</button>
+        <button type="submit">
+          {visitorType === 'visitor' && selfieMode !== 'off' ? 'Continue' : 'Print my badge'}
+        </button>
       </form>
     </main>
   )
