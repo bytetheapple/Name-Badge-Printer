@@ -89,12 +89,18 @@ Response:
 
 ## Choosing a printer
 
-The service may have more than one printer. To target one, pass `printer` as either:
-- the printer's **name** (case-insensitive, exactly as configured — e.g. `"Lobby"`), or
-- the printer's **id** (a UUID from the `printers` action).
+Simplest: **omit `printer`** to use the default (first) printer, or pass the
+printer's **name** exactly as configured in the badge app's admin (case-insensitive,
+e.g. `"Main Printer"`). That's all most callers need.
 
-If you omit `printer`, the **first/default** printer is used. If a name/id doesn't
-match, you get `400 { "ok": false, "error": "No matching printer ..." }`.
+The `printer` field accepts either:
+- a printer **name** — human-friendly, recommended; or
+- a printer **id** — a stable UUID (only useful if a printer might be renamed).
+
+You don't need to know ids in advance — the **`printers` action** lists them:
+`{ "action": "printers" }` returns `{ printers: [{ id, name, location }] }`. Use
+whichever field you prefer. A non-matching name/id returns
+`400 { "ok": false, "error": "No matching printer ..." }`.
 
 ## Errors
 
