@@ -15,8 +15,10 @@ const restHeaders = {
 
 const EMAIL_RE = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
 
-function triggerGoogleSync(entryId: string) {
-  const task = fetch(`${SUPABASE_URL}/functions/v1/google-sync`, {
+// Fire a background sync Edge Function (google-sync / shulcloud-sync) without
+// blocking the response.
+function triggerSync(fn: string, entryId: string) {
+  const task = fetch(`${SUPABASE_URL}/functions/v1/${fn}`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -25,7 +27,6 @@ function triggerGoogleSync(entryId: string) {
     },
     body: JSON.stringify({ entry_id: entryId }),
   }).catch(() => {});
-  // Keep the function alive until the background request completes.
   const er = (globalThis as { EdgeRuntime?: { waitUntil?: (p: Promise<unknown>) => void } })
     .EdgeRuntime;
   if (er?.waitUntil) er.waitUntil(task);
@@ -93,8 +94,9 @@ Deno.serve(async (req) => {
       email: email || null,
       visitor_type: visitorType,
       printer_id: printerId,
-      // Members are recorded but never sent to Google.
+      // Members are recorded but never sent to Google / ShulCloud.
       google_sync_status: visitorType === "member" ? "skipped" : "pending",
+      shulcloud_sync_status: visitorType === "member" ? "skipped" : "pending",
       source_ip: ip,
     }),
   });
@@ -119,9 +121,12 @@ Deno.serve(async (req) => {
   }
   const [job] = await jobRes.json();
 
-  // Visitors are pushed to Google in the background (never blocks printing);
-  // members are intentionally skipped.
-  if (visitorType === "visitor") triggerGoogleSync(entry.id);
+  // Visitors are pushed to Google and ShulCloud in the background (never blocks
+  // printing); members are intentionally skipped.
+  if (visitorType === "visitor") {
+    triggerSync("google-sync", entry.id);
+    triggerSync("shulcloud-sync", entry.id);
+  }
 
   return json({ ok: true, job_id: job.id, entry_id: entry.id });
 });
