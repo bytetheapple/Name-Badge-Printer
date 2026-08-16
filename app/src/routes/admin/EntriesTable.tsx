@@ -98,6 +98,13 @@ export default function EntriesTable() {
             Clear
           </button>
         )}
+        <span className="muted" style={{ fontSize: 13, whiteSpace: 'nowrap' }}>
+          {loading
+            ? '…'
+            : `${rows.length} ${rows.length === 1 ? 'entry' : 'entries'}${
+                from || to ? ' in range' : ''
+              }`}
+        </span>
         <div className="grow" />
         <button className="btn-sm" onClick={exportXlsx} disabled={rows.length === 0}>
           Export to Excel
