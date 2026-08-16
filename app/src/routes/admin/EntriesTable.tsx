@@ -61,6 +61,7 @@ export default function EntriesTable() {
     const data = rows.map((r) => ({
       'First name': r.first_name,
       'Last name': r.last_name ?? '',
+      Pronouns: r.pronouns ?? '',
       Type: r.visitor_type === 'member' ? 'Member' : 'Visitor',
       Printer: r.printer?.name ?? '',
       Phone: r.phone ?? '',
@@ -120,6 +121,7 @@ export default function EntriesTable() {
             <tr>
               <th>First</th>
               <th>Last</th>
+              <th>Pronouns</th>
               <th>Type</th>
               <th>Printer</th>
               <th>Phone</th>
@@ -132,13 +134,13 @@ export default function EntriesTable() {
           <tbody>
             {loading ? (
               <tr>
-                <td colSpan={9} className="empty">
+                <td colSpan={10} className="empty">
                   Loading…
                 </td>
               </tr>
             ) : rows.length === 0 ? (
               <tr>
-                <td colSpan={9} className="empty">
+                <td colSpan={10} className="empty">
                   No entries{from || to ? ' in this date range' : ' yet'}.
                 </td>
               </tr>
@@ -147,6 +149,7 @@ export default function EntriesTable() {
                 <tr key={r.id}>
                   <td>{r.first_name}</td>
                   <td>{r.last_name ?? '—'}</td>
+                  <td>{r.pronouns ?? '—'}</td>
                   <td>{r.visitor_type === 'member' ? 'Member' : 'Visitor'}</td>
                   <td>{r.printer?.name ?? '—'}</td>
                   <td>{r.phone ?? '—'}</td>

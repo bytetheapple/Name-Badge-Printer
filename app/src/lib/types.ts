@@ -16,6 +16,7 @@ export interface FormEntry {
   id: string
   first_name: string
   last_name: string | null
+  pronouns: string | null
   phone: string | null
   email: string | null
   visitor_type: 'member' | 'visitor'
