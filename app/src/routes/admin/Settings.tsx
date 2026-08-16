@@ -7,10 +7,18 @@ export default function Settings() {
   const [selfieMode, setSelfieMode] = useState<SelfieMode>('off')
   const [folderId, setFolderId] = useState('')
   const [pronounsEnabled, setPronounsEnabled] = useState(false)
+  // Snapshot of the last-saved values, so the Save button can grey out until
+  // something actually changes.
+  const [saved, setSaved] = useState({ selfieMode: 'off' as SelfieMode, folderId: '', pronounsEnabled: false })
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [msg, setMsg] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
+
+  const dirty =
+    selfieMode !== saved.selfieMode ||
+    folderId.trim() !== saved.folderId ||
+    pronounsEnabled !== saved.pronounsEnabled
 
   useEffect(() => {
     void (async () => {
@@ -20,9 +28,13 @@ export default function Settings() {
         setLoading(false)
         return
       }
-      setSelfieMode((data.selfie_mode ?? 'off') as SelfieMode)
-      setFolderId(data.selfie_drive_folder_id ?? '')
-      setPronounsEnabled(Boolean(data.pronouns_enabled))
+      const mode = (data.selfie_mode ?? 'off') as SelfieMode
+      const folder = data.selfie_drive_folder_id ?? ''
+      const pronouns = Boolean(data.pronouns_enabled)
+      setSelfieMode(mode)
+      setFolderId(folder)
+      setPronounsEnabled(pronouns)
+      setSaved({ selfieMode: mode, folderId: folder.trim(), pronounsEnabled: pronouns })
       setLoading(false)
     })()
   }, [])
@@ -41,8 +53,12 @@ export default function Settings() {
       })
       .eq('id', 1)
     setSaving(false)
-    if (error) setError(error.message)
-    else setMsg('Saved.')
+    if (error) {
+      setError(error.message)
+    } else {
+      setSaved({ selfieMode, folderId: folderId.trim(), pronounsEnabled })
+      setMsg('Saved.')
+    }
   }
 
   if (loading) return <p className="muted">Loading…</p>
@@ -50,7 +66,7 @@ export default function Settings() {
   return (
     <>
       <h1>Settings</h1>
-      {msg && <div className="notice">{msg}</div>}
+      {msg && !dirty && <div className="notice">{msg}</div>}
       {error && <div className="error">{error}</div>}
 
       <form onSubmit={save} className="config-form">
@@ -96,8 +112,8 @@ export default function Settings() {
           </p>
         </section>
 
-        <button type="submit" disabled={saving}>
-          {saving ? 'Saving…' : 'Save settings'}
+        <button type="submit" disabled={saving || !dirty}>
+          {saving ? 'Saving…' : dirty ? 'Save settings' : 'Saved'}
         </button>
       </form>
     </>
