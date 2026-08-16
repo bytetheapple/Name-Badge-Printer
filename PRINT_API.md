@@ -21,8 +21,9 @@ endpoint URL and an API key, both provided by the service operator.
 - **CORS:** enabled (callable from a browser or a server)
 
 The badge's visual design — label size, fonts, header logo — is managed centrally
-by the service operator. Your app only supplies the **name**; the badge renders as
-a large first name over a smaller last name.
+by the service operator. Your app only supplies the **name** (and, optionally,
+**pronouns**); the badge renders as a large first name over a smaller last name,
+with pronouns smaller still beneath.
 
 ## Quick start
 
@@ -54,11 +55,18 @@ the `action` field (default = print a badge).
 |--------------|--------|----------|----------------------------------------------------------|
 | `first_name` | string | yes      | Printed large.                                           |
 | `last_name`  | string | no       | Printed smaller beneath the first name.                  |
+| `pronouns`   | string | no       | Printed smaller still, beneath the name. Omit and no pronouns line is shown. Max 40 chars. |
 | `printer`    | string | no       | Printer **name** or **id** (see below). Omit for default.|
 
 Body:
 ```json
 { "first_name": "Sarah", "last_name": "Goldberg", "printer": "Lobby" }
+```
+
+`pronouns` is entirely optional and backward-compatible: requests that don't send
+it print exactly as before, with no pronouns line. To include them, add the field:
+```json
+{ "first_name": "Sarah", "last_name": "Goldberg", "pronouns": "she/her" }
 ```
 Success:
 ```json
