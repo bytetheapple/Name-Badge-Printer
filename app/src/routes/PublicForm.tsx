@@ -10,7 +10,9 @@ const TIMEOUT_MS = 30000
 
 /** Progressively format digits as (xxx)yyy-zzzz while typing. */
 function formatPhone(input: string): string {
-  const d = input.replace(/\D/g, '').slice(0, 10)
+  // Swallow a leading "1" (US country code): NANP area codes never start with
+  // 1, so a first-digit 1 is always the country code and would shift the number.
+  const d = input.replace(/\D/g, '').replace(/^1/, '').slice(0, 10)
   if (d.length < 4) return d ? `(${d}` : ''
   if (d.length < 7) return `(${d.slice(0, 3)})${d.slice(3)}`
   return `(${d.slice(0, 3)})${d.slice(3, 6)}-${d.slice(6)}`
