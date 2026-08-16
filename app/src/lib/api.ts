@@ -10,6 +10,7 @@ export async function submitBadge(input: {
   visitor_type: 'member' | 'visitor'
   first_name: string
   last_name: string
+  pronouns: string
   phone: string
   email: string
   printer_id: string | null
@@ -22,13 +23,19 @@ export async function submitBadge(input: {
 
 export type SelfieMode = 'off' | 'optional' | 'required'
 
-/** Public config the visitor form needs (selfie mode). */
-export async function getPublicConfig(): Promise<{ selfie_mode: SelfieMode }> {
+/** Public config the visitor/member form needs. */
+export async function getPublicConfig(): Promise<{
+  selfie_mode: SelfieMode
+  pronouns_enabled: boolean
+}> {
   try {
     const { data } = await supabase.functions.invoke('public-config', { body: {} })
-    return { selfie_mode: (data?.selfie_mode ?? 'off') as SelfieMode }
+    return {
+      selfie_mode: (data?.selfie_mode ?? 'off') as SelfieMode,
+      pronouns_enabled: Boolean(data?.pronouns_enabled),
+    }
   } catch {
-    return { selfie_mode: 'off' }
+    return { selfie_mode: 'off', pronouns_enabled: false }
   }
 }
 

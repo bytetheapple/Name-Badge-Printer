@@ -23,14 +23,19 @@ export default function PublicForm() {
   const [lastName, setLastName] = useState('')
   const [phone, setPhone] = useState('')
   const [email, setEmail] = useState('')
+  const [pronouns, setPronouns] = useState('')
   const [message, setMessage] = useState<string | null>(null)
   const [selfieMode, setSelfieMode] = useState<SelfieMode>('off')
+  const [pronounsEnabled, setPronounsEnabled] = useState(false)
   const pollRef = useRef<number | null>(null)
   const [searchParams] = useSearchParams()
   const printerId = searchParams.get('printer')
 
   useEffect(() => {
-    void getPublicConfig().then((c) => setSelfieMode(c.selfie_mode))
+    void getPublicConfig().then((c) => {
+      setSelfieMode(c.selfie_mode)
+      setPronounsEnabled(c.pronouns_enabled)
+    })
   }, [])
 
   function stopPolling() {
@@ -65,6 +70,7 @@ export default function PublicForm() {
         visitor_type: visitorType,
         first_name: firstName,
         last_name: lastName,
+        pronouns,
         phone,
         email,
         printer_id: printerId,
@@ -113,6 +119,7 @@ export default function PublicForm() {
     stopPolling()
     setFirstName('')
     setLastName('')
+    setPronouns('')
     setPhone('')
     setEmail('')
     setMessage(null)
@@ -214,6 +221,28 @@ export default function PublicForm() {
             autoComplete="family-name"
           />
         </label>
+        {pronounsEnabled && (
+          <label>
+            Pronouns (optional)
+            <input
+              type="text"
+              value={pronouns}
+              onChange={(e) => setPronouns(e.target.value)}
+              placeholder="e.g. she/her, they/them"
+              list="pronoun-options"
+              maxLength={40}
+              autoComplete="off"
+            />
+            <datalist id="pronoun-options">
+              <option value="she/her" />
+              <option value="he/him" />
+              <option value="they/them" />
+              <option value="she/they" />
+              <option value="he/they" />
+              <option value="ze/zir" />
+            </datalist>
+          </label>
+        )}
         <label>
           Phone{visitorType === 'visitor' ? ' *' : ''}
           <input

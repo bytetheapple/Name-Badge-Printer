@@ -74,6 +74,7 @@ Deno.serve(async (req) => {
   // Default: queue a badge.
   const first = String(body.first_name ?? "").trim();
   const last = String(body.last_name ?? "").trim();
+  const pronouns = String(body.pronouns ?? "").trim().slice(0, 40);
   if (!first) return json({ ok: false, error: "first_name is required" }, 400);
 
   const printerId = await resolvePrinter(body.printer ? String(body.printer) : undefined);
@@ -90,6 +91,7 @@ Deno.serve(async (req) => {
       printer_id: printerId,
       first_name: first,
       last_name: last || null,
+      pronouns: pronouns || null,
     }),
   });
   if (!jobRes.ok) return json({ ok: false, error: "Could not queue the print job" }, 500);

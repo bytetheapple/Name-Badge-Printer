@@ -6,6 +6,7 @@ type SelfieMode = 'off' | 'optional' | 'required'
 export default function Settings() {
   const [selfieMode, setSelfieMode] = useState<SelfieMode>('off')
   const [folderId, setFolderId] = useState('')
+  const [pronounsEnabled, setPronounsEnabled] = useState(false)
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [msg, setMsg] = useState<string | null>(null)
@@ -21,6 +22,7 @@ export default function Settings() {
       }
       setSelfieMode((data.selfie_mode ?? 'off') as SelfieMode)
       setFolderId(data.selfie_drive_folder_id ?? '')
+      setPronounsEnabled(Boolean(data.pronouns_enabled))
       setLoading(false)
     })()
   }, [])
@@ -32,7 +34,11 @@ export default function Settings() {
     setError(null)
     const { error } = await supabase
       .from('app_settings')
-      .update({ selfie_mode: selfieMode, selfie_drive_folder_id: folderId.trim() || null })
+      .update({
+        selfie_mode: selfieMode,
+        selfie_drive_folder_id: folderId.trim() || null,
+        pronouns_enabled: pronounsEnabled,
+      })
       .eq('id', 1)
     setSaving(false)
     if (error) setError(error.message)
@@ -72,6 +78,21 @@ export default function Settings() {
             Applies to visitors only. Selfies upload to this Drive folder as
             First_Last_Date_Time. The folder must be shared with the service account, and its
             ID is the part after <code>/folders/</code> in the folder's URL.
+          </p>
+        </section>
+
+        <section className="card">
+          <h2>Pronouns</h2>
+          <label className="check">
+            <input
+              type="checkbox"
+              checked={pronounsEnabled}
+              onChange={(e) => setPronounsEnabled(e.target.checked)}
+            />
+            Show an optional pronouns field on the sign-in form
+          </label>
+          <p className="muted small" style={{ marginTop: 8 }}>
+            When on, people can add pronouns, which print under their name on the badge.
           </p>
         </section>
 

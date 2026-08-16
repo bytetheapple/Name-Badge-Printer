@@ -47,6 +47,7 @@ Deno.serve(async (req) => {
   const lastName = String(body.last_name ?? "").trim();
   const phone = String(body.phone ?? "").trim();
   const email = String(body.email ?? "").trim();
+  const pronouns = String(body.pronouns ?? "").trim().slice(0, 40);
   const visitorType = String(body.visitor_type ?? "").trim();
 
   if (!firstName) return json({ ok: false, error: "Please enter your first name." });
@@ -92,6 +93,7 @@ Deno.serve(async (req) => {
       last_name: lastName || null,
       phone: phone || null,
       email: email || null,
+      pronouns: pronouns || null,
       visitor_type: visitorType,
       printer_id: printerId,
       // Members are recorded but never sent to Google / ShulCloud.

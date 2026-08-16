@@ -101,7 +101,11 @@ def _text_h(font, text):
 
 
 def render_badge(
-    first: str, last: str = "", template: dict | None = None, label: str = "62"
+    first: str,
+    last: str = "",
+    template: dict | None = None,
+    label: str = "62",
+    pronouns: str = "",
 ) -> Image.Image:
     t = template or {}
     header = t.get("header", "WELCOME")
@@ -144,10 +148,11 @@ def render_badge(
         box = sf.getbbox(str(subtitle))
         bottom -= (box[3] - box[1]) + round(2.5 * MM)
 
-    # First name large; last name smaller beneath it. Both centered, and the
-    # pair centered vertically in the available band.
+    # First name large; last name smaller beneath it; optional pronouns smaller
+    # still. All centered, and the stack centered vertically in the available band.
     first = (first or "").strip() or " "
     last = (last or "").strip()
+    pronouns = (pronouns or "").strip()
 
     first_font = _fit_line(
         draw,
@@ -169,31 +174,53 @@ def render_badge(
         if last
         else None
     )
+    pronouns_font = (
+        _fit_line(
+            draw,
+            pronouns,
+            inner,
+            round(float(t.get("pronouns_max_mm", 10)) * MM),
+            round(float(t.get("pronouns_min_mm", 7)) * MM),
+            bold=False,
+        )
+        if pronouns
+        else None
+    )
 
     first_h = _text_h(first_font, first)
     gap = round(float(t.get("name_gap_mm", 3)) * MM) if last else 0
     last_h = _text_h(last_font, last) if last else 0
-    total_h = first_h + gap + last_h
+    pgap = round(float(t.get("pronouns_gap_mm", 2)) * MM) if pronouns else 0
+    pronouns_h = _text_h(pronouns_font, pronouns) if pronouns else 0
+    total_h = first_h + gap + last_h + pgap + pronouns_h
 
-    # Shrink both proportionally if the stacked name is taller than the band
-    # between the header and subtitle (so it never collides with them).
+    # Shrink the whole stack proportionally if it is taller than the band between
+    # the header and subtitle (so it never collides with them).
     band = (bottom - top) * 0.96
     if total_h > band > 0:
         scale = band / total_h
         first_font = _load_font(max(8, int(first_font.size * scale)), bold=True)
         if last_font is not None:
             last_font = _load_font(max(8, int(last_font.size * scale)), bold=False)
+        if pronouns_font is not None:
+            pronouns_font = _load_font(max(8, int(pronouns_font.size * scale)), bold=False)
         first_h = _text_h(first_font, first)
         gap = round(gap * scale)
         last_h = _text_h(last_font, last) if last else 0
-        total_h = first_h + gap + last_h
+        pgap = round(pgap * scale)
+        pronouns_h = _text_h(pronouns_font, pronouns) if pronouns else 0
+        total_h = first_h + gap + last_h + pgap + pronouns_h
 
-    start_y = (top + bottom) / 2 - total_h / 2
-    draw.text((width / 2, start_y), first, font=first_font, fill="black", anchor="ma")
+    y = (top + bottom) / 2 - total_h / 2
+    draw.text((width / 2, y), first, font=first_font, fill="black", anchor="ma")
+    y += first_h
     if last:
-        draw.text(
-            (width / 2, start_y + first_h + gap), last, font=last_font, fill="black", anchor="ma"
-        )
+        y += gap
+        draw.text((width / 2, y), last, font=last_font, fill="black", anchor="ma")
+        y += last_h
+    if pronouns:
+        y += pgap
+        draw.text((width / 2, y), pronouns, font=pronouns_font, fill="black", anchor="ma")
 
     return img
 

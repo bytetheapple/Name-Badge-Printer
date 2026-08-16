@@ -37,13 +37,18 @@ def handle_job(job: dict, cfg: dict):
             # reference a form_entries row via entry_id.
             first = job.get("first_name")
             last = job.get("last_name")
+            pronouns = job.get("pronouns")
             if not first:
                 entry = db.get_entry(job["entry_id"]) if job.get("entry_id") else None
                 if not entry:
                     raise RuntimeError("no name or form entry for this job")
                 first = entry.get("first_name", "")
                 last = entry.get("last_name")
-            image = render_badge(first or "", last or "", template, label)
+                if not pronouns:
+                    pronouns = entry.get("pronouns")
+            image = render_badge(
+                first or "", last or "", template, label, pronouns=pronouns or ""
+            )
 
         target = db.get_printer(job.get("printer_id")) if job.get("printer_id") else None
         if not target or not target.get("printer_ip"):

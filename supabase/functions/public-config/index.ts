@@ -9,12 +9,16 @@ Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
   try {
     const res = await fetch(
-      `${SUPABASE_URL}/rest/v1/app_settings?id=eq.1&select=selfie_mode`,
+      `${SUPABASE_URL}/rest/v1/app_settings?id=eq.1&select=selfie_mode,pronouns_enabled`,
       { headers: { apikey: SERVICE_ROLE, Authorization: `Bearer ${SERVICE_ROLE}` } },
     );
     const rows = await res.json();
-    return json({ ok: true, selfie_mode: rows[0]?.selfie_mode ?? "off" });
+    return json({
+      ok: true,
+      selfie_mode: rows[0]?.selfie_mode ?? "off",
+      pronouns_enabled: rows[0]?.pronouns_enabled ?? false,
+    });
   } catch {
-    return json({ ok: true, selfie_mode: "off" });
+    return json({ ok: true, selfie_mode: "off", pronouns_enabled: false });
   }
 });
