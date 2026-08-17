@@ -138,6 +138,41 @@ a:hover {
   border-color: var(--accent);
 }
 
+.family {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  border-top: 1px solid var(--border);
+  padding-top: 14px;
+}
+.family-head {
+  font-size: 13px;
+  margin: 0;
+}
+.family-row {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--bg);
+}
+.family-row-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+}
+.family-row-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-h);
+}
+.add-person {
+  align-self: flex-start;
+  border-style: dashed;
+}
+
 button {
   font: inherit;
   font-weight: 500;
@@ -569,6 +604,11 @@ td.actions-cell {
 .header-actions {
   display: flex;
   gap: 8px;
+}
+
+.party-roster {
+  font-size: 12px;
+  margin-top: 2px;
 }
 
 .qr-box {

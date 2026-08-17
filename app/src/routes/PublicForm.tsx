@@ -26,10 +26,24 @@ export default function PublicForm() {
   const [phone, setPhone] = useState('')
   const [email, setEmail] = useState('')
   const [pronouns, setPronouns] = useState('')
+  const [people, setPeople] = useState<Array<{ first: string; last: string; pronouns: string }>>([])
+  const [printCount, setPrintCount] = useState(1)
   const [message, setMessage] = useState<string | null>(null)
   const [selfieMode, setSelfieMode] = useState<SelfieMode>('off')
   const [pronounsEnabled, setPronounsEnabled] = useState(false)
   const pollRef = useRef<number | null>(null)
+
+  const MAX_PEOPLE = 8
+
+  function addPerson() {
+    setPeople((p) => (p.length >= MAX_PEOPLE ? p : [...p, { first: '', last: '', pronouns: '' }]))
+  }
+  function updatePerson(i: number, field: 'first' | 'last' | 'pronouns', value: string) {
+    setPeople((p) => p.map((q, idx) => (idx === i ? { ...q, [field]: value } : q)))
+  }
+  function removePerson(i: number) {
+    setPeople((p) => p.filter((_, idx) => idx !== i))
+  }
   const [searchParams] = useSearchParams()
   const printerId = searchParams.get('printer')
 
@@ -68,7 +82,11 @@ export default function PublicForm() {
     setStage('submitting')
     setMessage(null)
     try {
-      const { job_id, entry_id } = await submitBadge({
+      // Only include additional people with both names filled in.
+      const additional = people
+        .filter((p) => p.first.trim() && p.last.trim())
+        .map((p) => ({ first_name: p.first.trim(), last_name: p.last.trim(), pronouns: p.pronouns.trim() }))
+      const { entry_id, job_ids } = await submitBadge({
         visitor_type: visitorType,
         first_name: firstName,
         last_name: lastName,
@@ -76,8 +94,10 @@ export default function PublicForm() {
         phone,
         email,
         printer_id: printerId,
+        additional,
       })
-      // Upload the selfie in the background — never block or delay the badge.
+      setPrintCount(job_ids.length)
+      // Upload the primary's selfie in the background — never block the badges.
       if (selfie) {
         void uploadSelfie({
           entry_id,
@@ -87,26 +107,34 @@ export default function PublicForm() {
         }).catch(() => {})
       }
       setStage('printing')
-      startPolling(job_id)
+      startPolling(job_ids)
     } catch (err) {
       setMessage((err as Error).message)
       setStage('error')
     }
   }
 
-  function startPolling(jobId: string) {
+  function startPolling(jobIds: string[]) {
     const started = Date.now()
+    // Give a bigger batch more time to work through the print queue.
+    const timeout = TIMEOUT_MS + Math.max(0, jobIds.length - 1) * 10000
     pollRef.current = window.setInterval(async () => {
       try {
-        const { status, error } = await getJobStatus(jobId)
-        if (status === 'printed') {
+        const statuses = await Promise.all(
+          jobIds.map((id) => getJobStatus(id).then((s) => s.status).catch(() => 'queued')),
+        )
+        if (statuses.every((s) => s === 'printed')) {
           stopPolling()
           setStage('done')
-        } else if (status === 'failed') {
+        } else if (statuses.some((s) => s === 'failed')) {
           stopPolling()
-          setMessage(error ?? 'Printing failed. Please see the attendant.')
+          setMessage(
+            jobIds.length > 1
+              ? 'One or more badges failed to print. Please see the attendant.'
+              : 'Printing failed. Please see the attendant.',
+          )
           setStage('error')
-        } else if (Date.now() - started > TIMEOUT_MS) {
+        } else if (Date.now() - started > timeout) {
           stopPolling()
           setMessage('This is taking longer than expected. Please see the attendant.')
           setStage('error')
@@ -124,6 +152,8 @@ export default function PublicForm() {
     setPronouns('')
     setPhone('')
     setEmail('')
+    setPeople([])
+    setPrintCount(1)
     setMessage(null)
     setStage('choose')
   }
@@ -162,8 +192,10 @@ export default function PublicForm() {
       <main className="page">
         <h1>Shir Hadash</h1>
         <div className="spinner" />
-        <p className="big">Printing your badge…</p>
-        <p className="muted">One moment — your name badge is on its way.</p>
+        <p className="big">{printCount > 1 ? `Printing ${printCount} badges…` : 'Printing your badge…'}</p>
+        <p className="muted">
+          One moment — your {printCount > 1 ? 'name badges are' : 'name badge is'} on the way.
+        </p>
       </main>
     )
   }
@@ -173,9 +205,11 @@ export default function PublicForm() {
       <main className="page">
         <h1>Shir Hadash</h1>
         <p className="status-icon">✓</p>
-        <p className="big">Your badge is printing!</p>
-        <p className="muted">Please collect it from the printer. Welcome!</p>
-        <button onClick={reset}>Print another</button>
+        <p className="big">{printCount > 1 ? `${printCount} badges are printing!` : 'Your badge is printing!'}</p>
+        <p className="muted">
+          Please collect {printCount > 1 ? 'them' : 'it'} from the printer. Welcome!
+        </p>
+        <button onClick={reset}>Print more</button>
       </main>
     )
   }
@@ -192,6 +226,7 @@ export default function PublicForm() {
   }
 
   // Step 2 — details form.
+  const badgeCount = 1 + people.filter((p) => p.first.trim() && p.last.trim()).length
   return (
     <main className="page">
       <h1>Welcome to Shir Hadash</h1>
@@ -269,8 +304,69 @@ export default function PublicForm() {
             autoComplete="email"
           />
         </label>
+
+        <div className="family">
+          <p className="family-head muted">
+            Signing in as a couple or family? Add a badge for each person — only your
+            name{visitorType === 'visitor' ? ', contact info' : ''} above is needed for the group.
+          </p>
+          {people.map((p, i) => (
+            <div className="family-row" key={i}>
+              <div className="family-row-head">
+                <span className="family-row-title">Additional badge {i + 1}</span>
+                <button type="button" className="linklike" onClick={() => removePerson(i)}>
+                  Remove
+                </button>
+              </div>
+              <label>
+                First name *
+                <input
+                  type="text"
+                  value={p.first}
+                  onChange={(e) => updatePerson(i, 'first', e.target.value)}
+                  required
+                  autoComplete="off"
+                />
+              </label>
+              <label>
+                Last name *
+                <input
+                  type="text"
+                  value={p.last}
+                  onChange={(e) => updatePerson(i, 'last', e.target.value)}
+                  required
+                  autoComplete="off"
+                />
+              </label>
+              {pronounsEnabled && (
+                <label>
+                  Pronouns (optional)
+                  <input
+                    type="text"
+                    value={p.pronouns}
+                    onChange={(e) => updatePerson(i, 'pronouns', e.target.value)}
+                    placeholder="e.g. she/her, they/them"
+                    list="pronoun-options"
+                    maxLength={40}
+                    autoComplete="off"
+                  />
+                </label>
+              )}
+            </div>
+          ))}
+          {people.length < MAX_PEOPLE && (
+            <button type="button" className="secondary add-person" onClick={addPerson}>
+              + Add another person
+            </button>
+          )}
+        </div>
+
         <button type="submit">
-          {visitorType === 'visitor' && selfieMode !== 'off' ? 'Continue' : 'Print my badge'}
+          {visitorType === 'visitor' && selfieMode !== 'off'
+            ? 'Continue'
+            : badgeCount > 1
+              ? `Print ${badgeCount} badges`
+              : 'Print my badge'}
         </button>
       </form>
     </main>

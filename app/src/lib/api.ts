@@ -1,8 +1,15 @@
 import { supabase } from './supabase'
 
 export interface SubmitResult {
-  job_id: string
   entry_id: string
+  job_ids: string[]
+}
+
+/** One additional (name-only) family/party member printed alongside the primary. */
+export interface AdditionalPerson {
+  first_name: string
+  last_name: string
+  pronouns: string
 }
 
 /** Submit the public badge form via the submit-badge Edge Function. */
@@ -14,11 +21,12 @@ export async function submitBadge(input: {
   phone: string
   email: string
   printer_id: string | null
+  additional?: AdditionalPerson[]
 }): Promise<SubmitResult> {
   const { data, error } = await supabase.functions.invoke('submit-badge', { body: input })
   if (error) throw new Error('Could not reach the server. Please try again.')
   if (!data?.ok) throw new Error(data?.error ?? 'Something went wrong. Please try again.')
-  return { job_id: data.job_id, entry_id: data.entry_id }
+  return { entry_id: data.entry_id, job_ids: data.job_ids ?? [data.job_id] }
 }
 
 export type SelfieMode = 'off' | 'optional' | 'required'

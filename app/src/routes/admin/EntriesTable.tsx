@@ -2,6 +2,43 @@ import { useCallback, useEffect, useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import type { FormEntry } from '../../lib/types'
 
+type DisplayItem =
+  | { kind: 'solo'; key: string; entry: FormEntry }
+  | { kind: 'party'; key: string; primary: FormEntry; roster: FormEntry[] }
+
+const familyLabel = (primary: FormEntry) =>
+  `Family of ${primary.last_name ?? primary.first_name}`
+
+const personName = (e: FormEntry) =>
+  `${e.first_name} ${e.last_name ?? ''}`.trim() + (e.pronouns ? ` (${e.pronouns})` : '')
+
+/** Collapse family sign-ins (rows sharing a party_id) into one line, preserving
+ * fetch order. Lone entries pass through as their own row. */
+function groupParties(rows: FormEntry[]): DisplayItem[] {
+  const parties = new Map<string, { key: string; entries: FormEntry[] }>()
+  const order: Array<{ kind: 'solo'; entry: FormEntry } | { kind: 'party'; key: string }> = []
+  for (const r of rows) {
+    if (!r.party_id) {
+      order.push({ kind: 'solo', entry: r })
+      continue
+    }
+    let g = parties.get(r.party_id)
+    if (!g) {
+      g = { key: r.party_id, entries: [] }
+      parties.set(r.party_id, g)
+      order.push({ kind: 'party', key: r.party_id })
+    }
+    g.entries.push(r)
+  }
+  return order.map((it) => {
+    if (it.kind === 'solo') return { kind: 'solo', key: it.entry.id, entry: it.entry }
+    const entries = parties.get(it.key)!.entries
+    const primary = entries.find((e) => e.is_primary) ?? entries[0]
+    const roster = [primary, ...entries.filter((e) => e.id !== primary.id)]
+    return { kind: 'party', key: it.key, primary, roster }
+  })
+}
+
 export default function EntriesTable() {
   const [rows, setRows] = useState<FormEntry[]>([])
   const [loading, setLoading] = useState(true)
@@ -41,6 +78,24 @@ export default function EntriesTable() {
     setNotice(error ? `Reprint failed: ${error.message}` : `Queued a reprint for ${entry.first_name}.`)
   }
 
+  async function reprintParty(item: { key: string; primary: FormEntry; roster: FormEntry[] }) {
+    setReprinting(item.key)
+    setNotice(null)
+    const jobs = item.roster.map((e) => ({
+      entry_id: e.id,
+      printer_id: e.printer_id,
+      type: 'badge',
+      status: 'queued',
+    }))
+    const { error } = await supabase.from('print_jobs').insert(jobs)
+    setReprinting(null)
+    setNotice(
+      error
+        ? `Reprint failed: ${error.message}`
+        : `Queued ${jobs.length} reprints for the ${familyLabel(item.primary)}.`,
+    )
+  }
+
   async function resync(entry: FormEntry) {
     setResyncing(entry.id)
     setNotice(null)
@@ -58,10 +113,14 @@ export default function EntriesTable() {
 
   async function exportXlsx() {
     const XLSX = await import('xlsx') // lazy-loaded: keeps xlsx out of the public form bundle
+    // Label each family so the flat export still shows who signed in together.
+    const partyLabel = new Map<string, string>()
+    for (const r of rows) if (r.party_id && r.is_primary) partyLabel.set(r.party_id, familyLabel(r))
     const data = rows.map((r) => ({
       'First name': r.first_name,
       'Last name': r.last_name ?? '',
       Pronouns: r.pronouns ?? '',
+      Party: r.party_id ? (partyLabel.get(r.party_id) ?? 'Family') : '',
       Type: r.visitor_type === 'member' ? 'Member' : 'Visitor',
       Printer: r.printer?.name ?? '',
       Phone: r.phone ?? '',
@@ -74,6 +133,8 @@ export default function EntriesTable() {
     XLSX.utils.book_append_sheet(wb, ws, 'Entries')
     XLSX.writeFile(wb, `name-badge-entries-${new Date().toISOString().slice(0, 10)}.xlsx`)
   }
+
+  const items = groupParties(rows)
 
   return (
     <>
@@ -145,42 +206,57 @@ export default function EntriesTable() {
                 </td>
               </tr>
             ) : (
-              rows.map((r) => (
-                <tr key={r.id}>
-                  <td>{r.first_name}</td>
-                  <td>{r.last_name ?? '—'}</td>
-                  <td>{r.pronouns ?? '—'}</td>
-                  <td>{r.visitor_type === 'member' ? 'Member' : 'Visitor'}</td>
-                  <td>{r.printer?.name ?? '—'}</td>
-                  <td>{r.phone ?? '—'}</td>
-                  <td>{r.email ?? '—'}</td>
-                  <td>{new Date(r.created_at).toLocaleString()}</td>
-                  <td>
-                    <span className={`pill pill-google-${r.google_sync_status}`}>
-                      {r.google_sync_status}
-                    </span>
-                    {(r.google_sync_status === 'pending' || r.google_sync_status === 'failed') && (
+              items.map((it) => {
+                const r = it.kind === 'solo' ? it.entry : it.primary
+                const busy = it.kind === 'solo' ? reprinting === r.id : reprinting === it.key
+                return (
+                  <tr key={it.key}>
+                    <td>
+                      {it.kind === 'party' ? (
+                        <>
+                          <strong>{familyLabel(it.primary)}</strong>
+                          <div className="party-roster muted">
+                            {it.roster.map(personName).join(' · ')}
+                          </div>
+                        </>
+                      ) : (
+                        r.first_name
+                      )}
+                    </td>
+                    <td>{it.kind === 'party' ? `${it.roster.length} people` : r.last_name ?? '—'}</td>
+                    <td>{it.kind === 'party' ? '—' : r.pronouns ?? '—'}</td>
+                    <td>{r.visitor_type === 'member' ? 'Member' : 'Visitor'}</td>
+                    <td>{r.printer?.name ?? '—'}</td>
+                    <td>{r.phone ?? '—'}</td>
+                    <td>{r.email ?? '—'}</td>
+                    <td>{new Date(r.created_at).toLocaleString()}</td>
+                    <td>
+                      <span className={`pill pill-google-${r.google_sync_status}`}>
+                        {r.google_sync_status}
+                      </span>
+                      {(r.google_sync_status === 'pending' || r.google_sync_status === 'failed') && (
+                        <button
+                          className="secondary btn-sm"
+                          style={{ marginLeft: 8 }}
+                          onClick={() => resync(r)}
+                          disabled={resyncing === r.id}
+                        >
+                          {resyncing === r.id ? '…' : 'Resync'}
+                        </button>
+                      )}
+                    </td>
+                    <td className="actions-cell">
                       <button
                         className="secondary btn-sm"
-                        style={{ marginLeft: 8 }}
-                        onClick={() => resync(r)}
-                        disabled={resyncing === r.id}
+                        onClick={() => (it.kind === 'party' ? reprintParty(it) : reprint(r))}
+                        disabled={busy}
                       >
-                        {resyncing === r.id ? '…' : 'Resync'}
+                        {busy ? 'Queuing…' : it.kind === 'party' ? 'Reprint all' : 'Reprint'}
                       </button>
-                    )}
-                  </td>
-                  <td className="actions-cell">
-                    <button
-                      className="secondary btn-sm"
-                      onClick={() => reprint(r)}
-                      disabled={reprinting === r.id}
-                    >
-                      {reprinting === r.id ? 'Queuing…' : 'Reprint'}
-                    </button>
-                  </td>
-                </tr>
-              ))
+                    </td>
+                  </tr>
+                )
+              })
             )}
           </tbody>
         </table>

@@ -50,6 +50,23 @@ Deno.serve(async (req) => {
   const pronouns = String(body.pronouns ?? "").trim().slice(0, 40);
   const visitorType = String(body.visitor_type ?? "").trim();
 
+  // Additional family/party members: name-only, no contact, no selfie, no sync.
+  const additional: Array<{ first_name: string; last_name: string; pronouns: string | null }> = [];
+  for (const p of Array.isArray(body.additional) ? body.additional : []) {
+    const f = String((p as Record<string, unknown>)?.first_name ?? "").trim();
+    const l = String((p as Record<string, unknown>)?.last_name ?? "").trim();
+    const pr = String((p as Record<string, unknown>)?.pronouns ?? "").trim().slice(0, 40);
+    if (!f && !l) continue; // ignore blank rows
+    if (!f || !l) {
+      return json({ ok: false, error: "Please enter a first and last name for each person." });
+    }
+    if (f.length > 60 || l.length > 60) return json({ ok: false, error: "That name is too long." });
+    additional.push({ first_name: f, last_name: l, pronouns: pr || null });
+  }
+  if (additional.length > 12) {
+    return json({ ok: false, error: "Too many people in one sign-in." });
+  }
+
   if (!firstName) return json({ ok: false, error: "Please enter your first name." });
   if (!lastName) return json({ ok: false, error: "Please enter your last name." });
   if (visitorType !== "member" && visitorType !== "visitor") {
@@ -84,7 +101,10 @@ Deno.serve(async (req) => {
   }
   if (!printerId) return json({ ok: false, error: "No printer is configured." }, 500);
 
-  // 1. Save the entry.
+  // A party_id links a family sign-in; null for a lone person.
+  const partyId = additional.length ? crypto.randomUUID() : null;
+
+  // 1. Save the primary entry.
   const entryRes = await fetch(`${SUPABASE_URL}/rest/v1/form_entries`, {
     method: "POST",
     headers: restHeaders,
@@ -96,6 +116,8 @@ Deno.serve(async (req) => {
       pronouns: pronouns || null,
       visitor_type: visitorType,
       printer_id: printerId,
+      party_id: partyId,
+      is_primary: true,
       // Members are recorded but never sent to Google / ShulCloud.
       google_sync_status: visitorType === "member" ? "skipped" : "pending",
       shulcloud_sync_status: visitorType === "member" ? "skipped" : "pending",
@@ -107,7 +129,7 @@ Deno.serve(async (req) => {
   }
   const [entry] = await entryRes.json();
 
-  // 2. Queue the print job.
+  // 2. Queue the primary print job.
   const jobRes = await fetch(`${SUPABASE_URL}/rest/v1/print_jobs`, {
     method: "POST",
     headers: restHeaders,
@@ -122,13 +144,52 @@ Deno.serve(async (req) => {
     return json({ ok: false, error: "Could not start the print." }, 500);
   }
   const [job] = await jobRes.json();
+  const jobIds: string[] = [job.id];
 
-  // Visitors are pushed to Google and ShulCloud in the background (never blocks
-  // printing); members are intentionally skipped.
+  // 3. Additional family members: name-only entries + badges, sync skipped.
+  if (additional.length) {
+    const memberEntries = additional.map((p) => ({
+      first_name: p.first_name,
+      last_name: p.last_name,
+      pronouns: p.pronouns,
+      phone: null,
+      email: null,
+      visitor_type: visitorType,
+      printer_id: printerId,
+      party_id: partyId,
+      is_primary: false,
+      google_sync_status: "skipped",
+      shulcloud_sync_status: "skipped",
+      source_ip: ip,
+    }));
+    const meRes = await fetch(`${SUPABASE_URL}/rest/v1/form_entries`, {
+      method: "POST",
+      headers: restHeaders,
+      body: JSON.stringify(memberEntries),
+    });
+    if (!meRes.ok) return json({ ok: false, error: "Could not save the additional badges." }, 500);
+    const memberRows = await meRes.json();
+    const memberJobs = memberRows.map((e: { id: string }) => ({
+      entry_id: e.id,
+      printer_id: printerId,
+      type: "badge",
+      status: "queued",
+    }));
+    const mjRes = await fetch(`${SUPABASE_URL}/rest/v1/print_jobs`, {
+      method: "POST",
+      headers: restHeaders,
+      body: JSON.stringify(memberJobs),
+    });
+    if (!mjRes.ok) return json({ ok: false, error: "Could not queue the additional badges." }, 500);
+    for (const j of await mjRes.json()) jobIds.push(j.id);
+  }
+
+  // Only the primary (with contact info) is pushed to Google and ShulCloud in
+  // the background; members and members-only sign-ins are skipped.
   if (visitorType === "visitor") {
     triggerSync("google-sync", entry.id);
     triggerSync("shulcloud-sync", entry.id);
   }
 
-  return json({ ok: true, job_id: job.id, entry_id: entry.id });
+  return json({ ok: true, job_id: job.id, entry_id: entry.id, job_ids: jobIds });
 });

@@ -23,6 +23,8 @@ export interface FormEntry {
   visitor_type: 'member' | 'visitor'
   printer_id: string | null
   printer?: { name: string } | null
+  party_id: string | null
+  is_primary: boolean
   source_ip: string | null
   google_sync_status: 'pending' | 'sent' | 'failed' | 'skipped'
   google_synced_at: string | null
