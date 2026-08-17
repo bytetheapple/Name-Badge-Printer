@@ -88,14 +88,17 @@ def badge_diagram():
                  fontName="Helvetica", fontSize=6.5, fillColor=MUTED,
                  textAnchor="middle"))
     # name placeholders
-    d.add(String(bx + bw / 2, by + bh * 0.34, "First",
-                 fontName="Helvetica-Bold", fontSize=20, fillColor=INK,
+    d.add(String(bx + bw / 2, by + bh * 0.44, "First",
+                 fontName="Helvetica-Bold", fontSize=19, fillColor=INK,
                  textAnchor="middle"))
-    d.add(String(bx + bw / 2, by + bh * 0.19, "Last",
-                 fontName="Helvetica", fontSize=11, fillColor=INK,
+    d.add(String(bx + bw / 2, by + bh * 0.30, "Last",
+                 fontName="Helvetica", fontSize=10, fillColor=INK,
                  textAnchor="middle"))
-    d.add(String(bx + bw / 2, by + 8, "Shir Hadash",
-                 fontName="Helvetica", fontSize=6.5, fillColor=MUTED,
+    d.add(String(bx + bw / 2, by + bh * 0.20, "Pronouns",
+                 fontName="Helvetica", fontSize=7.5, fillColor=INK,
+                 textAnchor="middle"))
+    d.add(String(bx + bw / 2, by + 8, "Footer",
+                 fontName="Helvetica-Oblique", fontSize=7, fillColor=MUTED,
                  textAnchor="middle"))
     return d
 
