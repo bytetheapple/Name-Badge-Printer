@@ -86,8 +86,17 @@ anything. To override the header **for a single badge**, send `header_image_base
 
 - **Value:** base64 of a **PNG or JPEG**. A `data:` URI prefix
   (`data:image/png;base64,...`) is accepted and stripped automatically.
-- **Size:** up to **2 MB**. Recommended: a transparent PNG ~1000 px on the long
-  edge; it's scaled to fit the header area automatically.
+- **Shape — use a WIDE, landscape graphic, not a square.** The header sits in a
+  short horizontal band across the top of the badge — roughly **28% of the badge
+  height by the full badge width**, about **4:1 (width:height)**. The image is
+  scaled to fit that band with its aspect ratio preserved (never cropped or
+  stretched); whichever dimension fills first limits the size.
+  - **Recommended:** a **transparent PNG, ~1200 × 300 px** (a 4:1 banner).
+    Anything from about 3:1 to 5:1 looks good.
+  - A near-square image (e.g. 1000 × 1000) is *not rejected*, but it will be
+    shrunk until its height fits the thin band and end up **small and centered
+    with large empty margins** — usually not what you want.
+- **File size:** up to **2 MB** of encoded image.
 - **Precedence:** per-job header (this field) → the printer's configured header →
   the bundled default logo.
 - **Backward-compatible:** omit it and the badge prints with the printer's header
