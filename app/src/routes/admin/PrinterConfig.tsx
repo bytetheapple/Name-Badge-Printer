@@ -225,8 +225,10 @@ function PrinterCard({
         </div>
         <p className="muted small" style={{ marginTop: 6 }}>
           Wide, landscape graphic — about 4:1, e.g. a transparent PNG ~1200&nbsp;×&nbsp;300&nbsp;px.
-          It's scaled to fit a short band across the top; a square image comes out small. Blank
-          uses the default logo.
+          It's scaled to fit a short band across the top; a square image comes out small. The
+          printer is black &amp; white, so use <strong>solid black artwork on a transparent
+          background</strong> — light colors and grays print faint or disappear. Blank uses the
+          default logo.
         </p>
         {headerMsg && <p className="muted small" style={{ marginTop: 4 }}>{headerMsg}</p>}
       </div>

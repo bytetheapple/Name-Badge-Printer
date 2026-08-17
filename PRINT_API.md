@@ -84,8 +84,9 @@ anything. To override the header **for a single badge**, send `header_image_base
 { "first_name": "Sarah", "header_image_base64": "iVBORw0KGgoAAAANSUhEUg..." }
 ```
 
-- **Value:** base64 of a **PNG or JPEG**. A `data:` URI prefix
-  (`data:image/png;base64,...`) is accepted and stripped automatically.
+- **Value:** base64 of a **PNG or JPEG** (transparent **PNG strongly preferred** —
+  see "Black & white" below). A `data:` URI prefix (`data:image/png;base64,...`)
+  is accepted and stripped automatically.
 - **Shape — use a WIDE, landscape graphic, not a square.** The header sits in a
   short horizontal band across the top of the badge — roughly **28% of the badge
   height by the full badge width**, about **4:1 (width:height)**. The image is
@@ -102,6 +103,45 @@ anything. To override the header **for a single badge**, send `header_image_base
 - **Backward-compatible:** omit it and the badge prints with the printer's header
   exactly as before. Re-sending the same image on every request is fine — it's
   de-duplicated server-side, so nothing piles up.
+
+##### Black & white — design in monochrome
+
+The label printer is a **monochrome thermal printer**. It prints only pure black
+on the white label — there are **no grays, no halftones, and no color.** Whatever
+you send is flattened to 1-bit black/white before printing, so **design the
+artwork in black and white from the start** rather than sending color and hoping
+it converts well.
+
+How the flattening works (so you can predict the result exactly):
+
+1. The image is converted to grayscale (by brightness).
+2. Each pixel is then forced to **either solid black or nothing** using a fixed
+   brightness cutoff: **pixels darker than roughly 30% brightness print black;
+   everything lighter (including most mid-tone colors) drops out to blank.**
+   There is no dithering — a pixel is never "partly" printed.
+
+What this means for your artwork:
+
+- **Use solid black (or near-black) shapes.** `#000000` on transparent is ideal.
+- **Avoid** light or mid-tone colors (yellow, orange, light blue, medium red,
+  etc.), gradients, thin light strokes, drop shadows, and glows — they fall on the
+  light side of the cutoff and **print faint or disappear entirely.**
+- **A full-color logo is accepted but not recommended:** only its darkest parts
+  will survive, so a vibrant color header can come out mostly blank. If you have a
+  color brand logo, supply a **black silhouette / monochrome version** of it for
+  the badge.
+
+##### Use a transparent PNG, not a JPEG
+
+Only PNG supports transparency, and transparency matters here: the header is
+**composited onto the badge using its alpha channel**, so a transparent PNG places
+just your artwork and lets the white label show through around it.
+
+A **JPEG has no transparency**, so its *entire rectangle — including the
+background — is placed on the badge.* A JPEG only looks right if its background is
+**pure white**; any colored or dark background will print as a solid block behind
+the header. When in doubt, send a **transparent-background PNG** with black
+artwork and you never have to think about this.
 
 ### 2. Check a job's status
 
