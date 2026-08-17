@@ -344,7 +344,7 @@ export default function PrinterConfig() {
               checked={useLogo}
               onChange={(e) => setUseLogo(e.target.checked)}
             />
-            Use Shir Hadash logo as header
+            Graphic header
           </label>
           <div className="grid2" style={{ marginTop: 12 }}>
             <label className="field">
@@ -363,7 +363,9 @@ export default function PrinterConfig() {
           </div>
           {useLogo && (
             <p className="muted small" style={{ marginTop: 8 }}>
-              The logo replaces the header text. Clear the Subtitle to leave the footer blank.
+              A graphic header replaces the top text line — the default Shir Hadash logo, or each
+              printer's own header graphic (set per printer above). Clear the Subtitle to leave the
+              footer blank.
             </p>
           )}
         </section>
