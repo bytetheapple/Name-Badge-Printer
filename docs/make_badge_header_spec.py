@@ -68,9 +68,11 @@ def spec_table():
 
 
 def badge_diagram():
-    """A small schematic: portrait badge with the header band highlighted."""
-    d = Drawing(150, 196)
-    bx, by, bw, bh = 18, 12, 114, 172           # badge rect
+    """A small schematic: the badge is LANDSCAPE (worn ~86 x 60 mm) with the
+    header band highlighted across the top."""
+    d = Drawing(238, 168)
+    bw, bh = 210, 146                            # landscape badge (~1.45:1)
+    bx, by = (238 - bw) / 2, (168 - bh) / 2
     band_h = bh * 0.28
     band_y = by + bh - band_h
     # badge outline
@@ -79,20 +81,20 @@ def badge_diagram():
     # header band
     d.add(Rect(bx, band_y, bw, band_h, fillColor=BANDFILL,
                strokeColor=ACCENT, strokeWidth=0.9, strokeDashArray=[3, 2]))
-    d.add(String(bx + bw / 2, band_y + band_h / 2 + 5, "YOUR HEADER",
-                 fontName="Helvetica-Bold", fontSize=7.5, fillColor=ACCENT,
+    d.add(String(bx + bw / 2, band_y + band_h / 2 + 4, "YOUR HEADER",
+                 fontName="Helvetica-Bold", fontSize=8, fillColor=ACCENT,
                  textAnchor="middle"))
-    d.add(String(bx + bw / 2, band_y + band_h / 2 - 6, "~4:1 wide",
+    d.add(String(bx + bw / 2, band_y + band_h / 2 - 8, "wide ~4:1 graphic",
                  fontName="Helvetica", fontSize=6.5, fillColor=MUTED,
                  textAnchor="middle"))
     # name placeholders
-    d.add(String(bx + bw / 2, by + bh * 0.40, "First",
-                 fontName="Helvetica-Bold", fontSize=15, fillColor=INK,
+    d.add(String(bx + bw / 2, by + bh * 0.34, "First",
+                 fontName="Helvetica-Bold", fontSize=20, fillColor=INK,
                  textAnchor="middle"))
-    d.add(String(bx + bw / 2, by + bh * 0.27, "Last",
-                 fontName="Helvetica", fontSize=9, fillColor=INK,
+    d.add(String(bx + bw / 2, by + bh * 0.19, "Last",
+                 fontName="Helvetica", fontSize=11, fillColor=INK,
                  textAnchor="middle"))
-    d.add(String(bx + bw / 2, by + 9, "Shir Hadash",
+    d.add(String(bx + bw / 2, by + 8, "Shir Hadash",
                  fontName="Helvetica", fontSize=6.5, fillColor=MUTED,
                  textAnchor="middle"))
     return d
