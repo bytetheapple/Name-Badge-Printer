@@ -51,12 +51,13 @@ the `action` field (default = print a badge).
 
 ### 1. Print a badge (default)
 
-| Field        | Type   | Required | Notes                                                    |
-|--------------|--------|----------|----------------------------------------------------------|
-| `first_name` | string | yes      | Printed large.                                           |
-| `last_name`  | string | no       | Printed smaller beneath the first name.                  |
-| `pronouns`   | string | no       | Printed smaller still, beneath the name. Omit and no pronouns line is shown. Max 40 chars. |
-| `printer`    | string | no       | Printer **name** or **id** (see below). Omit for default.|
+| Field                 | Type   | Required | Notes                                                    |
+|-----------------------|--------|----------|----------------------------------------------------------|
+| `first_name`          | string | yes      | Printed large.                                           |
+| `last_name`           | string | no       | Printed smaller beneath the first name.                  |
+| `pronouns`            | string | no       | Printed smaller still, beneath the name. Omit and no pronouns line is shown. Max 40 chars. |
+| `printer`             | string | no       | Printer **name** or **id** (see below). Omit for default.|
+| `header_image_base64` | string | no       | Custom header graphic for this badge (see [Custom header](#custom-header-graphic)). Omit to use the printer's configured header. |
 
 Body:
 ```json
@@ -72,6 +73,26 @@ Success:
 ```json
 { "ok": true, "job_id": "<uuid>", "status": "queued" }
 ```
+
+#### Custom header graphic
+
+Every badge shows a header graphic at the top. By default it's whatever the target
+printer is configured with (managed by the operator) — you don't need to send
+anything. To override the header **for a single badge**, send `header_image_base64`:
+
+```json
+{ "first_name": "Sarah", "header_image_base64": "iVBORw0KGgoAAAANSUhEUg..." }
+```
+
+- **Value:** base64 of a **PNG or JPEG**. A `data:` URI prefix
+  (`data:image/png;base64,...`) is accepted and stripped automatically.
+- **Size:** up to **2 MB**. Recommended: a transparent PNG ~1000 px on the long
+  edge; it's scaled to fit the header area automatically.
+- **Precedence:** per-job header (this field) → the printer's configured header →
+  the bundled default logo.
+- **Backward-compatible:** omit it and the badge prints with the printer's header
+  exactly as before. Re-sending the same image on every request is fine — it's
+  de-duplicated server-side, so nothing piles up.
 
 ### 2. Check a job's status
 

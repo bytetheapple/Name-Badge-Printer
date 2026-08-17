@@ -3,7 +3,8 @@
 // need Supabase credentials. Deploy with verify_jwt = false (see config.toml).
 //
 // Actions (POST JSON):
-//   { first_name, last_name?, printer? }        -> queue a badge, returns job_id
+//   { first_name, last_name?, pronouns?, printer?, header_image_base64? }
+//                                               -> queue a badge, returns job_id
 //   { action: "status", job_id }                -> { status, error }
 //   { action: "printers" }                      -> list available printers
 import { corsHeaders, json } from "../_shared/cors.ts";
@@ -11,6 +12,38 @@ import { corsHeaders, json } from "../_shared/cors.ts";
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_ROLE = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const API_KEY = Deno.env.get("PRINT_API_KEY") ?? "";
+
+const HEADER_BUCKET = "badge-headers";
+const MAX_HEADER_BYTES = 2_000_000;
+
+// Decode a base64 (optionally data-URI) header image, store it in the public
+// badge-headers bucket (content-addressed so re-sends dedupe), and return its
+// public URL. Throws on malformed input or an over-size image.
+async function storeHeaderImage(b64: string): Promise<string> {
+  const raw = b64.includes(",") ? b64.slice(b64.indexOf(",") + 1) : b64;
+  const bytes = Uint8Array.from(atob(raw.trim()), (c) => c.charCodeAt(0));
+  if (bytes.length === 0) throw new Error("empty image");
+  if (bytes.length > MAX_HEADER_BYTES) throw new Error("header image too large (max 2 MB)");
+  const isPng = bytes[0] === 0x89 && bytes[1] === 0x50;
+  const isJpeg = bytes[0] === 0xff && bytes[1] === 0xd8;
+  if (!isPng && !isJpeg) throw new Error("header image must be PNG or JPEG");
+  const digest = await crypto.subtle.digest("SHA-256", bytes);
+  const hash = [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, "0")).join("");
+  const ext = isPng ? "png" : "jpg";
+  const path = `${hash}.${ext}`;
+  const up = await fetch(`${SUPABASE_URL}/storage/v1/object/${HEADER_BUCKET}/${path}`, {
+    method: "POST",
+    headers: {
+      apikey: SERVICE_ROLE,
+      Authorization: `Bearer ${SERVICE_ROLE}`,
+      "Content-Type": isPng ? "image/png" : "image/jpeg",
+      "x-upsert": "true",
+    },
+    body: bytes,
+  });
+  if (!up.ok && up.status !== 409) throw new Error("could not store header image");
+  return `${SUPABASE_URL}/storage/v1/object/public/${HEADER_BUCKET}/${path}`;
+}
 
 const restHeaders = {
   apikey: SERVICE_ROLE,
@@ -82,6 +115,18 @@ Deno.serve(async (req) => {
     return json({ ok: false, error: "No matching printer (check the 'printer' value)" }, 400);
   }
 
+  // Optional per-job custom header graphic (base64). Overrides the printer's
+  // configured header; omit to use the printer default / bundled logo.
+  let headerImageUrl: string | null = null;
+  const headerB64 = String(body.header_image_base64 ?? "");
+  if (headerB64) {
+    try {
+      headerImageUrl = await storeHeaderImage(headerB64);
+    } catch (e) {
+      return json({ ok: false, error: (e as Error).message }, 400);
+    }
+  }
+
   const jobRes = await fetch(`${SUPABASE_URL}/rest/v1/print_jobs`, {
     method: "POST",
     headers: { ...restHeaders, Prefer: "return=representation" },
@@ -92,6 +137,7 @@ Deno.serve(async (req) => {
       first_name: first,
       last_name: last || null,
       pronouns: pronouns || null,
+      header_image_url: headerImageUrl,
     }),
   });
   if (!jobRes.ok) return json({ ok: false, error: "Could not queue the print job" }, 500);

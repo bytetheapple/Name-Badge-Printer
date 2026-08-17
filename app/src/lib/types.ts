@@ -9,6 +9,7 @@ export interface Printer {
   media_width: string | null
   error_state: string | null
   last_checked: string | null
+  header_image_url: string | null
   created_at: string
 }
 
@@ -51,6 +52,7 @@ export interface PrintJob {
   type: 'badge' | 'test'
   status: 'queued' | 'printing' | 'printed' | 'failed'
   attempts: number
+  header_image_url: string | null
   error: string | null
   created_at: string
   claimed_at: string | null

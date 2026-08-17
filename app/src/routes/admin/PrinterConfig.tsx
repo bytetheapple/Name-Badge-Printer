@@ -1,6 +1,16 @@
-import { useCallback, useEffect, useState, type FormEvent } from 'react'
+import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react'
 import { supabase } from '../../lib/supabase'
 import type { Printer, PrinterConfigRow } from '../../lib/types'
+
+const HEADER_BUCKET = 'badge-headers'
+const MAX_HEADER_BYTES = 2_000_000
+
+/** Content-addressed name so re-uploading the same image reuses the object and
+ * the bridge's cache, and a changed image always gets a fresh URL. */
+async function hashBytes(buf: ArrayBuffer): Promise<string> {
+  const digest = await crypto.subtle.digest('SHA-256', buf)
+  return [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, '0')).join('')
+}
 
 function PrinterCard({
   printer,
@@ -25,8 +35,70 @@ function PrinterCard({
   const [deleting, setDeleting] = useState(false)
   const [msg, setMsg] = useState<string | null>(null)
 
+  const [headerUrl, setHeaderUrl] = useState(printer.header_image_url ?? '')
+  const [headerBusy, setHeaderBusy] = useState(false)
+  const [headerMsg, setHeaderMsg] = useState<string | null>(null)
+  const fileRef = useRef<HTMLInputElement>(null)
+
   const dirty =
     name !== saved.name || location !== saved.location || ip !== saved.ip || port !== saved.port
+
+  async function onPickHeader(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    if (fileRef.current) fileRef.current.value = '' // allow re-selecting the same file
+    if (!file) return
+    setHeaderMsg(null)
+    if (!/^image\/(png|jpeg)$/.test(file.type)) {
+      setHeaderMsg('Please choose a PNG or JPEG image.')
+      return
+    }
+    if (file.size > MAX_HEADER_BYTES) {
+      setHeaderMsg('Image is too large (max 2 MB).')
+      return
+    }
+    setHeaderBusy(true)
+    try {
+      const buf = await file.arrayBuffer()
+      const ext = file.type === 'image/png' ? 'png' : 'jpg'
+      const path = `${await hashBytes(buf)}.${ext}`
+      const up = await supabase.storage
+        .from(HEADER_BUCKET)
+        .upload(path, buf, { contentType: file.type, upsert: true })
+      if (up.error) throw up.error
+      const url = supabase.storage.from(HEADER_BUCKET).getPublicUrl(path).data.publicUrl
+      const { error } = await supabase
+        .from('printers')
+        .update({ header_image_url: url })
+        .eq('id', printer.id)
+      if (error) throw error
+      setHeaderUrl(url)
+      setHeaderMsg('Header updated. The bridge picks it up within a few seconds.')
+      onChanged()
+    } catch (err) {
+      setHeaderMsg(`Upload failed: ${(err as Error).message}`)
+    } finally {
+      setHeaderBusy(false)
+    }
+  }
+
+  async function removeHeader() {
+    setHeaderBusy(true)
+    setHeaderMsg(null)
+    // Leave the storage object in place (it is content-addressed and may be
+    // shared); just detach it from this printer so it reverts to the default.
+    const { error } = await supabase
+      .from('printers')
+      .update({ header_image_url: null })
+      .eq('id', printer.id)
+    setHeaderBusy(false)
+    if (error) {
+      setHeaderMsg(`Error: ${error.message}`)
+      return
+    }
+    setHeaderUrl('')
+    setHeaderMsg('Reverted to the default header.')
+    onChanged()
+  }
 
   async function save(e: FormEvent) {
     e.preventDefault()
@@ -106,6 +178,52 @@ function PrinterCard({
           />
         </label>
       </div>
+
+      <div className="header-graphic">
+        <span className="field-label">Header graphic</span>
+        <div className="header-graphic-row">
+          <div className="header-preview">
+            {headerUrl ? (
+              <img src={headerUrl} alt="Custom header" />
+            ) : (
+              <span className="muted small">Default (Shir Hadash logo)</span>
+            )}
+          </div>
+          <div className="header-actions">
+            <input
+              ref={fileRef}
+              type="file"
+              accept="image/png,image/jpeg"
+              onChange={onPickHeader}
+              disabled={headerBusy}
+              hidden
+            />
+            <button
+              type="button"
+              className="btn-sm"
+              onClick={() => fileRef.current?.click()}
+              disabled={headerBusy}
+            >
+              {headerBusy ? 'Working…' : headerUrl ? 'Replace…' : 'Upload…'}
+            </button>
+            {headerUrl && (
+              <button
+                type="button"
+                className="secondary btn-sm"
+                onClick={removeHeader}
+                disabled={headerBusy}
+              >
+                Remove
+              </button>
+            )}
+          </div>
+        </div>
+        <p className="muted small" style={{ marginTop: 6 }}>
+          Transparent PNG, roughly 1000&nbsp;px on the long edge. Blank uses the default logo.
+        </p>
+        {headerMsg && <p className="muted small" style={{ marginTop: 4 }}>{headerMsg}</p>}
+      </div>
+
       {(msg || dirty) && (
         <div className="printer-card-foot">
           {msg && <span className="error">{msg}</span>}

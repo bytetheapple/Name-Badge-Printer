@@ -21,9 +21,11 @@ _ASSETS = os.path.join(os.path.dirname(os.path.abspath(__file__)), "assets")
 
 
 def _load_header_image(name: str):
-    """Load a header graphic (RGBA) from bridge/assets/, or None if missing."""
+    """Load a header graphic (RGBA). An absolute path (e.g. a cached custom
+    header) is used as-is; a bare name resolves inside bridge/assets/."""
+    path = name if os.path.isabs(str(name)) else os.path.join(_ASSETS, str(name))
     try:
-        return Image.open(os.path.join(_ASSETS, name)).convert("RGBA")
+        return Image.open(path).convert("RGBA")
     except (OSError, ValueError):
         return None
 
