@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react'
 import { supabase } from '../../lib/supabase'
 import type { Printer, PrinterConfigRow } from '../../lib/types'
+import defaultHeader from '../../assets/shir-hadash-logo.png'
 
 const HEADER_BUCKET = 'badge-headers'
 const MAX_HEADER_BYTES = 2_000_000
@@ -183,13 +184,15 @@ function PrinterCard({
         <span className="field-label">Header graphic</span>
         <div className="header-graphic-row">
           <div className="header-preview">
-            {headerUrl ? (
-              <img src={headerUrl} alt="Custom header" />
-            ) : (
-              <span className="muted small">Default (Shir Hadash logo)</span>
-            )}
+            <img
+              src={headerUrl || defaultHeader}
+              alt={headerUrl ? 'Custom header' : 'Default header'}
+            />
           </div>
           <div className="header-actions">
+            <span className="muted small">
+              {headerUrl ? 'Custom graphic' : 'Default (Shir Hadash logo)'}
+            </span>
             <input
               ref={fileRef}
               type="file"
@@ -198,24 +201,26 @@ function PrinterCard({
               disabled={headerBusy}
               hidden
             />
-            <button
-              type="button"
-              className="btn-sm"
-              onClick={() => fileRef.current?.click()}
-              disabled={headerBusy}
-            >
-              {headerBusy ? 'Working…' : headerUrl ? 'Replace…' : 'Upload…'}
-            </button>
-            {headerUrl && (
+            <div className="header-buttons">
               <button
                 type="button"
-                className="secondary btn-sm"
-                onClick={removeHeader}
+                className="btn-sm"
+                onClick={() => fileRef.current?.click()}
                 disabled={headerBusy}
               >
-                Remove
+                {headerBusy ? 'Working…' : headerUrl ? 'Replace…' : 'Upload…'}
               </button>
-            )}
+              {headerUrl && (
+                <button
+                  type="button"
+                  className="secondary btn-sm"
+                  onClick={removeHeader}
+                  disabled={headerBusy}
+                >
+                  Remove
+                </button>
+              )}
+            </div>
           </div>
         </div>
         <p className="muted small" style={{ marginTop: 6 }}>

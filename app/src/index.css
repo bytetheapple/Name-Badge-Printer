@@ -607,7 +607,8 @@ td.actions-cell {
   padding: 6px 10px;
   border: 1px dashed var(--border);
   border-radius: 8px;
-  background: var(--bg);
+  /* White like the label stock, so transparent-PNG logos read correctly in any theme. */
+  background: #fff;
 }
 .header-preview img {
   max-width: 220px;
@@ -615,6 +616,12 @@ td.actions-cell {
   object-fit: contain;
 }
 .header-actions {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+}
+.header-buttons {
   display: flex;
   gap: 8px;
 }
