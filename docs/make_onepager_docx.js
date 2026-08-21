@@ -141,11 +141,12 @@ const bomTable = new Table({
     itemRow("Brother label printer", "QL-820NWB networked label printer", "$250"),
     itemRow("Wall-mount bracket", "Tidy lobby installation", "$100"),
     itemRow("Subtotal per kiosk", null, "$350", { bold: true, fill: PANEL, priceColor: ACCENT, priceFont: DISPLAY, priceSize: 22 }),
-    groupRow("ONGOING SUPPLY"),
+    groupRow("ONGOING (RECURRING)"),
     itemRow("Roll of name badges", "250 die-cut badges per roll", "$25"),
+    itemRow("Website hosting", "Cloud hosting for the sign-in web app", "$10/mo"),
   ],
 });
-const bomNote = P([run("Badges are a low-cost consumable — about $25 per roll of 250. The web app runs on inexpensive cloud services with a modest monthly cost.", { size: 17, color: MUTED })],
+const bomNote = P([run("The only recurring costs: name badges (about $25 per roll of 250) and cloud hosting at roughly $10 a month.", { size: 17, color: MUTED })],
   { spacing: { before: 100 }, align: AlignmentType.CENTER });
 
 // ---------- CTA ----------
