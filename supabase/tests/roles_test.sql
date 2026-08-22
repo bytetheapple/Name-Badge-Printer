@@ -107,6 +107,20 @@ begin
   if n <> 0 then raise exception 'ROLE FAILURE: staff changed printer_config'; end if;
   insert into public._role_results (acting_as, check_name) values ('staff', 'cannot change settings or printer config');
 
+  -- Device credentials are not staff business: invisible, and uncreatable.
+  select count(*) into n from public.bridge_tokens where org_id = org;
+  if n <> 0 then
+    raise exception 'ROLE FAILURE: staff can see % bridge token(s)', n;
+  end if;
+  begin
+    insert into public.bridge_tokens (org_id, name, token_hash)
+    values (org, 'Staff bridge', 'hash-staff-000000000000');
+    raise exception 'ROLE FAILURE: staff created a bridge token';
+  exception when insufficient_privilege then null;
+  end;
+  insert into public._role_results (acting_as, check_name)
+  values ('staff', 'cannot see or create bridge tokens');
+
   -- Cannot add members.
   begin
     insert into public.memberships (org_id, user_id, role)
@@ -182,6 +196,23 @@ begin
   get diagnostics n = row_count;
   if n <> 0 then raise exception 'ROLE FAILURE: admin renamed the organization'; end if;
   insert into public._role_results (acting_as, check_name) values ('admin', 'cannot rename the organization');
+
+  -- Manages bridge credentials …
+  insert into public.bridge_tokens (org_id, name, token_hash, token_prefix)
+  values (org, 'Lobby Pi', 'hash-admin-000000000000', 'nbk_abcd');
+  select count(*) into n from public.bridge_tokens where org_id = org;
+  if n <> 1 then raise exception 'ROLE FAILURE: admin sees % bridge tokens, expected 1', n; end if;
+  insert into public._role_results (acting_as, check_name)
+  values ('admin', 'creates and lists bridge tokens');
+
+  -- … but never gets the stored hash back out of the database.
+  begin
+    perform token_hash from public.bridge_tokens where org_id = org;
+    raise exception 'ROLE FAILURE: token_hash is readable through the Data API';
+  exception when insufficient_privilege then null;
+  end;
+  insert into public._role_results (acting_as, check_name)
+  values ('admin', 'cannot read token_hash');
 
   -- Sees the member list for its own org, and nothing for a foreign one.
   select count(*) into n from public.org_members(org);
