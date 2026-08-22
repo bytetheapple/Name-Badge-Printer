@@ -1,9 +1,11 @@
 import { useEffect, useState, type FormEvent } from 'react'
 import { supabase } from '../../lib/supabase'
+import { useOrg } from '../../lib/org'
 
 type SelfieMode = 'off' | 'optional' | 'required'
 
 export default function Settings() {
+  const { orgId, isAdmin } = useOrg()
   const [selfieMode, setSelfieMode] = useState<SelfieMode>('off')
   const [folderId, setFolderId] = useState('')
   const [pronounsEnabled, setPronounsEnabled] = useState(false)
@@ -21,23 +23,28 @@ export default function Settings() {
     pronounsEnabled !== saved.pronounsEnabled
 
   useEffect(() => {
+    if (!orgId) return
     void (async () => {
-      const { data, error } = await supabase.from('app_settings').select('*').eq('id', 1).single()
+      const { data, error } = await supabase
+        .from('app_settings')
+        .select('*')
+        .eq('org_id', orgId)
+        .maybeSingle()
       if (error) {
         setError(error.message)
         setLoading(false)
         return
       }
-      const mode = (data.selfie_mode ?? 'off') as SelfieMode
-      const folder = data.selfie_drive_folder_id ?? ''
-      const pronouns = Boolean(data.pronouns_enabled)
+      const mode = (data?.selfie_mode ?? 'off') as SelfieMode
+      const folder = data?.selfie_drive_folder_id ?? ''
+      const pronouns = Boolean(data?.pronouns_enabled)
       setSelfieMode(mode)
       setFolderId(folder)
       setPronounsEnabled(pronouns)
       setSaved({ selfieMode: mode, folderId: folder.trim(), pronounsEnabled: pronouns })
       setLoading(false)
     })()
-  }, [])
+  }, [orgId])
 
   async function save(e: FormEvent) {
     e.preventDefault()
@@ -51,7 +58,7 @@ export default function Settings() {
         selfie_drive_folder_id: folderId.trim() || null,
         pronouns_enabled: pronounsEnabled,
       })
-      .eq('id', 1)
+      .eq('org_id', orgId)
     setSaving(false)
     if (error) {
       setError(error.message)
@@ -62,6 +69,14 @@ export default function Settings() {
   }
 
   if (loading) return <p className="muted">Loading…</p>
+  if (!isAdmin) {
+    return (
+      <>
+        <h1>Settings</h1>
+        <p className="muted">Only owners and admins can change settings.</p>
+      </>
+    )
+  }
 
   return (
     <>

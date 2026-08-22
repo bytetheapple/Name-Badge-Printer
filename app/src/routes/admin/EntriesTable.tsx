@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { supabase } from '../../lib/supabase'
+import { useOrg } from '../../lib/org'
 import type { FormEntry } from '../../lib/types'
 
 type DisplayItem =
@@ -40,6 +41,7 @@ function groupParties(rows: FormEntry[]): DisplayItem[] {
 }
 
 export default function EntriesTable() {
+  const { orgId } = useOrg()
   const [rows, setRows] = useState<FormEntry[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -50,11 +52,13 @@ export default function EntriesTable() {
   const [notice, setNotice] = useState<string | null>(null)
 
   const load = useCallback(async () => {
+    if (!orgId) return
     setLoading(true)
     setError(null)
     let q = supabase
       .from('form_entries')
       .select('*, printer:printers(name)')
+      .eq('org_id', orgId)
       .order('created_at', { ascending: false })
     if (from) q = q.gte('created_at', new Date(`${from}T00:00:00`).toISOString())
     if (to) q = q.lte('created_at', new Date(`${to}T23:59:59.999`).toISOString())
@@ -62,7 +66,7 @@ export default function EntriesTable() {
     if (error) setError(error.message)
     else setRows((data ?? []) as FormEntry[])
     setLoading(false)
-  }, [from, to])
+  }, [orgId, from, to])
 
   useEffect(() => {
     void load()
@@ -73,7 +77,13 @@ export default function EntriesTable() {
     setNotice(null)
     const { error } = await supabase
       .from('print_jobs')
-      .insert({ entry_id: entry.id, printer_id: entry.printer_id, type: 'badge', status: 'queued' })
+      .insert({
+        org_id: orgId,
+        entry_id: entry.id,
+        printer_id: entry.printer_id,
+        type: 'badge',
+        status: 'queued',
+      })
     setReprinting(null)
     setNotice(error ? `Reprint failed: ${error.message}` : `Queued a reprint for ${entry.first_name}.`)
   }
@@ -82,6 +92,7 @@ export default function EntriesTable() {
     setReprinting(item.key)
     setNotice(null)
     const jobs = item.roster.map((e) => ({
+      org_id: orgId,
       entry_id: e.id,
       printer_id: e.printer_id,
       type: 'badge',

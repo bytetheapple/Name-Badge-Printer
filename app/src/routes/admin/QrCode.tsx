@@ -1,17 +1,24 @@
 import { useEffect, useRef, useState } from 'react'
 import { supabase } from '../../lib/supabase'
+import { useOrg } from '../../lib/org'
 import type { Printer } from '../../lib/types'
 import logoUrl from '../../assets/shir-hadash-logo.png'
 
 export default function QrCode() {
+  const { orgId } = useOrg()
   const [printers, setPrinters] = useState<Printer[]>([])
   const [selected, setSelected] = useState('')
   const [error, setError] = useState<string | null>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
 
   useEffect(() => {
+    if (!orgId) return
     void (async () => {
-      const { data, error } = await supabase.from('printers').select('*').order('created_at')
+      const { data, error } = await supabase
+        .from('printers')
+        .select('*')
+        .eq('org_id', orgId)
+        .order('created_at')
       if (error) {
         setError(error.message)
         return
@@ -20,7 +27,7 @@ export default function QrCode() {
       setPrinters(list)
       if (list.length) setSelected(list[0].id)
     })()
-  }, [])
+  }, [orgId])
 
   const url = selected
     ? `${window.location.origin}/?printer=${selected}`
