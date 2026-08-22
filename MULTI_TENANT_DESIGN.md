@@ -20,6 +20,8 @@ tenant's data.
 | **Billing** | **Deferred** — schema hooks now, enforcement later | Get pilots running; wire Stripe once there are paying customers. |
 | **Public endpoint security** | **Opaque per-printer kiosk tokens + rate limiting** | Prevents guessing/editing a URL to reach another tenant's printer; bounds abuse. |
 | **Bridge auth** | **Per-bridge scoped tokens** via a bridge API (retire `service_role` on devices) | A device-resident `service_role` key would expose every tenant; also fixes a real weakness in the current single-tenant setup. |
+| **Hardware** | Customer **buys the printer** (Amazon, a named model); we don't stock/resell. **We ship the Pi** (golden image + org bridge token). Pi in the wiring closet on Ethernet; printers on WiFi (multiple per Pi); Pi+printer colocation over USB as a per-site backup. | Avoids hardware margin/support burden; matches the proven current setup; clean lobby; multi-printer per Pi. |
+| **Printer provisioning** | **Pi auto-config over a temporary Ethernet link** (drives the printer's web UI to set the four settings) + transcript capture; **guided web-UI wizard** fallback; **Wireless Direct** manual last resort. | One-time step on a mature UI; a firmware change only affects new provisions; captured transcripts make failures diagnosable. See §17. |
 
 **What does _not_ change:** badge rendering (`badge.py`), the bridge's actual
 printing path (`brother_ql`), the public sign-in UX, and the feature set
@@ -288,6 +290,10 @@ it's shown once and stored hashed.
 This also hardens the current single-tenant deployment and is worth doing on its
 own merits.
 
+The bridge also gains three provisioning-related jobs — **mDNS printer
+discovery**, **printer auto-configuration over Ethernet**, and a **health
+check** — detailed in §17.
+
 ---
 
 ## 10. Storage
@@ -389,22 +395,124 @@ Shir Hadash becomes **org #1** with zero data loss:
 2. **Auth & admin UX** — roles, invite/authorize users, org switcher.
 3. **Bridge re-auth** — bridge tokens + `bridge-poll`/`bridge-complete`; retire
    device `service_role`.
-4. **Public form & external API** — kiosk tokens, rate limiting, per-org API keys.
-5. **Per-tenant integrations & secrets** — Vault, per-org Google/CRM/selfie config.
-6. **Provisioning & super-admin** — manual provisioning tooling; cross-tenant ops.
-7. **(Later)** self-serve signup, billing, subdomains/custom domains, dedicated
+4. **Hardware provisioning** — bridge mDNS discovery + printer health check;
+   printer auto-config over Ethernet (after printer recon, §17) with transcript
+   capture; guided wizard fallback. *(Can be prototyped single-tenant in parallel.)*
+5. **Public form & external API** — kiosk tokens, rate limiting, per-org API keys.
+6. **Per-tenant integrations & secrets** — Vault, per-org Google/CRM/selfie config.
+7. **Provisioning & super-admin** — manual provisioning tooling; cross-tenant ops.
+8. **(Later)** self-serve signup, billing, subdomains/custom domains, dedicated
    silo tier.
 
-Phases 1–4 give a safely-isolated product you could onboard a second congregation
-onto; 5–7 make it a business.
+Phases 1–5 give a safely-isolated product you could onboard a second congregation
+onto; 6–8 make it a business.
 
 ---
 
-## 17. Open questions / future
+## 17. Hardware & printer provisioning
+
+### 17.1 Model
+
+- **Customer buys the printer** (Brother QL-820NWB) from Amazon; we don't stock or
+  resell it (avoids thin hardware margin and DOA/warranty support). We publish the
+  exact model + a short parts list.
+- **We ship the Raspberry Pi** — that's the appliance we control: golden SD image,
+  bridge service, per-org bridge token. It lives in the **wiring closet on
+  Ethernet** by default.
+- **Printers run on WiFi** in the lobby, **multiple per Pi**. The printer's **RJ45
+  jack is used only as a temporary provisioning cable**, not for runtime.
+- **Per-site backup:** where the network is segmented or WiFi is unreliable,
+  colocate the Pi and one printer and connect them by **USB**.
+
+### 17.2 The four printer settings (all via the web UI)
+
+A factory-fresh QL-820NWB needs exactly these set once:
+
+1. **Forms mode → off** (use the raster/command mode the bridge prints with).
+2. **WiFi → Infrastructure mode.**
+3. **WiFi SSID + password.**
+4. **Auto power-on after a power outage.**
+
+Fragility is bounded: it's a **one-time** step on a **mature** product, and a
+firmware change can only affect a *future* provision, never an already-configured
+printer — so a broken field fails one setup, not the fleet.
+
+### 17.3 Pi auto-config over Ethernet (primary path)
+
+1. Customer plugs the new printer into **any Ethernet jack** (even beside the Pi)
+   and powers it on.
+2. Bridge **discovers** it (DHCP + mDNS) and reads **model + firmware + serial**.
+3. Bridge **logs into the web UI** and pushes the four settings. The WiFi
+   credentials are supplied **just-in-time** from the app → that org's bridge over
+   the authenticated channel, used for the provisioning step and **not persisted
+   in the cloud**.
+4. Printer joins WiFi; bridge **verifies the WiFi interface is up and reachable**
+   → the app shows **"✓ On WiFi — you can remove the Ethernet cable."**
+5. Bridge runs a **health check + test print**; the printer is live.
+
+**Implementation:** a bridge `configure_printer()` routine drives the web UI over
+an HTTP session (Python `requests`). Exact form fields/endpoints come from a
+one-time **recon** on a real unit (see `docs/PRINTER_RECON_CHECKLIST.md`).
+
+**Diagnosability (build this alongside):** every attempt records a **provisioning
+transcript** — detected model/firmware/serial and each request/response — with
+the **WiFi password redacted**. It is retrievable over **Raspberry Pi Connect**
+and uploaded as a **redacted provisioning report** to the super-admin console, so
+failures (e.g. a new firmware revision) are debuggable without remoting in.
+Firmware-keyed profiles absorb any field drift.
+
+### 17.4 Fallbacks
+
+- **Guided web-UI wizard:** the app walks the customer through the printer's own
+  web page to set WiFi, then verifies + test-prints. Used automatically when
+  auto-config can't complete.
+- **Wireless Direct:** manual last resort (Brother app / laptop to the printer's
+  own AP).
+
+### 17.5 Bridge discovery & health check
+
+- **mDNS discovery** resolves each printer by its stable Brother name, so DHCP IP
+  changes never break printing (the exact failure seen at Shir Hadash) and "scan &
+  add printer" needs no typed IPs.
+- **Health check:** reachable, Forms-off/raster, right media, WiFi connected.
+
+### 17.6 Raspberry Pi remote access & device registry
+
+- **Raspberry Pi Connect** (operator account) for support — no per-customer SSH
+  credentials stored.
+- A **device registry** holds **metadata only** (hostname = org slug, Pi serial,
+  Connect device name, last-seen), never credentials.
+
+### 17.7 Pi appliance hardening — decisions to make
+
+- **SD-card corruption resilience** (biggest field-failure risk after abrupt power
+  loss): read-only/overlay root filesystem, or a small UPS. **Decide.**
+- **Fleet software updates**: how the bridge is patched across many Pis without
+  SSHing each — pull-based self-update, unattended-upgrades, or via Connect.
+  **Decide.**
+- Official Pi PSU, NTP, `systemd Restart=always` (already in place).
+
+### 17.8 Pre-install site-readiness checklist
+
+- Pi (Ethernet) and printers (WiFi) share **one network segment** — mDNS + port
+  9100 don't cross VLANs; watch guest-WiFi/VLAN splits. Fall back to USB
+  colocation if segmented.
+- An Ethernet jack is available **somewhere** for the provisioning step.
+- Power available at the lobby printer station.
+
+### 17.9 Near-term dependency
+
+Building `configure_printer()` requires a **web-UI recon on a real printer**
+(arriving shortly). Capture per `docs/PRINTER_RECON_CHECKLIST.md`, then implement.
+
+---
+
+## 18. Open questions / future
 
 - **Subdomains / custom domains** — offer as branding upgrade once demand appears.
 - **Dedicated silo tier** — a separate Supabase project for a customer needing
   physical isolation; premium pricing.
 - **Regionality / data residency** — not a concern now; note for later.
-- **Hardware fulfilment** — do you ship pre-provisioned Pis (bridge token
-  pre-installed) or have customers self-install? Affects the onboarding kit.
+- **Hardware fulfilment** — *decided:* we ship the Pi (pre-provisioned); the
+  customer buys the printer (Amazon) and it is auto-configured on site (§17). Open
+  sub-decisions live in §17.7 (SD resilience, fleet updates).
