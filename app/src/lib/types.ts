@@ -1,5 +1,6 @@
 export interface Printer {
   id: string
+  org_id: string
   name: string
   location: string | null
   printer_ip: string | null
@@ -15,6 +16,7 @@ export interface Printer {
 
 export interface FormEntry {
   id: string
+  org_id: string
   first_name: string
   last_name: string | null
   pronouns: string | null
@@ -34,6 +36,7 @@ export interface FormEntry {
 
 export interface PrinterConfigRow {
   id: number
+  org_id: string
   label_media: string
   dpi: number
   badge_template: Record<string, unknown>
@@ -42,12 +45,14 @@ export interface PrinterConfigRow {
 
 export interface PrinterStatusRow {
   id: number
+  org_id: string
   bridge_last_seen: string | null
   updated_at: string
 }
 
 export interface PrintJob {
   id: string
+  org_id: string
   entry_id: string | null
   printer_id: string | null
   printer?: { name: string } | null
