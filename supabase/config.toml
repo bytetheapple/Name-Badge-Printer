@@ -417,3 +417,11 @@ enabled = true
 # secret), so it must not require a Supabase JWT.
 [functions.print-badge]
 verify_jwt = false
+
+# The print bridge authenticates with its own opaque token in `x-bridge-key`,
+# not a Supabase JWT, so the gateway must not demand one.
+[functions.bridge-poll]
+verify_jwt = false
+
+[functions.bridge-complete]
+verify_jwt = false
