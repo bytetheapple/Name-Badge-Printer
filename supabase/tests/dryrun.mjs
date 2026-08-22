@@ -16,8 +16,10 @@ const MIG = path.join(REPO, 'supabase/migrations')
 const ADMIN = '22222222-2222-4222-8222-222222222222'
 
 const all = readdirSync(MIG).filter((f) => f.endsWith('.sql')).sort()
-const a1 = all.filter((f) => f.includes('_mt_a1_'))
-const base = all.filter((f) => !f.includes('_mt_a1_'))
+// Everything up to the multi-tenant work is the schema as it was in production
+// before the refactor; the `_mt_a*` files are the phased refactor itself.
+const mt = all.filter((f) => f.includes('_mt_a'))
+const base = all.filter((f) => !f.includes('_mt_a'))
 const read = (f) => readFileSync(path.join(MIG, f), 'utf8')
 
 const STUB = `
@@ -100,7 +102,7 @@ async function build(sabotage) {
   await db.exec(STUB)
   for (const f of base) { await db.exec(read(f)); await db.exec(GRANTS) }
   await db.exec(SEED)
-  for (const f of a1) {
+  for (const f of mt) {
     let sql = read(f)
     if (sabotage) sql = sabotage(sql, f)
     await db.exec(sql)
@@ -120,7 +122,7 @@ const asUser = (uid, sql) => `
 
 console.log('— migrations apply to a copy of the production schema —')
 let db
-try { db = await build(); ok('all 13 migrations applied in order') }
+try { db = await build(); ok(`all ${all.length} migrations applied in order`) }
 catch (e) { bad('migrations', e); process.exit(1) }
 
 const q = async (sql) => (await db.query(sql)).rows[0]
@@ -204,6 +206,20 @@ const after = await q(`select count(*) as orgs from public.organizations`)
 if (Number(after.orgs) === 1) ok('isolation test left no rows behind (rolled back)')
 else bad(`isolation test leaked rows: ${JSON.stringify(after)}`)
 
+console.log('— role matrix test (A2) —')
+const ROLES = readFileSync(path.join(REPO, 'supabase/tests/roles_test.sql'), 'utf8')
+try {
+  const res = await db.exec(ROLES)
+  const rows = res.filter((r) => r.rows?.length).pop()?.rows ?? []
+  if (!rows.length) bad('roles_test.sql produced no result table')
+  else if (rows.some((r) => r.result !== 'pass')) bad('roles_test.sql reported a non-pass row')
+  else if (rows.at(-1).check_name !== 'ALL CHECKS PASSED') bad('roles_test.sql did not end with ALL CHECKS PASSED')
+  else ok(`roles_test.sql passed, ${rows.length} checks reported in its result table`)
+} catch (e) {
+  bad('roles_test.sql', e)
+  await db.exec('rollback').catch(() => {})
+}
+
 console.log('— negative control: a leaky policy must FAIL the test —')
 const leaky = await build((sql, f) =>
   f.includes('_rls')
@@ -220,9 +236,25 @@ try {
   else bad(`negative control failed for the wrong reason: ${msg}`)
 }
 
+console.log('— negative control: a role-blind policy must FAIL the role test —')
+const roleBlind = await build((sql, f) =>
+  f.includes('_mt_a2_')
+    ? sql.replace(
+        'with check (public.auth_is_org_admin(org_id));\n\ndrop policy if exists "org update printers"',
+        'with check (org_id in (select public.auth_org_ids()));\n\ndrop policy if exists "org update printers"')
+    : sql)
+try {
+  await roleBlind.exec(ROLES)
+  bad('negative control: the role test PASSED with staff able to add printers — it is not actually checking')
+} catch (e) {
+  const msg = String(e.message).split('\n')[0]
+  if (msg.includes('ROLE FAILURE') && msg.includes('printer')) ok(`negative control caught it: "${msg}"`)
+  else bad(`role negative control failed for the wrong reason: ${msg}`)
+}
+
 console.log('— the migrations are idempotent (safe to paste twice) —')
-try { for (const f of a1) await db.exec(read(f)); ok('re-applying all three A1 migrations is a no-op') }
-catch (e) { bad('re-applying the A1 migrations', e) }
+try { for (const f of mt) await db.exec(read(f)); ok(`re-applying all ${mt.length} multi-tenant migrations is a no-op`) }
+catch (e) { bad('re-applying the multi-tenant migrations', e) }
 
 console.log('— failsafe: once a second org exists, an unstamped insert must fail —')
 await db.exec(`insert into public.organizations (slug, name) values ('second-tenant', 'Second Tenant');`)
