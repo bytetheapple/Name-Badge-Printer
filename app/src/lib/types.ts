@@ -14,6 +14,19 @@ export interface OrgMembership {
   organization: Organization
 }
 
+/** A print bridge's credential. The secret itself is never stored or returned —
+ *  only its hash, and a short prefix so tokens can be told apart. */
+export interface BridgeToken {
+  id: string
+  org_id: string
+  name: string | null
+  token_prefix: string | null
+  printer_ids: string[] | null
+  last_seen: string | null
+  created_at: string
+  revoked_at: string | null
+}
+
 /** A member of an organization, as returned by the org_members() function. */
 export interface OrgMember {
   user_id: string
