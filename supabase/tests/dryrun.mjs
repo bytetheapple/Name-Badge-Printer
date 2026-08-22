@@ -48,6 +48,23 @@ create table storage.objects (id uuid primary key default gen_random_uuid(), buc
 alter table storage.objects enable row level security;
 
 create publication supabase_realtime;
+
+-- Supabase enables RLS on tables newly created in the public schema.
+-- Reproduce that, so a helper table that forgets to account for it fails here
+-- rather than in the SQL editor.
+create or replace function public._rls_on_new_tables() returns event_trigger
+language plpgsql as $fn$
+declare obj record;
+begin
+  for obj in select * from pg_event_trigger_ddl_commands() loop
+    if obj.command_tag = 'CREATE TABLE' and obj.schema_name = 'public' then
+      execute format('alter table %s enable row level security', obj.object_identity);
+    end if;
+  end loop;
+end
+$fn$;
+create event trigger rls_on_new_tables on ddl_command_end
+  when tag in ('CREATE TABLE') execute function public._rls_on_new_tables();
 `
 
 const GRANTS = `
@@ -177,7 +194,10 @@ try {
   else if (failures.length) bad(`isolation_test.sql reported ${failures.length} non-pass row(s)`)
   else if (rows.at(-1).check_name !== 'ALL CHECKS PASSED') bad(`isolation_test.sql did not end with ALL CHECKS PASSED (last row: ${rows.at(-1).check_name})`)
   else ok(`isolation_test.sql passed, ${rows.length} checks reported in its result table`)
-} catch (e) { bad('isolation_test.sql', e) }
+} catch (e) {
+  bad('isolation_test.sql', e)
+  await db.exec('rollback').catch(() => {})  // the failure aborted the transaction
+}
 
 // The test rolls itself back, so the database must be untouched afterwards.
 const after = await q(`select count(*) as orgs from public.organizations`)

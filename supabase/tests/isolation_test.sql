@@ -30,6 +30,10 @@ create table public._isolation_results (
   check_name text not null,
   result     text not null default 'pass'
 );
+-- Supabase enables RLS on tables newly created in public, which would make this
+-- scratch table reject its own inserts once we drop to authenticated/anon. It
+-- holds no tenant data and disappears with the rollback, so turn it off.
+alter table public._isolation_results disable row level security;
 grant insert on public._isolation_results to authenticated, anon;
 
 -- Impersonation below only works if the current role is not exempt from RLS.

@@ -39,3 +39,8 @@ It checks that:
   refused instead of being filed under the wrong tenant.
 
 Re-run it after any migration or policy change.
+
+The stub mirrors Supabase closely enough to catch permission bugs — including
+the event trigger that enables RLS on tables newly created in `public`. Keep it
+faithful: anything the stub is more permissive about is a bug that will surface
+in the SQL editor instead of here.
