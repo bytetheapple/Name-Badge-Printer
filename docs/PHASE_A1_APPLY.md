@@ -16,6 +16,14 @@ constrained (per [DEVELOPMENT_PLAN.md](../DEVELOPMENT_PLAN.md) principles).
 > `supabase db push` (the local migration history is out of sync with the
 > remote project).
 
+All four have already been rehearsed end to end against a throwaway Postgres
+that mirrors the production schema — see
+[supabase/tests/README.md](../supabase/tests/README.md):
+
+```bash
+cd supabase/tests && npm install && npm run dryrun
+```
+
 ## Before you paste #2
 
 It contains one line that grants **cross-tenant operator access**:
