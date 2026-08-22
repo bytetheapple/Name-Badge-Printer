@@ -49,11 +49,15 @@ export function OrgProvider({ children }: { children: ReactNode }) {
     }
     setLoading(true)
     setError(null)
-    // Filter by user_id: the membership policy exposes every member of the
+    // Two plain queries rather than one embedded select: the membership rows
+    // and the org rows are both tiny, and this avoids depending on PostgREST
+    // resolving the relationship by name.
+    //
+    // Filter by user_id — the membership policy exposes every member of the
     // user's orgs, not just their own rows.
-    const { data, error } = await supabase
+    const { data: rows, error } = await supabase
       .from('memberships')
-      .select('org_id, role, organizations(id, slug, name, status)')
+      .select('org_id, role')
       .eq('user_id', userId)
     if (error) {
       setError(error.message)
@@ -61,10 +65,23 @@ export function OrgProvider({ children }: { children: ReactNode }) {
       setLoading(false)
       return
     }
-    const list: OrgMembership[] = (data ?? [])
-      .map((row) => {
-        const org = row.organizations as unknown as OrgMembership['organization'] | null
-        return org ? { org_id: row.org_id as string, role: row.role as Role, organization: org } : null
+    const ids = (rows ?? []).map((r) => r.org_id as string)
+    const { data: orgRows, error: orgError } = ids.length
+      ? await supabase.from('organizations').select('id, slug, name, status').in('id', ids)
+      : { data: [], error: null }
+    if (orgError) {
+      setError(orgError.message)
+      setOrgs([])
+      setLoading(false)
+      return
+    }
+    const byId = new Map(
+      (orgRows ?? []).map((o) => [o.id as string, o as unknown as OrgMembership['organization']]),
+    )
+    const list: OrgMembership[] = (rows ?? [])
+      .map((r) => {
+        const org = byId.get(r.org_id as string)
+        return org ? { org_id: r.org_id as string, role: r.role as Role, organization: org } : null
       })
       .filter((m): m is OrgMembership => m !== null)
       .sort((a, b) => a.organization.name.localeCompare(b.organization.name))
