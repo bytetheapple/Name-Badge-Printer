@@ -17,8 +17,8 @@ from io import BytesIO
 import requests
 from PIL import Image
 
+import client as client_module
 import config
-import db
 import printer
 from badge import render_badge, render_test_badge
 
@@ -59,32 +59,26 @@ def resolve_header(url):
         return None
 
 
-def handle_job(job: dict, cfg: dict):
+def handle_job(client, job: dict, cfg: dict, printers: list):
     job_id = job["id"]
     try:
         template = cfg.get("badge_template") or {}
         label = cfg.get("label_media", "62")
 
-        target = db.get_printer(job.get("printer_id")) if job.get("printer_id") else None
+        target = next((p for p in printers if p["id"] == job.get("printer_id")), None)
         if not target or not target.get("printer_ip"):
             raise RuntimeError("no printer assigned to this job (or its IP is unset)")
 
         if job.get("type") == "test":
             image = render_test_badge(template, label)
         else:
-            # External API jobs carry the name directly; our own form jobs
-            # reference a form_entries row via entry_id.
+            # The name arrives resolved: external API jobs carry it directly,
+            # and for form jobs the server has already looked up the entry.
             first = job.get("first_name")
             last = job.get("last_name")
             pronouns = job.get("pronouns")
             if not first:
-                entry = db.get_entry(job["entry_id"]) if job.get("entry_id") else None
-                if not entry:
-                    raise RuntimeError("no name or form entry for this job")
-                first = entry.get("first_name", "")
-                last = entry.get("last_name")
-                if not pronouns:
-                    pronouns = entry.get("pronouns")
+                raise RuntimeError("no name or form entry for this job")
             # Custom header: per-job (API) overrides the printer's default, which
             # overrides the bundled logo in the template.
             header_url = job.get("header_image_url") or target.get("header_image_url")
@@ -101,51 +95,60 @@ def handle_job(job: dict, cfg: dict):
             cfg.get("label_media", "62"),
             rotation=int(template.get("print_rotation", 90)),
         )
-        db.finish_job(job_id)
+        client.complete(job_id, True)
         _log(f"printed job {job_id} on '{target.get('name')}' (type={job.get('type')})")
-    except Exception as e:  # noqa: BLE001 - report every failure back to the DB
-        db.fail_job(job_id, e)
+    except Exception as e:  # noqa: BLE001 - report every failure back to the server
+        client.complete(job_id, False, e)
         _log(f"FAILED job {job_id}: {e}", err=True)
 
 
-def write_heartbeat():
-    now = _now()
-    db.update_bridge({"bridge_last_seen": now})
-    for p in db.list_printers():
+def probe_printers(printers: list) -> list:
+    """Ask each printer how it is, for the next poll to report upstream."""
+    reports = []
+    for p in printers:
         ip = p.get("printer_ip")
         status = printer.query_status(ip, p.get("port", 9100)) if ip else {"reachable": False}
-        db.update_printer(
-            p["id"],
+        reports.append(
             {
+                "id": p["id"],
                 "reachable": bool(status.get("reachable")),
                 "media_type": status.get("media_type"),
                 "media_width": status.get("media_width"),
                 "error_state": status.get("error_state"),
-                "last_checked": now,
-            },
+            }
         )
+    return reports
 
 
 def main():
     config.require()
-    _log(f"bridge starting; polling every {config.POLL_INTERVAL}s")
-    last_heartbeat = 0.0
+    client = client_module.make_client()
+    _log(f"bridge starting; auth: {client.mode}; polling every {config.POLL_INTERVAL}s")
+    if client.mode.startswith("service_role"):
+        _log(
+            "WARNING: running on the project-wide service_role key, which can reach "
+            "every organization. Issue a bridge token in the admin (Print servers) "
+            "and set BRIDGE_TOKEN in bridge/.env.",
+            err=True,
+        )
+
+    last_probe = 0.0
+    printers = []
 
     while True:
         try:
-            cfg = db.get_config()
-
-            job = db.get_queued_job()
-            if job:
-                claimed = db.claim_job(job["id"], job.get("attempts", 0))
-                if claimed:
-                    handle_job(claimed, cfg)
-                    continue  # loop again immediately to drain the queue
-
+            # Probing each printer costs a TCP round trip, so it keeps the slower
+            # heartbeat cadence; job polling stays fast.
             now = time.monotonic()
-            if now - last_heartbeat >= config.HEARTBEAT_INTERVAL:
-                write_heartbeat()
-                last_heartbeat = now
+            reports = None
+            if now - last_probe >= config.HEARTBEAT_INTERVAL:
+                reports = probe_printers(printers)
+                last_probe = now
+
+            cfg, printers, job = client.poll(reports)
+            if job:
+                handle_job(client, job, cfg, printers)
+                continue  # loop again immediately to drain the queue
         except Exception as e:  # noqa: BLE001 - keep the loop alive through transient errors
             _log(f"loop error: {e}", err=True)
             traceback.print_exc()
