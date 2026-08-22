@@ -483,13 +483,14 @@ Firmware-keyed profiles absorb any field drift.
 - A **device registry** holds **metadata only** (hostname = org slug, Pi serial,
   Connect device name, last-seen), never credentials.
 
-### 17.7 Pi appliance hardening — decisions to make
+### 17.7 Pi appliance hardening
 
-- **SD-card corruption resilience** (biggest field-failure risk after abrupt power
-  loss): read-only/overlay root filesystem, or a small UPS. **Decide.**
-- **Fleet software updates**: how the bridge is patched across many Pis without
-  SSHing each — pull-based self-update, unattended-upgrades, or via Connect.
-  **Decide.**
+- **SD-card corruption resilience** — **read-only / overlay root filesystem**
+  (`overlayroot`), so an abrupt power loss can't corrupt the card. *(A UPS was
+  considered and rejected as not dependable enough.)*
+- **Fleet software updates** — **pull-based self-update**: each bridge checks for
+  and applies a new version on a schedule/at boot, so patches roll out without
+  SSHing into every Pi.
 - Official Pi PSU, NTP, `systemd Restart=always` (already in place).
 
 ### 17.8 Pre-install site-readiness checklist
