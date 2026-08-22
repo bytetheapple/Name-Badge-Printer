@@ -166,8 +166,18 @@ else bad(`admin portal read: got ${JSON.stringify(got)}, expected ${JSON.stringi
 
 console.log('— isolation test —')
 const TEST = readFileSync(path.join(REPO, 'supabase/tests/isolation_test.sql'), 'utf8')
-try { await db.exec(TEST); ok('isolation_test.sql passed') }
-catch (e) { bad('isolation_test.sql', e) }
+try {
+  // The SQL editor renders the last result-producing statement, so the test's
+  // visible output is its results table. Check it is actually produced.
+  const res = await db.exec(TEST)
+  const table = res.filter((r) => r.rows?.length).pop()
+  const rows = table?.rows ?? []
+  const failures = rows.filter((r) => r.result !== 'pass')
+  if (!rows.length) bad('isolation_test.sql produced no result table — the editor would show "No rows returned"')
+  else if (failures.length) bad(`isolation_test.sql reported ${failures.length} non-pass row(s)`)
+  else if (rows.at(-1).check_name !== 'ALL CHECKS PASSED') bad(`isolation_test.sql did not end with ALL CHECKS PASSED (last row: ${rows.at(-1).check_name})`)
+  else ok(`isolation_test.sql passed, ${rows.length} checks reported in its result table`)
+} catch (e) { bad('isolation_test.sql', e) }
 
 // The test rolls itself back, so the database must be untouched afterwards.
 const after = await q(`select count(*) as orgs from public.organizations`)

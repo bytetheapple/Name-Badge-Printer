@@ -3,9 +3,14 @@
 ## `isolation_test.sql`
 
 The tenant-isolation suite from [MULTI_TENANT_DESIGN.md](../../MULTI_TENANT_DESIGN.md)
-§15. Paste it into the **Supabase SQL editor** and run it; the last notice must
-read `TENANT ISOLATION: ALL CHECKS PASSED`. It runs inside `BEGIN … ROLLBACK`,
+§15. Paste it into the **Supabase SQL editor** and run it. It returns a table
+with one row per check, all `pass`, ending with `ALL CHECKS PASSED`; a failure
+is a red error naming the table that leaked. It runs inside `BEGIN … ROLLBACK`,
 so it writes nothing — safe against production.
+
+The results are collected in a table and selected at the end because the SQL
+editor renders result sets only and **discards `raise notice` output**. Keep it
+that way for anything an operator is meant to read.
 
 ## `dryrun.mjs`
 

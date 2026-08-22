@@ -8,7 +8,7 @@ constrained (per [DEVELOPMENT_PLAN.md](../DEVELOPMENT_PLAN.md) principles).
 | # | File | What it does | Live impact |
 |---|---|---|---|
 | 1 | `supabase/migrations/20260821190000_mt_a1_foundations.sql` | New tables (`organizations`, `memberships`, `platform_admins`), helper functions, nullable `org_id` on the six tenant tables, singletons become per-org | None — no policy changes, no NOT NULL |
-| 2 | `supabase/migrations/20260821190100_mt_a1_backfill.sql` | Creates **Shir Hadash** as org #1, stamps every existing row, gives every current auth user an `owner` membership, then sets `org_id NOT NULL` | None visible; ends with a `notice` summarising the counts |
+| 2 | `supabase/migrations/20260821190100_mt_a1_backfill.sql` | Creates **Shir Hadash** as org #1, stamps every existing row, gives every current auth user an `owner` membership, then sets `org_id NOT NULL` | None visible; succeeds silently (see the note on notices below) |
 | 3 | `supabase/migrations/20260821190200_mt_a1_rls.sql` | Replaces the "any authenticated user sees everything" policies with org-scoped ones | **This is the cutover.** After it, the admin portal only shows rows for orgs you are a member of |
 | ✔ | `supabase/tests/isolation_test.sql` | Proves org A sees zero rows of org B on every table | None — runs inside `BEGIN … ROLLBACK` |
 
@@ -41,8 +41,69 @@ Change the address or delete the statement if that is not what you want.
    all still appear (they are all stamped to Shir Hadash).
 2. Submit a test sign-in from the public form → an entry and a print job appear
    and the badge prints. This exercises the transitional `org_id` trigger.
-3. Run `supabase/tests/isolation_test.sql`; the last notice must read
-   `TENANT ISOLATION: ALL CHECKS PASSED`.
+3. Run `supabase/tests/isolation_test.sql`. It returns a table with one row
+   per check, all `pass`, ending with `ALL CHECKS PASSED`.
+
+## The SQL editor does not show `raise notice`
+
+It renders **result sets only** and discards notice output, so a migration whose
+last statement is a `grant` or a `create policy` reports `No rows returned` —
+which is what success looks like. A failure is a red error, never a silent one.
+
+Because of that, `isolation_test.sql` collects its checks in a table and selects
+it at the end rather than announcing them. The migrations themselves were
+applied as-is and are deliberately left unchanged; run these read-only queries
+if you want positive confirmation of what landed.
+
+**After #1** — expect `3, 6, 4, 0`:
+
+```sql
+select
+  (select count(*) from information_schema.tables
+    where table_schema = 'public'
+      and table_name in ('organizations', 'memberships', 'platform_admins'))  as new_tables,
+  (select count(*) from information_schema.columns
+    where table_schema = 'public' and column_name = 'org_id'
+      and table_name in ('form_entries', 'print_jobs', 'printers',
+                         'printer_config', 'printer_status', 'app_settings'))  as org_id_columns,
+  (select count(*) from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+    where n.nspname = 'public'
+      and p.proname in ('auth_org_ids', 'is_platform_admin',
+                        'default_org_id', 'set_org_id_default'))               as helpers,
+  (select count(*) from pg_constraint c join pg_class r on r.oid = c.conrelid
+    where r.relname in ('printer_config', 'printer_status', 'app_settings')
+      and c.contype = 'c' and pg_get_constraintdef(c.oid) ilike '%id = 1%')    as singleton_locks;
+```
+
+**After #2** — the backfill summary the notice would have shown:
+
+```sql
+select o.slug                                                          as org,
+       (select count(*) from public.memberships  where org_id = o.id)  as members,
+       (select count(*) from public.form_entries where org_id = o.id)  as entries,
+       (select count(*) from public.print_jobs   where org_id = o.id)  as jobs,
+       (select count(*) from public.printers     where org_id = o.id)  as printers,
+       (select count(*) from public.platform_admins)                   as platform_admins
+from public.organizations o
+where o.slug = 'shir-hadash';
+```
+
+**After #3** — expect nine rows, every one with `rls_enabled = true`:
+
+```sql
+select c.relname        as table_name,
+       c.relrowsecurity as rls_enabled,
+       count(p.polname) as policies
+from pg_class c
+join pg_namespace n on n.oid = c.relnamespace
+left join pg_policy p on p.polrelid = c.oid
+where n.nspname = 'public'
+  and c.relname in ('form_entries', 'print_jobs', 'printers', 'printer_config',
+                    'printer_status', 'app_settings', 'organizations',
+                    'memberships', 'platform_admins')
+group by c.relname, c.relrowsecurity
+order by c.relname;
+```
 
 ## What is transitional (removed in A4)
 
