@@ -1,0 +1,12 @@
+{
+  "name": "name-badge-printer-db-tests",
+  "private": true,
+  "type": "module",
+  "description": "Offline dry-run of the SQL migrations against an in-process Postgres.",
+  "scripts": {
+    "dryrun": "node dryrun.mjs"
+  },
+  "dependencies": {
+    "@electric-sql/pglite": "^0.3.14"
+  }
+}

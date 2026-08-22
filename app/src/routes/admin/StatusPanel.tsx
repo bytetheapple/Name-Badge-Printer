@@ -1,11 +1,13 @@
 import { useCallback, useEffect, useState } from 'react'
 import { supabase } from '../../lib/supabase'
+import { useOrg } from '../../lib/org'
 import type { Printer, PrinterStatusRow, PrintJob } from '../../lib/types'
 
 // The bridge heartbeats every ~15s; treat it as online if seen within 45s.
 const BRIDGE_FRESH_MS = 45000
 
 export default function StatusPanel() {
+  const { orgId } = useOrg()
   const [bridge, setBridge] = useState<PrinterStatusRow | null>(null)
   const [printers, setPrinters] = useState<Printer[]>([])
   const [jobs, setJobs] = useState<PrintJob[]>([])
@@ -14,21 +16,33 @@ export default function StatusPanel() {
   const [, setTick] = useState(0)
 
   const loadBridge = useCallback(async () => {
-    const { data } = await supabase.from('printer_status').select('*').eq('id', 1).single()
-    if (data) setBridge(data as PrinterStatusRow)
-  }, [])
+    if (!orgId) return
+    const { data } = await supabase
+      .from('printer_status')
+      .select('*')
+      .eq('org_id', orgId)
+      .maybeSingle()
+    setBridge((data as PrinterStatusRow) ?? null)
+  }, [orgId])
   const loadPrinters = useCallback(async () => {
-    const { data } = await supabase.from('printers').select('*').order('created_at')
+    if (!orgId) return
+    const { data } = await supabase
+      .from('printers')
+      .select('*')
+      .eq('org_id', orgId)
+      .order('created_at')
     setPrinters((data ?? []) as Printer[])
-  }, [])
+  }, [orgId])
   const loadJobs = useCallback(async () => {
+    if (!orgId) return
     const { data } = await supabase
       .from('print_jobs')
       .select('*, printer:printers(name)')
+      .eq('org_id', orgId)
       .order('created_at', { ascending: false })
       .limit(10)
     setJobs((data ?? []) as PrintJob[])
-  }, [])
+  }, [orgId])
 
   useEffect(() => {
     void loadBridge()
@@ -56,7 +70,7 @@ export default function StatusPanel() {
     setNotice(null)
     const { error } = await supabase
       .from('print_jobs')
-      .insert({ type: 'test', status: 'queued', printer_id: printerId })
+      .insert({ org_id: orgId, type: 'test', status: 'queued', printer_id: printerId })
     setTesting(null)
     setNotice(error ? `Could not queue test print: ${error.message}` : 'Test print queued.')
     void loadJobs()

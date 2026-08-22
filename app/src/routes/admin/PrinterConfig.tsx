@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react'
 import { supabase } from '../../lib/supabase'
+import { useOrg } from '../../lib/org'
 import type { Printer, PrinterConfigRow } from '../../lib/types'
 import defaultHeader from '../../assets/shir-hadash-logo.png'
 
@@ -248,6 +249,7 @@ function PrinterCard({
 }
 
 export default function PrinterConfig() {
+  const { orgId, isAdmin } = useOrg()
   const [printers, setPrinters] = useState<Printer[]>([])
   const [loading, setLoading] = useState(true)
   const [adding, setAdding] = useState(false)
@@ -263,14 +265,24 @@ export default function PrinterConfig() {
   const [cfgMsg, setCfgMsg] = useState<string | null>(null)
 
   const loadPrinters = useCallback(async () => {
-    const { data } = await supabase.from('printers').select('*').order('created_at')
+    if (!orgId) return
+    const { data } = await supabase
+      .from('printers')
+      .select('*')
+      .eq('org_id', orgId)
+      .order('created_at')
     setPrinters((data ?? []) as Printer[])
-  }, [])
+  }, [orgId])
 
   useEffect(() => {
+    if (!orgId) return
     void (async () => {
       await loadPrinters()
-      const { data } = await supabase.from('printer_config').select('*').eq('id', 1).single()
+      const { data } = await supabase
+        .from('printer_config')
+        .select('*')
+        .eq('org_id', orgId)
+        .maybeSingle()
       if (data) {
         const c = data as PrinterConfigRow
         const t = c.badge_template ?? {}
@@ -284,11 +296,11 @@ export default function PrinterConfig() {
       }
       setLoading(false)
     })()
-  }, [loadPrinters])
+  }, [orgId, loadPrinters])
 
   async function addPrinter() {
     setAdding(true)
-    await supabase.from('printers').insert({ name: 'New Printer', port: 9100 })
+    await supabase.from('printers').insert({ org_id: orgId, name: 'New Printer', port: 9100 })
     setAdding(false)
     await loadPrinters()
   }
@@ -308,12 +320,20 @@ export default function PrinterConfig() {
     const { error } = await supabase
       .from('printer_config')
       .update({ label_media: labelMedia, badge_template })
-      .eq('id', 1)
+      .eq('org_id', orgId)
     setSavingCfg(false)
     setCfgMsg(error ? error.message : 'Saved. The bridge picks up changes within a few seconds.')
   }
 
   if (loading) return <p className="muted">Loading…</p>
+  if (!isAdmin) {
+    return (
+      <>
+        <h1>Printer</h1>
+        <p className="muted">Only owners and admins can change the printer setup.</p>
+      </>
+    )
+  }
 
   return (
     <>

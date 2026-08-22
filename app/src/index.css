@@ -264,6 +264,24 @@ button.secondary {
 .admin-brand {
   font-weight: 600;
   color: var(--text-h);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+/* Only rendered for users who belong to more than one organization. */
+.org-switcher {
+  font-size: 0.85rem;
+  padding: 2px 6px;
+  max-width: 190px;
+}
+.role-badge {
+  margin-left: 6px;
+  padding: 1px 7px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  font-size: 0.72rem;
+  text-transform: capitalize;
+  letter-spacing: 0.02em;
 }
 .admin-nav {
   display: flex;
