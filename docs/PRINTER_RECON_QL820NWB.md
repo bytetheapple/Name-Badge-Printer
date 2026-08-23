@@ -220,8 +220,25 @@ There is **no plain reboot**, so the power cycle the settings require cannot be
 triggered from the web UI. Two workable routes:
 
 - **Auto Power On (`B1c=1`) plus a smart plug.** Auto Power On means "come up
-  when AC is applied", so cutting and restoring power brings the printer back
-  unattended. This is the only fully remote option.
+  when AC is applied", so cutting and restoring power should bring the printer
+  back unattended. This is the only fully remote option.
+
+  > **UNVERIFIED, and there is a bootstrap problem.** Settings do not take
+  > effect until a power cycle — including, possibly, Auto Power On itself. On
+  > the **first** cycle after provisioning the printer is still running with
+  > `B1c=0`, so it may simply stay off. It probably works, because the value is
+  > written to NVRAM immediately and Auto Power On is read at power-up rather
+  > than by the running firmware — but that is an inference, not an observation.
+  >
+  > **Test:** with `B1c=1` stored but not yet active, pull the power and restore
+  > it. If the printer comes up by itself, the first cycle is safe. If it stays
+  > dark, the bootstrap problem is real.
+  >
+  > **Design around it regardless:** have the operator press the power button by
+  > hand for the first boot, and only depend on the smart plug afterwards. Once
+  > the printer has booted with `B1c=1` active, later cycles are certain. That
+  > confines the risk to a moment when someone is standing next to the machine
+  > anyway, and makes the answer to this question not load-bearing.
 - **The operator power-cycles it**, which is fine during a provisioning visit
   and is what the guided wizard should instruct.
 
