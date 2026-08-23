@@ -237,8 +237,19 @@ check("leaves Command Mode alone", dev.get("B24") == "22", "should not touch B24
 wifi = sent["/net/wireless/wireless.html"]
 check("joins the named network", wifi.get("Bde") == "Lobby-WiFi")
 check("selects WPA/WPA2-PSK", wifi.get("B63") == "3")
+check("selects AES, which only the page's script offers", wifi.get("B64") == "4",
+      f"B64={wifi.get('B64')!r} — 1=None would be rejected for WPA")
 check("sends the passphrase", wifi.get("Bf8") == "hunter2-not-real")
 check("keeps infrastructure mode", wifi.get("B62") == "1")
+for k in ("Be6", "Be8", "Bec", "Bf0", "Bf4"):
+    check(f"omits the WEP field {k}, as a browser would", k not in wifi, str(sorted(wifi)))
+
+print("— an open network sends no passphrase and no keys —")
+import printer_config as _pc
+open_changes, open_drop = _pc.wifi_changes("Guest", None)
+check("selects Open System", open_changes.get("B63") == "1")
+check("selects no encryption", open_changes.get("B64") == "1")
+check("drops the passphrase too", "Bf8" in open_drop, str(open_drop))
 
 print("— a failed step reports what the printer said —")
 Stub.logged_in, Stub.power_error = False, True

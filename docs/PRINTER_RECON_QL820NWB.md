@@ -234,7 +234,24 @@ Authentication `Open System`, Encryption `None`.
 | `Be6` / `Be8` `Bec` `Bf0` `Bf4` | WEP key selector and keys 1–4 | not used for WPA |
 | `wlan` | hidden | `2` |
 
-For a WPA2 network: `B62=1`, `B63=3`, `Bde=<ssid>`, `Bf8=<passphrase>`.
+For a WPA2 network: `B62=1`, `B63=3`, **`B64=4`**, `Bde=<ssid>`,
+`Bf8=<passphrase>` — **and omit `Be6`, `Be8`, `Bec`, `Bf0`, `Bf4`.**
+
+> **The static page does not tell you this, and getting it wrong is silent.**
+> The rules live in `/common/js/wireless.js`, which the page loads:
+>
+> * Choosing WPA/WPA2-PSK **replaces** the encryption choices with `3=TKIP`
+>   and `4=AES`. Neither appears in the page as served — it offers only
+>   `1=None | 2=WEP` — so scraping the form and leaving the field alone posts
+>   `B64=1`, a combination the printer will not accept. **AES (`4`) is the one
+>   for WPA2.**
+> * The same script **disables** the WEP key fields unless the encryption mode
+>   is WEP, and disables the passphrase unless the method is WPA/WPA2-PSK. A
+>   browser does not submit disabled controls, so neither should an automation.
+>
+> Both facts were found by reading that script after a dry run showed `B64`
+> offering only None and WEP. The JS is fetchable without logging in, which
+> makes it the authority on any of this page's couplings.
 
 There is also a **Browse** button that scans for nearby APs — not needed for
 automation, but it exists if a guided wizard ever wants to offer a picker.

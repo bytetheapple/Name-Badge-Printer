@@ -26,11 +26,8 @@ from html import unescape
 import requests
 
 from printer_config import (
-    F_AUTH,
-    F_COMM_MODE,
     F_INTERFACE,
     F_PASSPHRASE,
-    F_SSID,
     PAGE_COMMS,
     PAGE_NETSTATUS,
     PAGE_WIRELESS,
@@ -38,6 +35,7 @@ from printer_config import (
     _explain,
     _interfaces,
     _redact,
+    wifi_changes,
     wireless_active,
 )
 
@@ -198,16 +196,15 @@ def main() -> int:
         print("\ndry run — nothing was changed.")
         return 0
 
-    changes = {F_COMM_MODE: "1", F_SSID: args.ssid}
-    if passphrase:
-        changes[F_AUTH] = "3"          # WPA/WPA2-PSK
-        changes[F_PASSPHRASE] = passphrase
+    changes, drop = wifi_changes(args.ssid, passphrase or None)
+    print(f"  encryption: {'AES (WPA2)' if passphrase else 'none (open network)'};"
+          f" omitting {', '.join(drop)} as a browser would")
 
     print(f"\napplying: join '{args.ssid}'"
           + (" with a passphrase" if passphrase else " (open network)"))
     print("the wired link may drop as this applies — that is expected")
     try:
-        ok, sent, body = web.submit(PAGE_WIRELESS, changes)
+        ok, sent, body = web.submit(PAGE_WIRELESS, changes, drop)
     except requests.RequestException as e:
         print(f"  the connection dropped while applying ({type(e).__name__}) — "
               "which is what happens when the printer switches interfaces")

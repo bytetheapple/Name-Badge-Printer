@@ -55,7 +55,11 @@ F_INTERFACE = "B32"          # 0 infrastructure/adhoc, 1 +wireless direct, 2 dir
 F_COMM_MODE = "B62"          # 1 infrastructure, 2 ad-hoc
 F_SSID = "Bde"
 F_AUTH = "B63"               # 1 open, 2 shared key, 3 WPA/WPA2-PSK
+F_ENCRYPTION = "B64"         # 1 none, 2 WEP, 3 TKIP, 4 AES
 F_PASSPHRASE = "Bf8"
+# WEP key selector and the four keys. A browser disables these unless the
+# encryption mode is WEP, and disabled controls are not submitted.
+WEP_FIELDS = ("Be6", "Be8", "Bec", "Bf0", "Bf4")
 F_YEAR, F_MONTH, F_DAY = "B3e", "B3f", "B40"
 F_HOUR, F_MINUTE = "B41", "B42"
 
@@ -124,6 +128,32 @@ class _FormParser(HTMLParser):
             self._select = None
         elif tag == "form":
             self._in_form = False
+
+
+def wifi_changes(ssid: str, passphrase: str | None) -> tuple[dict[str, str], tuple[str, ...]]:
+    """The fields to set, and the fields to leave out, for joining a network.
+
+    Both halves come from the page's own script (`/common/js/wireless.js`),
+    which is the only place the real rules are written down:
+
+    * Choosing WPA/WPA2-PSK **replaces** the encryption choices with TKIP (3)
+      and AES (4). Neither appears in the static page, so leaving the field at
+      its "None" default sends a combination the printer will not accept. AES
+      is the right one for WPA2.
+    * The script disables the WEP key fields unless the encryption mode is WEP,
+      and disables the passphrase unless the method is WPA/WPA2-PSK. A browser
+      does not submit disabled controls, so neither do we.
+    """
+    changes: dict[str, str] = {F_COMM_MODE: "1", F_SSID: ssid}
+    if passphrase:
+        changes[F_AUTH] = "3"          # WPA/WPA2-PSK
+        changes[F_ENCRYPTION] = "4"    # AES — WPA2's cipher; 3 would be legacy TKIP
+        changes[F_PASSPHRASE] = passphrase
+        return changes, WEP_FIELDS
+    # An open network: no passphrase, no keys.
+    changes[F_AUTH] = "1"
+    changes[F_ENCRYPTION] = "1"
+    return changes, WEP_FIELDS + (F_PASSPHRASE,)
 
 
 def _form_encode(fields: dict[str, str]) -> dict[str, str]:
@@ -262,10 +292,18 @@ class PrinterWeb:
         if f'name="{F_PASSWORD}"' in r.text and "Logout" not in r.text:
             raise RuntimeError("the printer rejected the web-UI password")
 
-    def submit(self, path: str, changes: dict[str, str]) -> tuple[bool, dict[str, str], str]:
-        """Post a page back with `changes` applied over its current values."""
+    def submit(
+        self, path: str, changes: dict[str, str], drop: tuple[str, ...] = ()
+    ) -> tuple[bool, dict[str, str], str]:
+        """Post a page back with `changes` applied over its current values.
+
+        `drop` removes fields the page's own script would have disabled, since
+        a browser does not submit those and the printer may reject them.
+        """
         fields = self.fields_of(path)
         fields.update(changes)
+        for key in drop:
+            fields.pop(key, None)
         r = self.session.post(
             self.base + path,
             data=_form_encode(fields),
@@ -410,12 +448,9 @@ def configure_printer(
     # ---- WiFi last: this is what cuts the cable we are talking over ----------
     if ssid:
         say("  joining the wireless network (the wired link will drop) …")
-        changes = {F_COMM_MODE: "1", F_SSID: ssid}
-        if passphrase:
-            changes[F_AUTH] = "3"           # WPA/WPA2-PSK
-            changes[F_PASSPHRASE] = passphrase
+        changes, drop = wifi_changes(ssid, passphrase)
         try:
-            ok, sent, _ = web.submit(PAGE_WIRELESS, changes)
+            ok, sent, _ = web.submit(PAGE_WIRELESS, changes, drop)
             result.steps.append(Step("join the wireless network", ok, "", sent))
             result.wifi_applied = ok
         except requests.RequestException as e:
