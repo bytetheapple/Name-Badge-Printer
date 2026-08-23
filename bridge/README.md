@@ -41,6 +41,8 @@ Supabase print_jobs (queued)  --poll every 2s-->  bridge
 | `test_client.py` | Offline tests for both backends (no Supabase, no printer) |
 | `printer_config.py` | Configure a QL-820NWB over its web UI (see below) |
 | `discover.py` | Find a printer on the LAN after it moves to WiFi |
+| `wifi_setup.py` | The WiFi cutover on its own, with a read-only `--dry-run` |
+| `provision.py` | Guided end-to-end setup of a new printer |
 | `test_printer_config.py` | Offline tests for that, against a stub of the printer's web UI |
 | `test_discover.py` | Offline tests for discovery (no printer, no network) |
 | `badge.py` | Render a badge to a PIL image (also runnable standalone) |
@@ -176,3 +178,38 @@ established, while the handling is right either way:
 - **A name can resolve for a printer that is not actually reachable**, whether
   from caching or from a stale lease. Resolution is treated as a hint, and
   every candidate is checked for an open print port before being accepted.
+
+
+## Provisioning a printer end to end
+
+`provision.py` walks one printer from "out of the box, possibly second-hand" to
+"on the WiFi network and ready to print", confirming each step with whoever is
+running it.
+
+```bash
+PRINTER_WEB_PASSWORD=xxxx PRINTER_WIFI_PASSPHRASE=yyyy \
+  ./venv/bin/python provision.py --ssid "Lobby-WiFi"
+```
+
+It finds the printer on the wired network, checks what state it is in,
+offers to factory-reset one that arrives joined to somebody else's WiFi,
+configures it, applies the wireless settings, prompts for the power cycle the
+radio needs, finds it again at its new address, and confirms it survives the
+Ethernet cable coming out.
+
+### Where this runs, and why
+
+On the **bridge**. That is a constraint rather than a preference:
+
+- **Edge Functions cannot reach the printer.** They run in Supabase's cloud;
+  the printer is on the customer's LAN.
+- **Nor can the admin app.** The admin is served over HTTPS and the printer is
+  HTTP, which browsers block as mixed content — and the printer sends no CORS
+  headers, so a `fetch()` would be refused anyway.
+- **The Pi is already on that LAN**, already trusted, already polling.
+
+So the admin will drive provisioning *through* the bridge: a task queued the
+way print jobs are, collected by `bridge-poll`, executed on the Pi, and the
+transcript posted back. The WiFi passphrase travels in the task payload and is
+discarded once used, never stored. This script is that code, with an operator
+at a keyboard instead of a task queue.
