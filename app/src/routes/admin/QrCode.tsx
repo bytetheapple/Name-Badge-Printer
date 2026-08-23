@@ -1,11 +1,15 @@
 import { useEffect, useRef, useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import { useOrg } from '../../lib/org'
+import { kioskUrl, publicBaseUrl } from '../../lib/publicUrl'
+import { newSecret } from '../../lib/secrets'
 import type { Printer } from '../../lib/types'
 import logoUrl from '../../assets/shir-hadash-logo.png'
 
 export default function QrCode() {
-  const { orgId } = useOrg()
+  const { orgId, isAdmin } = useOrg()
+  const [rotating, setRotating] = useState(false)
+  const [notice, setNotice] = useState<string | null>(null)
   const [printers, setPrinters] = useState<Printer[]>([])
   const [selected, setSelected] = useState('')
   const [error, setError] = useState<string | null>(null)
@@ -29,9 +33,11 @@ export default function QrCode() {
     })()
   }, [orgId])
 
-  const url = selected
-    ? `${window.location.origin}/?printer=${selected}`
-    : `${window.location.origin}/`
+  const current = printers.find((p) => p.id === selected)
+  // The QR encodes the opaque kiosk token, never the printer's internal id:
+  // nothing to hand-edit toward another printer, and it can be rotated if a
+  // code is abused.
+  const url = current ? kioskUrl(current.kiosk_token) : publicBaseUrl
 
   useEffect(() => {
     let cancelled = false
@@ -50,6 +56,37 @@ export default function QrCode() {
       cancelled = true
     }
   }, [url])
+
+  /** Invalidate this printer's QR code — for a leaked or abused token. */
+  async function rotate() {
+    if (!current) return
+    if (
+      !window.confirm(
+        `Rotate the QR code for "${current.name}"? Every printed code for this printer stops ` +
+          'working immediately and will need reprinting.',
+      )
+    ) {
+      return
+    }
+    setRotating(true)
+    setNotice(null)
+    const { error } = await supabase
+      .from('printers')
+      .update({ kiosk_token: newSecret('k_', 16) })
+      .eq('id', current.id)
+    setRotating(false)
+    if (error) {
+      setError(error.message)
+      return
+    }
+    const { data } = await supabase
+      .from('printers')
+      .select('*')
+      .eq('org_id', orgId)
+      .order('created_at')
+    setPrinters((data ?? []) as Printer[])
+    setNotice('New QR code generated. Reprint and replace the old one.')
+  }
 
   async function drawLogo(canvas: HTMLCanvasElement) {
     const ctx = canvas.getContext('2d')
@@ -147,6 +184,18 @@ export default function QrCode() {
       )}
 
       {error && <div className="error">{error}</div>}
+      {notice && <div className="notice">{notice}</div>}
+
+      {current && isAdmin && (
+        <p className="muted small">
+          This code is tied to a rotatable token, not the printer's identity. If a code is abused
+          or ends up somewhere it shouldn't,{' '}
+          <button className="linklike" onClick={() => void rotate()} disabled={rotating}>
+            {rotating ? 'rotating…' : 'rotate it'}
+          </button>{' '}
+          — every printed copy stops working, so reprint afterwards.
+        </p>
+      )}
 
       <div className="qr-box">
         <canvas ref={canvasRef} style={{ width: 280, height: 280, maxWidth: '100%' }} />

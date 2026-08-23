@@ -1,6 +1,11 @@
 // External print API: lets another app queue a name-badge on the shared print
-// service. Authenticated by a shared key (x-api-key header), so callers never
+// service. Authenticated by an API key (x-api-key header), so callers never
 // need Supabase credentials. Deploy with verify_jwt = false (see config.toml).
+//
+// Keys are per organization (api_keys, hash-only) and the key alone decides
+// which org a caller can see and print to. The old project-wide PRINT_API_KEY
+// still works while it is the only organization — it cannot stay honest beyond
+// that, so it is refused once a second org exists rather than guessing.
 //
 // Actions (POST JSON):
 //   { first_name, last_name?, pronouns?, printer?, header_image_base64? }
@@ -53,19 +58,55 @@ const restHeaders = {
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-async function listPrinters() {
+async function sha256Hex(input: string): Promise<string> {
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(input));
+  return [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, "0")).join("");
+}
+
+/** The org this caller may act on, or null if the key is not usable. */
+async function resolveApiOrg(key: string): Promise<string | null> {
+  const hash = await sha256Hex(key);
   const res = await fetch(
-    `${SUPABASE_URL}/rest/v1/printers?select=id,name,location&order=created_at.asc`,
+    `${SUPABASE_URL}/rest/v1/api_keys?key_hash=eq.${hash}&revoked_at=is.null&select=id,org_id`,
+    { headers: restHeaders },
+  );
+  if (res.ok) {
+    const rows = await res.json();
+    if (rows.length) {
+      // Best-effort usage stamp; never block a print on it.
+      fetch(`${SUPABASE_URL}/rest/v1/api_keys?id=eq.${rows[0].id}`, {
+        method: "PATCH",
+        headers: restHeaders,
+        body: JSON.stringify({ last_used_at: new Date().toISOString() }),
+      }).catch(() => {});
+      return rows[0].org_id as string;
+    }
+  }
+
+  // Legacy project-wide key: only meaningful while there is one organization.
+  if (!API_KEY || key !== API_KEY) return null;
+  const orgs = await fetch(`${SUPABASE_URL}/rest/v1/organizations?select=id&limit=2`, {
+    headers: restHeaders,
+  });
+  const rows = orgs.ok ? await orgs.json() : [];
+  return rows.length === 1 ? (rows[0].id as string) : null;
+}
+
+async function listPrinters(orgId: string) {
+  const res = await fetch(
+    `${SUPABASE_URL}/rest/v1/printers?org_id=eq.${orgId}&select=id,name,location&order=created_at.asc`,
     { headers: restHeaders },
   );
   return (await res.json()) as Array<{ id: string; name: string; location: string | null }>;
 }
 
-// Resolve a printer reference (id or name) to a printer_id. Defaults to the
-// first printer when none is given.
-async function resolvePrinter(printer: string | undefined): Promise<string | null> {
-  if (printer && UUID_RE.test(printer)) return printer;
-  const rows = await listPrinters();
+// Resolve a printer reference (id or name) within this caller's org. An id from
+// another org resolves to nothing rather than printing there.
+async function resolvePrinter(orgId: string, printer: string | undefined): Promise<string | null> {
+  const rows = await listPrinters(orgId);
+  if (printer && UUID_RE.test(printer)) {
+    return rows.some((r) => r.id === printer) ? printer : null;
+  }
   if (printer) {
     const match = rows.find((r) => r.name.toLowerCase() === printer.toLowerCase());
     return match?.id ?? null;
@@ -77,9 +118,9 @@ Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
   if (req.method !== "POST") return json({ ok: false, error: "Method not allowed" }, 405);
 
-  if (!API_KEY || req.headers.get("x-api-key") !== API_KEY) {
-    return json({ ok: false, error: "Unauthorized" }, 401);
-  }
+  const presented = req.headers.get("x-api-key")?.trim() ?? "";
+  const orgId = presented ? await resolveApiOrg(presented) : null;
+  if (!orgId) return json({ ok: false, error: "Unauthorized" }, 401);
 
   let body: Record<string, unknown>;
   try {
@@ -89,14 +130,14 @@ Deno.serve(async (req) => {
   }
 
   if (body.action === "printers") {
-    return json({ ok: true, printers: await listPrinters() });
+    return json({ ok: true, printers: await listPrinters(orgId) });
   }
 
   if (body.action === "status") {
     const jobId = String(body.job_id ?? "");
     if (!UUID_RE.test(jobId)) return json({ ok: false, error: "Invalid job_id" }, 400);
     const res = await fetch(
-      `${SUPABASE_URL}/rest/v1/print_jobs?id=eq.${jobId}&select=status,error`,
+      `${SUPABASE_URL}/rest/v1/print_jobs?id=eq.${jobId}&org_id=eq.${orgId}&select=status,error`,
       { headers: restHeaders },
     );
     const rows = await res.json();
@@ -110,7 +151,7 @@ Deno.serve(async (req) => {
   const pronouns = String(body.pronouns ?? "").trim().slice(0, 40);
   if (!first) return json({ ok: false, error: "first_name is required" }, 400);
 
-  const printerId = await resolvePrinter(body.printer ? String(body.printer) : undefined);
+  const printerId = await resolvePrinter(orgId, body.printer ? String(body.printer) : undefined);
   if (!printerId) {
     return json({ ok: false, error: "No matching printer (check the 'printer' value)" }, 400);
   }
@@ -131,6 +172,7 @@ Deno.serve(async (req) => {
     method: "POST",
     headers: { ...restHeaders, Prefer: "return=representation" },
     body: JSON.stringify({
+      org_id: orgId,
       type: "badge",
       status: "queued",
       printer_id: printerId,

@@ -1,7 +1,14 @@
 // Public endpoint for the QR-code badge form.
-// Validates input, creates a form_entries row and a queued print_jobs row using
-// the service_role key (so the anon client never needs table access).
+//
+// Validates input, resolves which printer and org the kiosk token names, checks
+// the rate limits and queue cap, then writes a form_entries row and a queued
+// print_jobs row with the service_role key (so the anon client never needs
+// table access).
+//
+// The org is always read off the printer row. Nothing in the request body is
+// ever trusted to say which tenant a sign-in belongs to.
 import { corsHeaders, json } from "../_shared/cors.ts";
+import { checkSubmitAllowed, resolveKiosk } from "../_shared/kiosk.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_ROLE = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -89,17 +96,19 @@ Deno.serve(async (req) => {
 
   const ip = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? null;
 
-  // Resolve the target printer: the one named in the QR link, or the first one.
-  let printerId: string | null = String(body.printer_id ?? "").trim() || null;
-  {
-    const q = printerId
-      ? `id=eq.${printerId}&select=id`
-      : `select=id&order=created_at.asc&limit=1`;
-    const pr = await fetch(`${SUPABASE_URL}/rest/v1/printers?${q}`, { headers: restHeaders });
-    const rows = pr.ok ? await pr.json() : [];
-    printerId = rows.length ? rows[0].id : null;
+  // Which printer, in which org. Accepts a kiosk token, or the older
+  // ?printer=<uuid> link so codes already hanging in a lobby keep working.
+  const { kiosk, error: kioskError } = await resolveKiosk(body);
+  if (!kiosk) {
+    return json({ ok: false, error: kioskError ?? "This sign-in link is not valid." }, 400);
   }
-  if (!printerId) return json({ ok: false, error: "No printer is configured." }, 500);
+  const orgId = kiosk.org_id;
+  const printerId = kiosk.printer_id;
+
+  // Rate limits and the queue cap. The message that comes back is written for
+  // the visitor standing at the kiosk, so it is safe to show as-is.
+  const limited = await checkSubmitAllowed(kiosk, ip, 1 + additional.length);
+  if (limited) return json({ ok: false, error: limited }, 429);
 
   // A party_id links a family sign-in; null for a lone person.
   const partyId = additional.length ? crypto.randomUUID() : null;
@@ -109,6 +118,7 @@ Deno.serve(async (req) => {
     method: "POST",
     headers: restHeaders,
     body: JSON.stringify({
+      org_id: orgId,
       first_name: firstName,
       last_name: lastName || null,
       phone: phone || null,
@@ -134,6 +144,7 @@ Deno.serve(async (req) => {
     method: "POST",
     headers: restHeaders,
     body: JSON.stringify({
+      org_id: orgId,
       entry_id: entry.id,
       printer_id: printerId,
       type: "badge",
@@ -149,6 +160,7 @@ Deno.serve(async (req) => {
   // 3. Additional family members: name-only entries + badges, sync skipped.
   if (additional.length) {
     const memberEntries = additional.map((p) => ({
+      org_id: orgId,
       first_name: p.first_name,
       last_name: p.last_name,
       pronouns: p.pronouns,
@@ -170,6 +182,7 @@ Deno.serve(async (req) => {
     if (!meRes.ok) return json({ ok: false, error: "Could not save the additional badges." }, 500);
     const memberRows = await meRes.json();
     const memberJobs = memberRows.map((e: { id: string }) => ({
+      org_id: orgId,
       entry_id: e.id,
       printer_id: printerId,
       type: "badge",

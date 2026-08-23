@@ -1,5 +1,5 @@
-import { useEffect, useRef, useState, type FormEvent } from 'react'
-import { useSearchParams } from 'react-router-dom'
+import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
+import { useParams, useSearchParams } from 'react-router-dom'
 import { getJobStatus, getPublicConfig, submitBadge, uploadSelfie, type SelfieMode } from '../lib/api'
 import { SelfieCapture } from '../components/SelfieCapture'
 
@@ -44,15 +44,21 @@ export default function PublicForm() {
   function removePerson(i: number) {
     setPeople((p) => p.filter((_, idx) => idx !== i))
   }
+  // /k/<kiosk_token> is the current form; ?printer=<uuid> is the older link,
+  // still honoured so QR codes already hanging in a lobby keep working.
+  const { token } = useParams()
   const [searchParams] = useSearchParams()
-  const printerId = searchParams.get('printer')
+  const kiosk = useMemo(
+    () => ({ kiosk_token: token ?? null, printer_id: searchParams.get('printer') }),
+    [token, searchParams],
+  )
 
   useEffect(() => {
-    void getPublicConfig().then((c) => {
+    void getPublicConfig(kiosk).then((c) => {
       setSelfieMode(c.selfie_mode)
       setPronounsEnabled(c.pronouns_enabled)
     })
-  }, [])
+  }, [kiosk])
 
   function stopPolling() {
     if (pollRef.current !== null) {
@@ -93,7 +99,7 @@ export default function PublicForm() {
         pronouns,
         phone,
         email,
-        printer_id: printerId,
+        ...kiosk,
         additional,
       })
       setPrintCount(job_ids.length)
@@ -121,7 +127,7 @@ export default function PublicForm() {
     pollRef.current = window.setInterval(async () => {
       try {
         const statuses = await Promise.all(
-          jobIds.map((id) => getJobStatus(id).then((s) => s.status).catch(() => 'queued')),
+          jobIds.map((id) => getJobStatus(id, kiosk).then((s) => s.status).catch(() => 'queued')),
         )
         if (statuses.every((s) => s === 'printed')) {
           stopPolling()
