@@ -110,8 +110,105 @@ factory values):
 
 ---
 
-## Still to capture
+## Language / date / time — the first-boot wizard
 
-- 2. WiFi Infrastructure mode
-- 3. WiFi SSID + password (throwaway credentials only)
-- D. reboot/apply behaviour, and the field reporting WiFi state + IP
+A factory-reset unit asks for these at the panel before it will do anything.
+Both are settable over the web UI, so `configure_printer()` can answer the
+wizard remotely.
+
+- **Language:** `B28` on `/printer/device_settings.html` — already `3` (English)
+  by default. Set it explicitly anyway; it costs nothing and makes the outcome
+  independent of what the panel was left on.
+- **Date & Time:** `/general/date.html` (`pageid=10`)
+
+| Field | Meaning |
+|---|---|
+| `B3e` | Year (`2026`) |
+| `B3f` | Month (`08`) |
+| `B40` | Day (`23`) |
+| `B41` | Hour, 24-hour (`13`) |
+| `B42` | Minute (`24`) |
+| `B3d` | Hidden epoch seconds |
+
+The page pre-fills from the *browser's* clock via JavaScript, not from the
+printer's RTC — so the automation simply posts the Pi's current time. Applied;
+`Submit OK`, no reboot.
+
+---
+
+## 2. WiFi Infrastructure mode — already correct out of the box
+
+- **Page:** `/net/wireless/wireless.html` (`pageid=217`; note the form's
+  `action` is the relative `wireless.html`)
+- **Field:** `B62` — Communication Mode: **`1` = Infrastructure**, `2` = Ad-hoc
+
+**`1` is the factory default**, so this step is a no-op on a fresh unit. Set it
+explicitly regardless — the cost is nothing and it removes an assumption about
+what state a given printer arrives in.
+
+## 3. WiFi SSID + passphrase — fields identified, NOT applied
+
+Same page. Out of the box the radio reports SSID `QL-820NWB_68653`,
+Authentication `Open System`, Encryption `None`.
+
+| Field | Meaning | Default |
+|---|---|---|
+| `B62` | Communication Mode | `1` Infrastructure |
+| `Bde` | Wireless Network Name (SSID) | `QL-820NWB_68653` |
+| `Be2` | Channel | `11` |
+| `B63` | Authentication Method | `1` Open System — set **`3`** for WPA/WPA2-PSK |
+| `B64` | Encryption Mode | `1` None, `2` WEP (only relevant to Open/Shared) |
+| `Bf8` | **WPA passphrase** | — |
+| `Be6` / `Be8` `Bec` `Bf0` `Bf4` | WEP key selector and keys 1–4 | not used for WPA |
+| `wlan` | hidden | `2` |
+
+For a WPA2 network: `B62=1`, `B63=3`, `Bde=<ssid>`, `Bf8=<passphrase>`.
+
+There is also a **Browse** button that scans for nearby APs — not needed for
+automation, but it exists if a guided wizard ever wants to offer a picker.
+
+---
+
+## D. Apply behaviour and the "safe to unplug" signal
+
+`/net/net/net.html` reports each interface separately, with an explicit state:
+
+```
+Wired     Ethernet 10/100BASE-TX   (Active)    MAC 94-dd-f8-ac-36-45
+Wireless  IEEE 802.11b/g/n         (Inactive)  MAC 44-f7-9f-bc-ab-e8
+```
+
+That `(Active)` / `(Inactive)` is the field to poll for "WiFi is up, safe to
+unplug Ethernet".
+
+**The two interfaces have different MAC addresses and different node names**
+(`BRN…` wired, `BRW…` wireless), so they take **different DHCP leases**. The
+printer's IP therefore *changes* when it moves to WiFi — the bridge cannot keep
+using the Ethernet address, and has to rediscover it (mDNS, phase B2) or read
+the new one from the wireless TCP/IP page before the cable comes out.
+
+### Ordering constraint for `configure_printer()`
+
+The printer is **either wired or wireless, not both**. When the automation is
+running over Ethernet, applying WiFi settings cuts the link it is using — so:
+
+1. Command Mode → Raster
+2. Language, date, time
+3. Auto power on / auto power off
+4. **WiFi last**, and losing the connection immediately afterwards is the
+   *expected* outcome, not a failure. The routine must not treat the dropped
+   request as an error, and must reconnect by discovery rather than by the old
+   address.
+
+---
+
+## Applied to this unit during recon
+
+| Setting | From | To |
+|---|---|---|
+| Command Mode (`B24`) | P-touch Template | **Raster** |
+| Date & time | — | current |
+| Auto Power On (`B1c`) | Disable | **Enable** |
+| Auto Power Off AC/DC (`B1d`) | 60 Mins | **None** |
+
+WiFi was deliberately left untouched.
