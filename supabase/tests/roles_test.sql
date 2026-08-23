@@ -121,6 +121,19 @@ begin
   insert into public._role_results (acting_as, check_name)
   values ('staff', 'cannot see or create bridge tokens');
 
+  -- Integration settings are an admin concern, not a staff one.
+  select count(*) into n from public.integrations where org_id = org;
+  if n <> 0 then
+    raise exception 'ROLE FAILURE: staff can see % integration row(s)', n;
+  end if;
+  begin
+    perform public.set_integration_secret(org, 'google_drive', 'staff-should-not-manage-this');
+    raise exception 'ROLE FAILURE: staff set an integration credential';
+  exception when insufficient_privilege then null;
+  end;
+  insert into public._role_results (acting_as, check_name)
+  values ('staff', 'cannot see or configure integrations');
+
   -- Cannot add members.
   begin
     insert into public.memberships (org_id, user_id, role)
@@ -213,6 +226,40 @@ begin
   end;
   insert into public._role_results (acting_as, check_name)
   values ('admin', 'cannot read token_hash');
+
+  -- Configures integrations, including writing a credential …
+  insert into public.integrations (org_id, kind, enabled, config)
+  values (org, 'google_form', true, '{"response_url": "https://example.invalid/form"}');
+  perform public.set_integration_secret(org, 'google_drive', 'a-fake-private-key');
+  if not public.integration_has_secret(org, 'google_drive') then
+    raise exception 'ROLE FAILURE: admin could not store an integration credential';
+  end if;
+  insert into public._role_results (acting_as, check_name)
+  values ('admin', 'configures integrations and stores a credential');
+
+  -- … but cannot read that credential back, by any route.
+  begin
+    perform secret_id from public.integrations where org_id = org;
+    raise exception 'ROLE FAILURE: secret_id is readable through the Data API';
+  exception when insufficient_privilege then null;
+  end;
+  begin
+    perform public.integration_for(org, 'google_drive');
+    raise exception 'ROLE FAILURE: an admin can decrypt an integration credential';
+  exception when insufficient_privilege then null;
+  end;
+  insert into public._role_results (acting_as, check_name)
+  values ('admin', 'cannot read a stored credential back');
+
+  -- And cannot configure a different organization.
+  begin
+    perform public.set_integration_secret(
+      '0a2b0000-0000-4000-8000-00000000000b'::uuid, 'google_drive', 'not-mine');
+    raise exception 'ISOLATION FAILURE: admin configured another org''s integration';
+  exception when insufficient_privilege then null;
+  end;
+  insert into public._role_results (acting_as, check_name)
+  values ('admin', 'cannot configure another org''s integration');
 
   -- Sees the member list for its own org, and nothing for a foreign one.
   select count(*) into n from public.org_members(org);

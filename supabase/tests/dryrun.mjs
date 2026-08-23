@@ -51,6 +51,39 @@ alter table storage.objects enable row level security;
 
 create publication supabase_realtime;
 
+-- Supabase Vault, stubbed. The encryption is the platform's business; what this
+-- harness needs to check is that only the right roles can reach a secret, and
+-- that the integration plumbing stores and returns the right one.
+create schema vault;
+create table vault.secrets (
+  id uuid primary key default gen_random_uuid(),
+  name text unique,
+  description text,
+  secret text,
+  created_at timestamptz default now()
+);
+create view vault.decrypted_secrets as
+  select id, name, description, secret, secret as decrypted_secret, created_at from vault.secrets;
+create function vault.create_secret(new_secret text, new_name text default null,
+                                    new_description text default '')
+returns uuid language plpgsql as $fn$
+declare v uuid;
+begin
+  insert into vault.secrets (name, description, secret)
+  values (new_name, new_description, new_secret) returning id into v;
+  return v;
+end $fn$;
+create function vault.update_secret(secret_id uuid, new_secret text default null,
+                                    new_name text default null, new_description text default null)
+returns void language sql as $fn$
+  update vault.secrets set secret = coalesce(new_secret, secret),
+                           name = coalesce(new_name, name),
+                           description = coalesce(new_description, description)
+  where id = secret_id
+$fn$;
+-- The migration's "create extension if not exists supabase_vault" is a no-op
+-- once the schema is already present, which is what it relies on here.
+
 -- Supabase enables RLS on tables newly created in the public schema.
 -- Reproduce that, so a helper table that forgets to account for it fails here
 -- rather than in the SQL editor.
@@ -283,6 +316,43 @@ const pruned = await q(`
   select count(*) filter (where at < now() - interval '1 day') as stale from public.submit_events`)
 if (Number(pruned.stale) === 0) ok('old rate-limit events are pruned')
 else bad(`rate-limit events not pruned: ${JSON.stringify(pruned)}`)
+
+console.log('— integration credentials (A5) —')
+// The roles test proves an admin cannot read a credential back. The other half
+// matters just as much: the Edge Functions must be able to, or every sync
+// silently stops.
+const org = (await q(`select id from public.organizations order by created_at limit 1`)).id
+// Written the way the admin UI writes it: as the signed-in admin, through the
+// setter — which is the only path that exists.
+await db.exec(asUser(ADMIN, `
+  insert into public.integrations (org_id, kind, enabled, config)
+  values ('${org}', 'google_form', true, '{"response_url":"https://example.invalid/f"}')
+  on conflict (org_id, kind) do update set enabled = true;
+  select public.set_integration_secret('${org}'::uuid, 'google_drive', 'the-private-key');`))
+try {
+  const got = await q(`
+    select enabled, config, secret from public.integration_for('${org}'::uuid, 'google_drive')`)
+  if (got?.secret === 'the-private-key') ok('the server can decrypt an org credential')
+  else bad(`integration_for did not return the secret: ${JSON.stringify(got)}`)
+} catch (e) { bad('integration_for', e) }
+
+const cfg = await q(`
+  select config->>'response_url' as url from public.integration_for('${org}'::uuid, 'google_form')`)
+if (cfg?.url === 'https://example.invalid/f') ok('the server reads per-org integration config')
+else bad(`integration_for config: ${JSON.stringify(cfg)}`)
+
+// A credential must never survive the org being removed.
+await db.exec(`
+  insert into public.organizations (id, slug, name)
+  values ('cccccccc-0000-4000-8000-00000000000c', 'temp-org', 'Temp Org');
+  insert into public.memberships (org_id, user_id, role)
+  values ('cccccccc-0000-4000-8000-00000000000c', '${ADMIN}', 'owner');`)
+await db.exec(asUser(ADMIN, `
+  select public.set_integration_secret('cccccccc-0000-4000-8000-00000000000c'::uuid, 'google_drive', 'temp-key');`))
+await db.exec(`delete from public.organizations where slug = 'temp-org'`)
+const orphan = await q(`select count(*) as n from vault.secrets where secret = 'temp-key'`)
+if (Number(orphan.n) === 0) ok('deleting an org takes its credentials with it')
+else bad(`a deleted org left ${orphan.n} credential(s) behind in the vault`)
 
 console.log('— negative control: a leaky policy must FAIL the test —')
 const leaky = await build((sql, f) =>
