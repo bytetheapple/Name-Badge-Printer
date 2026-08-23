@@ -160,12 +160,14 @@ Three routes, cheapest first, none needing an extra dependency:
    MAC — exact — and the printer's status page is readable *without logging
    in*, which gives the model as a fallback.
 
-Two things learned from real hardware, both of which would otherwise have
-caused a puzzling field failure:
+Two defensive measures, prompted by observations while a printer was being
+power-cycled alongside — so treat the causes as plausible rather than
+established, while the handling is right either way:
 
-- **mDNS also advertises a link-local `169.254.x.x` address** (and IPv6).
-  Taking the first answer sends the bridge somewhere unroutable, so answers are
+- **A `.local` lookup can return a link-local `169.254.x.x` address** (and
+  IPv6), which is what a printer falls back to with no DHCP lease. Taking the
+  first answer could send the bridge somewhere unroutable, so answers are
   ranked with our own subnet first and link-local last.
-- **mDNS answers are cached, so a printer that is switched off still resolves.**
-  Resolution is treated as a hint and every candidate is checked for an open
-  print port before being accepted.
+- **A name can resolve for a printer that is not actually reachable**, whether
+  from caching or from a stale lease. Resolution is treated as a hint, and
+  every candidate is checked for an open print port before being accepted.
