@@ -20,6 +20,12 @@ endpoint URL and an API key, both provided by the service operator.
 - **Auth:** header `x-api-key: <API_KEY>` on every request
 - **CORS:** enabled (callable from a browser or a server)
 
+Your key is scoped to **one organization**. It can list and print to that
+organization's printers and read the status of jobs it created — nothing else,
+and nothing belonging to anyone else. Keys are issued in the admin under
+**Settings → Print API keys**, shown once, and can be revoked at any time
+without affecting any other key.
+
 The badge's visual design — label size, fonts, header logo — is managed centrally
 by the service operator. Your app only supplies the **name** (and, optionally,
 **pronouns**); the badge renders as a large first name over a smaller last name,
@@ -186,10 +192,13 @@ Errors return `{ "ok": false, "error": "<message>" }` with an HTTP status:
 
 | Status | Meaning                                             |
 |--------|-----------------------------------------------------|
-| 401    | Missing or wrong `x-api-key`.                        |
+| 401    | Missing, wrong, or revoked `x-api-key`.              |
 | 400    | Bad input (e.g. missing `first_name`, bad printer).  |
 | 404    | `status` action: job not found.                      |
 | 500    | Server-side failure queuing the job.                 |
+
+A printer id belonging to a different organization behaves exactly like one that
+does not exist — a `400`, never a print on someone else's label roll.
 
 A `200` with `ok: true` means the job was **queued** — not yet printed. Poll the
 `status` action if you need printing confirmation.
