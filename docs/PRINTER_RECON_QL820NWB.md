@@ -70,7 +70,18 @@ which is why raster printing and status queries do not work until it is changed.
   - `22` = P-touch Template ← **factory default**
 
 Applied `B24=21`; the response contained `Submit OK` and the status page then
-reports Raster. **No reboot, no link drop** — the change is immediate.
+reported `Emulation: Raster`.
+
+> **The web UI lies about this, and it matters.** `Submit OK` and the status
+> page both reflect *stored* configuration, not the *running* mode. With the
+> setting apparently applied, the printer still accepted a TCP connection on
+> 9100 and then **never answered a status request** — `status_check.py` timed
+> out, which is the behaviour of a printer still in P-touch Template mode.
+>
+> **Settings do not take effect until the printer is power-cycled**, and the
+> only trustworthy confirmation is a functional one: a raster status query that
+> actually replies. `configure_printer()` must verify that way and never by
+> reading the web UI back.
 
 Other fields on this page that must be posted back unchanged (with their
 factory values):
@@ -138,13 +149,39 @@ printer's RTC — so the automation simply posts the Pi's current time. Applied;
 
 ## 2. WiFi Infrastructure mode — already correct out of the box
 
-- **Page:** `/net/wireless/wireless.html` (`pageid=217`; note the form's
-  `action` is the relative `wireless.html`)
-- **Field:** `B62` — Communication Mode: **`1` = Infrastructure**, `2` = Ad-hoc
+Two separate settings are involved, on two different pages, and it is worth
+being precise about which does what.
 
-**`1` is the factory default**, so this step is a no-op on a fresh unit. Set it
-explicitly regardless — the cost is nothing and it removes an assumption about
-what state a given printer arrives in.
+**a. The radio's role** — `/printer/communication_settings.html` (`pageid=161`)
+
+| Field | Meaning | Default |
+|---|---|---|
+| `B32` | Selected Interface: `0` Infrastructure or Adhoc, `1` Infrastructure and Wireless Direct, `2` Wireless Direct | `0` |
+| `B31` | Network Settings on Power On: `0` On, `1` Off, `2` Keep Current State | `2` |
+| `B15e` | hidden | `1` |
+
+`0` already means "act as a client", so no change is needed. Note that while
+`B32=0`, **Wireless Direct's own configuration page is not exposed in the menu
+at all** — which is what makes the client page below easy to mistake for an AP
+page.
+
+**b. The connection itself** — `/net/wireless/wireless.html` (`pageid=217`;
+the form's `action` is the relative `wireless.html`)
+
+- **Field:** `B62` — Communication Mode: **`1` = Infrastructure**, `2` = Ad-hoc,
+  factory default `1`.
+
+> **This page is the client (station) configuration, not the access point.**
+> It is genuinely confusing: the SSID field is pre-filled with
+> `QL-820NWB_68653`, which reads like a broadcast name. It is only a
+> placeholder. The proof is the **Browse** button — `GET wireless.html?wlan=3`
+> returns a **scan of nearby access points** with channel and signal strength,
+> which is something only a client would offer. `Bde` is the network the
+> printer will *join*.
+
+The scan endpoint is also useful in its own right: a guided wizard could show
+the operator a live list of visible networks instead of asking them to type an
+SSID.
 
 ## 3. WiFi SSID + passphrase — fields identified, NOT applied
 
@@ -168,6 +205,28 @@ There is also a **Browse** button that scans for nearby APs — not needed for
 automation, but it exists if a guided wizard ever wants to offer a picker.
 
 ---
+
+## Rebooting — there is no clean way to do it remotely
+
+The Administrator → Reset Menu (`/admin/default.html`, `pageid=149`) offers only
+two actions, both destructive:
+
+| Field | Action |
+|---|---|
+| `btn_def=2` | Network reset |
+| `btn_def=6` | Factory reset |
+
+There is **no plain reboot**, so the power cycle the settings require cannot be
+triggered from the web UI. Two workable routes:
+
+- **Auto Power On (`B1c=1`) plus a smart plug.** Auto Power On means "come up
+  when AC is applied", so cutting and restoring power brings the printer back
+  unattended. This is the only fully remote option.
+- **The operator power-cycles it**, which is fine during a provisioning visit
+  and is what the guided wizard should instruct.
+
+Using auto-power-off as a self-reboot does not work: the shortest interval is
+10 minutes, and the printer would stay off afterwards rather than coming back.
 
 ## D. Apply behaviour and the "safe to unplug" signal
 
