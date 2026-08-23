@@ -318,6 +318,38 @@ triggered from the web UI. Two routes:
   >
   > Boot takes roughly 90 seconds to a couple of minutes either way.
 
+## Factory reset — required, and it comes first
+
+Provisioning starts from a factory reset, **before the Ethernet cable goes in**,
+whether or not the printer looks fine.
+
+Two reasons, and the second is the stronger one:
+
+* If a previous owner changed the web-UI password, there is no way in — and no
+  way to trigger a reset over the web either, since that screen is behind the
+  same login. The reset restores the code printed on the back.
+* Even with access, a used printer carries hundreds of settings nobody has
+  enumerated. Resetting is the only way to reach a state this tooling has been
+  tested against. Automating a reset for the reachable case would add a branch
+  that still leaves the outcome unknown.
+
+On the printer's own screen:
+
+```
+1.  Menu
+2.  Up / Down   until you reach  Administration
+3.  OK          to enter it
+4.  Up / Down   until you reach  Reset
+5.  OK
+6.  OK          to choose  Factory Reset
+7.  OK          again to confirm
+```
+
+> **Do not power the printer down while it is resetting.**
+
+A reset printer has no network settings, so it takes an address from Ethernet
+and becomes discoverable. Allow ~90 seconds.
+
 ## The WiFi cutover, as it actually works
 
 Confirmed end to end on hardware:

@@ -25,10 +25,6 @@ import requests
 import discover
 import printer_config as pc
 
-RESET_PAGE = "/admin/default.html"
-FACTORY_RESET = "6"          # btn_def on the Reset Menu; 2 is network-only
-
-
 def ask(prompt: str) -> None:
     input(f"\n  >>> {prompt}\n      Press Enter when done… ")
 
@@ -46,27 +42,19 @@ def find_on_lan(subnet: str | None) -> list[discover.Found]:
     return discover.discover_printers(subnet=subnet)
 
 
-def factory_reset(ip: str, password: str) -> bool:
-    """Reset a printer we can still reach, so it comes back in a known state.
+FACTORY_RESET_STEPS = """
+      On the printer's own screen:
 
-    A second-hand unit may arrive joined to a network nobody here controls,
-    with settings nobody here chose. Resetting is the only way to get to a
-    state this tooling has actually been tested against.
-    """
-    web = pc.PrinterWeb(ip, password)
-    try:
-        web.login()
-    except (requests.RequestException, RuntimeError) as e:
-        print(f"  could not log in to reset it: {e}")
-        return False
-    try:
-        web.submit(RESET_PAGE, {"btn_def": FACTORY_RESET})
-    except requests.RequestException:
-        pass  # it reboots as it resets, so the reply is often lost
-    print("  reset requested; the printer will restart.")
-    return True
+        1.  Menu
+        2.  Up / Down  until you reach  Administration
+        3.  OK         to enter it
+        4.  Up / Down  until you reach  Reset
+        5.  OK
+        6.  OK         to choose  Factory Reset
+        7.  OK         again to confirm
 
-
+      *** DO NOT POWER THE PRINTER DOWN WHILE IT IS RESETTING. ***
+"""
 def main() -> int:
     import argparse
 
@@ -85,54 +73,48 @@ def main() -> int:
     print("\nProvisioning a Brother QL-820NWB for kiosk use.")
     print("Nothing is changed without asking first.")
 
-    # ---------------------------------------------------------------- 1. find
-    step(1, "Find the printer on the wired network")
-    print("  The printer must be connected by Ethernet and powered on.")
-    print("  (A second-hand printer may still be on somebody else's WiFi —")
-    print("   that is fine, we will reset it.)")
-    ask("Connect the Ethernet cable and switch the printer on.")
+    # --------------------------------------------------------------- 1. reset
+    step(1, "Factory-reset the printer")
+    print("  This is required, not optional, and it comes before the Ethernet")
+    print("  cable goes in.")
+    print()
+    print("  A printer that has been used before carries hundreds of settings")
+    print("  we have never enumerated. Resetting is the only way to reach a")
+    print("  state this tooling has actually been tested against — and if a")
+    print("  previous owner changed the web password, it is also the only way")
+    print("  back in, since the reset restores the code printed on the back.")
+    print(FACTORY_RESET_STEPS)
+    ask("Factory-reset the printer now, with the Ethernet cable UNPLUGGED.")
+
+    # -------------------------------------------------------------- 2. connect
+    step(2, "Connect it to the wired network")
+    print("  A reset printer has no network settings, so it will take an")
+    print("  address from Ethernet and become visible here.")
+    ask("Plug in the Ethernet cable and make sure the printer is on.")
+    print("\n  giving it ~90s to come up…")
+    time.sleep(90)
 
     found = find_on_lan(args.subnet) if not args.ip else [discover.Found(ip=args.ip)]
     if not found:
-        print("\n  No printer found. It may be on a WiFi network we cannot see,")
-        print("  or in a state that needs clearing. Factory-reset it by hand:")
-        print()
-        print("     On the printer: Menu → [Administration] → Reset → Factory Reset")
-        print("     (check the model's manual for the exact path — it varies)")
-        print()
-        print("  A reset printer comes up with no network settings, so it will")
-        print("  pick up an address from Ethernet and become visible here.")
-        ask("Factory-reset the printer, then wait ~90s for it to come back.")
+        print("\n  Nothing found. Worth checking:")
+        print("    - the cable and the switch port")
+        print("    - that the printer and this machine are on the same network")
+        print("    - that the reset finished (it takes a while, and must not be")
+        print("      interrupted)")
+        ask("Check those, then continue to try again.")
         found = find_on_lan(args.subnet)
         if not found:
-            print("\n  Still nothing. Check the cable, the switch port, and that the")
-            print("  printer and this machine are on the same network.")
             return 1
-
-    if len(found) > 1:
-        print("\n  More than one printer answered:")
-        for i, f in enumerate(found, 1):
-            print(f"    {i}. {f.ip:16} {f.mac or '?':18} {f.model or '?'}")
-        choice = input("\n  >>> Which one? [1] ").strip() or "1"
-        try:
-            printer = found[int(choice) - 1]
-        except (ValueError, IndexError):
-            print("  not a valid choice")
-            return 1
-    else:
-        printer = found[0]
-    print(f"\n  Using {printer.ip}" + (f" — {printer.model}" if printer.model else ""))
 
     # ------------------------------------------------------------- 2. inspect
-    step(2, "Check what state it is in")
+    step(3, "Log in and confirm what we are talking to")
     web = pc.PrinterWeb(printer.ip, password)
     try:
         web.login()
     except RuntimeError:
-        print("  The printer refused that password.")
-        print("  On a factory-fresh unit it is the code printed on the back.")
-        print("  If this is a second-hand printer, the previous owner may have")
-        print("  changed it — a factory reset restores the printed default.")
+        print("  The printer refused that password. After a factory reset it is")
+        print("  the code printed on the back of the printer — if that is what")
+        print("  you used, the reset probably did not complete.")
         return 1
     except requests.RequestException as e:
         print(f"  could not reach it: {e}")
@@ -149,23 +131,13 @@ def main() -> int:
         print("    Field names may differ. Watch the following steps closely.")
 
     if wireless.active:
-        print("\n  This printer is already on a wireless network — most likely")
-        print("  somebody else's. Its settings are unknown to us.")
-        if confirm("Factory-reset it so it starts from a known state?"):
-            factory_reset(printer.ip, password)
-            ask("Wait ~90s for it to restart, then continue.")
-            again = find_on_lan(args.subnet)
-            if not again:
-                print("  It has not come back. Check Ethernet and power.")
-                return 1
-            printer = again[0]
-            web = pc.PrinterWeb(printer.ip, password)
-            web.login()
-            wired, wireless = pc._interfaces(web)
-            print(f"  back at {printer.ip}")
+        print("\n  ! The wireless interface is already active, which a freshly")
+        print("    reset printer should not be. The reset may not have completed.")
+        if not confirm("Continue anyway?"):
+            return 1
 
-    # ----------------------------------------------------------- 3. configure
-    step(3, "Configure it")
+    # ----------------------------------------------------------- 4. configure
+    step(4, "Configure it")
     result = pc.configure_printer(
         printer.ip, password, log=lambda m: print(f"  {m}")
     )
@@ -176,8 +148,8 @@ def main() -> int:
         print("  moving it onto WiFi in a half-configured state.")
         return 1
 
-    # ---------------------------------------------------------------- 4. wifi
-    step(4, "Join the WiFi network")
+    # ---------------------------------------------------------------- 5. wifi
+    step(5, "Join the WiFi network")
     print(f"  Network: {args.ssid}")
     if not confirm("Apply the wireless settings now?"):
         print("  Stopped. Nothing wireless was changed.")
@@ -194,8 +166,8 @@ def main() -> int:
         return 1
     print("  stored. The radio does not start until the printer restarts.")
 
-    # --------------------------------------------------------- 5. power cycle
-    step(5, "Power-cycle the printer")
+    # --------------------------------------------------------- 6. power cycle
+    step(6, "Power-cycle the printer")
     print("  Use the POWER BUTTON, not the cable. Auto power on does not work")
     print("  while Ethernet is connected, so pulling the cord leaves it off.")
     print()
@@ -204,8 +176,8 @@ def main() -> int:
     print("  claim things are fine when they are not.")
     ask("Power-cycle the printer and wait for the WiFi icon (~90s).")
 
-    # ------------------------------------------------------------ 6. rediscover
-    step(6, "Find it on the wireless network")
+    # ------------------------------------------------------------ 7. rediscover
+    step(7, "Find it on the wireless network")
     print(f"  The wireless interface has its own MAC ({wireless.mac}) and takes")
     print("  its own DHCP lease, so the address will have changed.")
     target = None
@@ -223,8 +195,8 @@ def main() -> int:
         return 1
     print(f"\n  Found at {target.ip} (via {target.via})")
 
-    # ---------------------------------------------------------- 7. unplug
-    step(7, "Remove the Ethernet cable")
+    # ---------------------------------------------------------- 8. unplug
+    step(8, "Remove the Ethernet cable")
     print("  The printer is either wired or wireless, never both, so the cable")
     print("  has to come out for it to stay on WiFi.")
     ask("Unplug the Ethernet cable.")

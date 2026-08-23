@@ -191,11 +191,14 @@ PRINTER_WEB_PASSWORD=xxxx PRINTER_WIFI_PASSPHRASE=yyyy \
   ./venv/bin/python provision.py --ssid "Lobby-WiFi"
 ```
 
-It finds the printer on the wired network, checks what state it is in,
-offers to factory-reset one that arrives joined to somebody else's WiFi,
-configures it, applies the wireless settings, prompts for the power cycle the
-radio needs, finds it again at its new address, and confirms it survives the
-Ethernet cable coming out.
+It starts by walking the operator through a **factory reset, before the
+Ethernet cable goes in** — required whatever state the printer looks to be in,
+because a previous owner may have changed the web password (locking us out of
+the reset screen too) and because a used printer carries hundreds of settings
+nobody has enumerated. From there it connects, logs in, configures, applies the
+wireless settings, prompts for the power cycle the radio needs, finds the
+printer again at its new address, and confirms it survives the cable coming
+out.
 
 ### Where this runs, and why
 
