@@ -126,6 +126,29 @@ class _FormParser(HTMLParser):
             self._in_form = False
 
 
+def _form_encode(fields: dict[str, str]) -> dict[str, str]:
+    """Normalise values the way a browser does before urlencoding them.
+
+    The device wraps its CSRF token across several lines inside the `value`
+    attribute. A browser submitting that form normalises those newlines to
+    CRLF; sending the raw LF the parser saw produces a different byte string
+    and the token no longer matches.
+    """
+    return {k: re.sub(r"\r\n|\r|\n", "\r\n", v) if isinstance(v, str) else v
+            for k, v in fields.items()}
+
+
+def _explain(body: str) -> str:
+    """A short, readable account of what the printer said, for a failed step."""
+    text = re.sub(r"<[^>]+>", " ", unescape(body))
+    text = re.sub(r"\s+", " ", text).strip()
+    if not text:
+        return "the printer returned an empty page (the session may have expired)"
+    if "Login" in text and "Logout" not in text:
+        return "the printer returned the login page (the session was not accepted)"
+    return f"the printer said: {text[:200]}"
+
+
 def _redact(fields: dict[str, str]) -> dict[str, str]:
     return {
         k: ("(redacted)" if k in SECRET_FIELDS and v else v)
@@ -182,6 +205,17 @@ class PrinterWeb:
         self.password = password
         self.timeout = timeout
         self.session = requests.Session()
+        # Look like the browser this UI was written for. There is precedent in
+        # this codebase for embedded servers refusing plain programmatic
+        # requests (see shulcloud-sync, which needs the same treatment).
+        self.session.headers.update({
+            "User-Agent": (
+                "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 "
+                "(KHTML, like Gecko) Chrome/126.0 Safari/537.36"
+            ),
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+            "Accept-Language": "en-US,en;q=0.9",
+        })
 
     # ---------------------------------------------------------------- plumbing
     def get(self, path: str) -> str:
@@ -216,7 +250,13 @@ class PrinterWeb:
         """Post a page back with `changes` applied over its current values."""
         fields = self.fields_of(path)
         fields.update(changes)
-        r = self.session.post(self.base + path, data=fields, timeout=self.timeout)
+        r = self.session.post(
+            self.base + path,
+            data=_form_encode(fields),
+            timeout=self.timeout,
+            # Some embedded UIs check that the post came from their own page.
+            headers={"Referer": self.base + path},
+        )
         r.raise_for_status()
         return (SUCCESS_MARKER in r.text), fields, r.text
 
@@ -274,13 +314,11 @@ def configure_printer(
     def step(name: str, path: str, changes: dict[str, str]) -> None:
         say(f"  {name} …")
         try:
-            ok, sent, _ = web.submit(path, changes)
+            ok, sent, body = web.submit(path, changes)
         except requests.RequestException as e:
             result.steps.append(Step(name, False, str(e)[:200], changes))
             return
-        result.steps.append(
-            Step(name, ok, "" if ok else "the printer did not confirm the change", sent)
-        )
+        result.steps.append(Step(name, ok, "" if ok else _explain(body), sent))
 
     # ---- conveniences first, while the link is definitely up -----------------
     if set_clock:

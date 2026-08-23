@@ -29,7 +29,7 @@ def check(label, condition, detail=""):
 
 
 PASSWORD = "aguQreSK"
-TOKEN = "tok-abc123"
+TOKEN = "tok-abc123\nwrapped-second-line\nwrapped-third-line"
 
 # Page shapes lifted from the real device: a pageid, a CSRF token, a
 # postif_registration_reject, and selects whose current value is the option
@@ -107,7 +107,8 @@ PAGES = {
 class Stub(BaseHTTPRequestHandler):
     posts = []          # (path, fields)
     logged_in = False
-    wifi_drops = False  # simulate the link dying as WiFi applies
+    wifi_drops = False   # simulate the link dying as WiFi applies
+    power_error = False  # simulate the printer rejecting a value
 
     def log_message(self, *a):
         pass
@@ -147,6 +148,15 @@ class Stub(BaseHTTPRequestHandler):
         }
         Stub.posts.append((path, fields))
 
+        # The device wraps its CSRF token across lines; a browser normalises
+        # those to CRLF when submitting. Insist on that, so sending the raw LF
+        # the parser saw is caught here rather than on real hardware.
+        if path != "/general/status.html":
+            got = fields.get("CSRFToken", "")
+            if got and "\n" in got and "\r\n" not in got:
+                self._send("<html><body>Invalid CSRF token</body></html>")
+                return
+
         if path == "/general/status.html":       # the login form
             if fields.get("B128") == PASSWORD:
                 Stub.logged_in = True
@@ -160,6 +170,10 @@ class Stub(BaseHTTPRequestHandler):
         if "B129" in fields and path != "/general/status.html":
             Stub.logged_in = False
             self._send("<html><body>logged out</body></html>")
+            return
+
+        if path == "/printer/power_settings.html" and Stub.power_error:
+            self._send("<html><body><div>Setting&#32;value&#32;is&#32;out&#32;of&#32;range</div></body></html>")
             return
 
         if path == "/net/wireless/wireless.html" and Stub.wifi_drops:
@@ -206,7 +220,9 @@ print("— whole forms are posted back, not just the change —")
 power = sent["/printer/power_settings.html"]
 check("carries the untouched fields", power.get("B1e") == "6", json.dumps(power))
 check("carries pageid", power.get("pageid") == "158")
-check("carries the CSRF token", power.get("CSRFToken") == TOKEN)
+check("carries the CSRF token, CRLF-normalised as a browser would",
+      power.get("CSRFToken") == TOKEN.replace("\n", "\r\n"),
+      repr(power.get("CSRFToken")))
 check("applies auto power on", power.get("B1c") == "1")
 check("disables the 60-minute sleep", power.get("B1d") == "0")
 
@@ -223,6 +239,14 @@ check("joins the named network", wifi.get("Bde") == "Lobby-WiFi")
 check("selects WPA/WPA2-PSK", wifi.get("B63") == "3")
 check("sends the passphrase", wifi.get("Bf8") == "hunter2-not-real")
 check("keeps infrastructure mode", wifi.get("B62") == "1")
+
+print("— a failed step reports what the printer said —")
+Stub.logged_in, Stub.power_error = False, True
+res_f = pc.configure_printer(IP, PASSWORD, set_clock=False)
+Stub.power_error = False
+step = [s for s in res_f.steps if "power" in s.name][0]
+check("quotes the printer's own message", "out of range" in step.detail, step.detail)
+check("does not just say 'did not confirm'", "did not confirm" not in step.detail, step.detail)
 
 print("— nothing secret reaches the transcript —")
 t = res.transcript()
