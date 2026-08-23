@@ -1,6 +1,7 @@
 import { useEffect, useState, type FormEvent } from 'react'
 import { supabase } from '../../lib/supabase'
 import { useOrg } from '../../lib/org'
+import ApiKeys from './ApiKeys'
 
 type SelfieMode = 'off' | 'optional' | 'required'
 
@@ -131,6 +132,8 @@ export default function Settings() {
           {saving ? 'Saving…' : dirty ? 'Save settings' : 'Saved'}
         </button>
       </form>
+
+      <ApiKeys />
     </>
   )
 }

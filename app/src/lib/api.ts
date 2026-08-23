@@ -1,5 +1,15 @@
 import { supabase } from './supabase'
 
+/**
+ * Identifies which kiosk (and therefore which organization) a public call is
+ * for. `kiosk_token` is the supported form; `printer_id` is the older
+ * ?printer=<uuid> link, still accepted so printed QR codes keep working.
+ */
+export interface KioskRef {
+  kiosk_token: string | null
+  printer_id: string | null
+}
+
 export interface SubmitResult {
   entry_id: string
   job_ids: string[]
@@ -20,9 +30,8 @@ export async function submitBadge(input: {
   pronouns: string
   phone: string
   email: string
-  printer_id: string | null
   additional?: AdditionalPerson[]
-}): Promise<SubmitResult> {
+} & KioskRef): Promise<SubmitResult> {
   const { data, error } = await supabase.functions.invoke('submit-badge', { body: input })
   if (error) throw new Error('Could not reach the server. Please try again.')
   if (!data?.ok) throw new Error(data?.error ?? 'Something went wrong. Please try again.')
@@ -32,12 +41,12 @@ export async function submitBadge(input: {
 export type SelfieMode = 'off' | 'optional' | 'required'
 
 /** Public config the visitor/member form needs. */
-export async function getPublicConfig(): Promise<{
+export async function getPublicConfig(kiosk: KioskRef): Promise<{
   selfie_mode: SelfieMode
   pronouns_enabled: boolean
 }> {
   try {
-    const { data } = await supabase.functions.invoke('public-config', { body: {} })
+    const { data } = await supabase.functions.invoke('public-config', { body: kiosk })
     return {
       selfie_mode: (data?.selfie_mode ?? 'off') as SelfieMode,
       pronouns_enabled: Boolean(data?.pronouns_enabled),
@@ -60,8 +69,13 @@ export async function uploadSelfie(input: {
 export type JobStatus = 'queued' | 'printing' | 'printed' | 'failed'
 
 /** Poll a single print job's status via the job-status Edge Function. */
-export async function getJobStatus(jobId: string): Promise<{ status: JobStatus; error: string | null }> {
-  const { data, error } = await supabase.functions.invoke('job-status', { body: { job_id: jobId } })
+export async function getJobStatus(
+  jobId: string,
+  kiosk: KioskRef,
+): Promise<{ status: JobStatus; error: string | null }> {
+  const { data, error } = await supabase.functions.invoke('job-status', {
+    body: { job_id: jobId, ...kiosk },
+  })
   if (error) throw new Error('status check failed')
   if (!data?.ok) throw new Error(data?.error ?? 'status check failed')
   return { status: data.status, error: data.error }

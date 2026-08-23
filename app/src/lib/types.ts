@@ -27,6 +27,18 @@ export interface BridgeToken {
   revoked_at: string | null
 }
 
+/** A key for the external print API, scoped to one organization. Like bridge
+ *  tokens, only the hash is stored. */
+export interface ApiKey {
+  id: string
+  org_id: string
+  name: string | null
+  key_prefix: string | null
+  last_used_at: string | null
+  created_at: string
+  revoked_at: string | null
+}
+
 /** A member of an organization, as returned by the org_members() function. */
 export interface OrgMember {
   user_id: string
@@ -39,6 +51,8 @@ export interface Printer {
   id: string
   org_id: string
   name: string
+  /** Opaque, rotatable identifier encoded in this printer's lobby QR code. */
+  kiosk_token: string
   location: string | null
   printer_ip: string | null
   port: number

@@ -18,6 +18,8 @@ import Members from './routes/admin/Members'
 
 const router = createBrowserRouter([
   { path: '/', element: <PublicForm /> },
+  // Opaque per-printer kiosk link, encoded in the lobby QR code.
+  { path: '/k/:token', element: <PublicForm /> },
   { path: '/admin/login', element: <Login /> },
   { path: '/admin/set-password', element: <SetPassword /> },
   {
