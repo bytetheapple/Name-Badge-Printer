@@ -233,29 +233,32 @@ def main() -> int:
         return 1
     print("\naccepted.")
 
-    print(f"\nwaiting up to {args.wait}s for the wireless interface to come up …")
-    deadline = time.monotonic() + args.wait
-    while time.monotonic() < deadline:
-        up = wireless_active(args.ip)
-        if up:
-            print("  wireless is ACTIVE — it is now safe to unplug the Ethernet cable")
-            break
-        if up is None:
-            print("  the printer is no longer answering on the wired address")
-            print("  (that may mean it has already switched over)")
-            break
-        time.sleep(5)
-    else:
-        print("  it did not come up in time. The printer is still on Ethernet, so")
-        print("  nothing is lost — re-run with --dry-run to see what it thinks now.")
-        return 1
+    # The radio does not come up on its own. B31 is "Network Settings on Power
+    # On", so it means exactly what it says: the wireless LAN starts at the
+    # next power-up, not now. Confirmed on hardware — the settings applied, the
+    # interface stayed inactive, and a power cycle brought it straight up.
+    print()
+    print("=" * 68)
+    print("NOW POWER-CYCLE THE PRINTER. The wireless LAN starts at power-on.")
+    print("=" * 68)
+    print()
+    print("Use the power button. Auto power on does not work while Ethernet is")
+    print("connected, so pulling the cord will just leave it off.")
+    print("Give it about 90 seconds to come back, and watch for the WiFi icon")
+    print("on the printer's own screen — that is the only reliable indicator.")
+    print()
 
     mac = state["wireless"].mac
     if mac:
         import discover
         name = discover.node_name_for(mac)
-        print(f"\nafter unplugging Ethernet, look for it at {name}.local")
-        print(f"  ./venv/bin/python discover.py --mac {mac}")
+        print(f"Once the WiFi icon is lit, find it at {name}.local — on a NEW")
+        print("address, because the wireless interface takes its own DHCP lease:")
+        print()
+        print(f"    ./venv/bin/python discover.py --mac {mac}")
+        print()
+        print("Then set that address as the printer's IP in the admin, and the")
+        print("Ethernet cable can come out.")
     return 0
 
 

@@ -125,9 +125,14 @@ it.
   switch (`ESC i a 01`) in every job, so the printer rasterises whatever its
   stored mode says. Verified on hardware: a badge printed while the panel still
   showed form mode.
-- **WiFi is applied last and the wired link drops as it applies.** That is
-  expected and reported as success. The printer then takes a **different IP**
-  (the two interfaces have separate MACs), so it has to be rediscovered.
+- **WiFi needs a power cycle.** Applying the network settings does nothing
+  visible: the radio starts at the next power-up, because the setting that
+  enables it (`B31`) is "Network Settings on Power On". Use the power button —
+  auto power on does not work while Ethernet is connected. Watch the printer's
+  own WiFi icon; it is more trustworthy than anything the web UI reports.
+- **The printer then takes a different IP**, because the two interfaces have
+  separate MACs and separate DHCP leases. Rediscover it with
+  `discover.py --mac <wireless-mac>`.
 - **Wait ~90 seconds** after any reboot before expecting the printer to answer.
 - **Auto power on does not work while Ethernet is connected.** It applies once
   the printer is on WiFi with the cable removed, so the configuration reboot

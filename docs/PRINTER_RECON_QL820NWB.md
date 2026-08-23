@@ -198,11 +198,20 @@ being precise about which does what.
 | `B32` | Selected Interface: `0` Infrastructure or Adhoc, `1` Infrastructure and Wireless Direct, `2` Wireless Direct | `0` |
 | `B31` | Network Settings on Power On: `0` On, `1` Off, `2` Keep Current State | `2` |
 
-> **`B31=2` is why a correctly configured radio can still never come up.** The
-> SSID, WPA/AES and passphrase can all be stored and confirmed on the wireless
-> page while the interface stays `inactive` with `Channel 0` and no receiving
-> signal — because "keep current state" leaves a wireless LAN that has never
-> been on exactly where it is. Set `B31=0` to bring the radio up.
+> **`B31=2` is why a correctly configured radio can still never come up**, and
+> **`B31=0` only takes effect at the next power-up** — the field is called
+> "Network Settings on Power On" and means it literally.
+>
+> Confirmed on hardware: with SSID, WPA/WPA2-PSK, AES and passphrase all stored
+> and visible on the wireless page, the interface stayed `inactive` with
+> `Channel 0` and no receiving signal. Setting `B31=0` changed nothing
+> immediately. A power cycle brought the radio straight up, and the printer
+> joined the network.
+>
+> The printer's **own WiFi icon** is the indicator to trust here. Across every
+> attempt before this, it never lit — which was the clearest signal that the
+> problem was an enable rather than the credentials, well before the web UI
+> admitted anything was wrong.
 | `B15e` | hidden | `1` |
 
 `0` already means "act as a client", so no change is needed. Note that while
@@ -308,6 +317,26 @@ triggered from the web UI. Two routes:
   > provisioning state.
   >
   > Boot takes roughly 90 seconds to a couple of minutes either way.
+
+## The WiFi cutover, as it actually works
+
+Confirmed end to end on hardware:
+
+1. Over Ethernet, set **`B31=0`** on `/printer/communication_settings.html` —
+   the wireless LAN will start at the next power-up.
+2. Apply the network on `/net/wireless/wireless.html`: `B62=1`, `Bde=<ssid>`,
+   `B63=3`, `B64=4`, `Bf8=<passphrase>`, omitting the WEP fields.
+   **Nothing observable happens.** The page stores the settings, emits no
+   success marker, and the radio stays down.
+3. **Power-cycle the printer with its button.** Auto power on does not work
+   while Ethernet is connected, so pulling the cord leaves it off.
+4. Watch the **WiFi icon on the printer's screen**. ~90 seconds.
+5. The printer is now on a **different IP**, because the wireless interface has
+   its own MAC and its own DHCP lease. Find it by its wireless MAC:
+   `discover.py --mac <wireless-mac>`, which resolves `BRW<mac>.local`.
+
+Observed on the test unit: `192.168.1.27` wired → `192.168.1.69` wireless,
+found over mDNS on the first attempt.
 
 ## What `configure_printer()` actually has to do
 
