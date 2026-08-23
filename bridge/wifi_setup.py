@@ -56,6 +56,27 @@ def _text(html: str) -> str:
     return re.sub(r"(?:\|\s*)+", "| ", t).strip()
 
 
+def select_options(html: str) -> dict[str, list[str]]:
+    """Every <select> on a page and the choices it offers.
+
+    The device's own JavaScript rewrites some of these as others change — the
+    encryption choices depend on the authentication method, for instance. We do
+    not run that JavaScript, so the only way to know which value is meant is to
+    read what the page actually offers.
+    """
+    out: dict[str, list[str]] = {}
+    for m in re.finditer(r'<select[^>]*name="([^"]+)"[^>]*>(.*?)</select>', html, re.S | re.I):
+        name, inner = m.group(1), m.group(2)
+        opts = [
+            f"{v}={unescape(t).strip()}" + (" *" if "selected" in attrs else "")
+            for attrs, v, t in re.findall(
+                r'<option([^>]*)\bvalue="([^"]*)"[^>]*>(.*?)</option>', inner, re.S | re.I
+            )
+        ]
+        out[name] = opts
+    return out
+
+
 def _report(title: str, body: str) -> None:
     print(f"\n--- {title} ---")
     print(body)
@@ -96,7 +117,20 @@ def survey(web: PrinterWeb) -> dict:
         "wireless configuration",
         "\n".join(f"{k:8} = {v}" for k, v in _redact(wl).items()),
     )
-    _report("wireless page, as shown", _text(web.get(PAGE_WIRELESS))[:600])
+    wl_html = web.get(PAGE_WIRELESS)
+    opts = select_options(wl_html)
+    _report(
+        "wireless choices offered (* = currently selected)",
+        "\n".join(f"{k:8} {' | '.join(v)}" for k, v in opts.items())
+        or "(no selects found)",
+    )
+    _report("wireless page, as shown", _text(wl_html)[:600])
+
+    # The page's own script is where the auth/encryption coupling lives; naming
+    # it lets us go and read it if the combination turns out to matter.
+    scripts = re.findall(r'src="([^"]*\.js)"', wl_html)
+    if scripts:
+        _report("scripts this page loads", "\n".join(scripts))
 
     return {"wired": wired, "wireless": wireless, "comms": comms, "tcpip": tcpip, "wl": wl}
 
