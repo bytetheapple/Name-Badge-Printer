@@ -41,10 +41,11 @@ PAGES = {
         <input type="password" name="B128"/>
         <input type="hidden" name="loginurl" value="/general/status.html"/>
       </form>""",
+    # Labels carry numeric entities exactly as the device writes them.
     "/general/information.html": """
-      <dt>Model Name</dt><dd>QL-820NWB</dd>
-      <dt>Serial no.</dt><dd>B6G868653</dd>
-      <dt>Firmware Version</dt><dd>1.32</dd>""",
+      <dt>Model&#32;Name</dt><dd>QL-820NWB</dd>
+      <dt>Serial&#32;no.</dt><dd>B6G868653</dd>
+      <dt>Firmware&#32;Version</dt><dd>1.32</dd>""",
     "/general/date.html": f"""
       <form method="post" action="/general/date.html">
         <input type="hidden" name="pageid" value="10"/>
@@ -125,13 +126,25 @@ class Stub(BaseHTTPRequestHandler):
         if page is None:
             self._send("not found", 404)
             return
-        header = "Logout" if Stub.logged_in else ""
+        # Every real page carries a logout form in its header once signed in.
+        # Its hidden B129 must never end up in a settings POST.
+        header = (
+            f'<form method="post" action="/general/status.html">'
+            f'<input type="hidden" name="CSRFToken" value="stale-header-token"/>'
+            f'Logout<input type="hidden" name="B129"/></form>'
+        ) if Stub.logged_in else ""
         self._send(f"<html><body>{header}{page}</body></html>")
 
     def do_POST(self):
         path = urlparse(self.path).path
         n = int(self.headers.get("Content-Length") or 0)
-        fields = {k: v[0] for k, v in parse_qs(self.rfile.read(n).decode()).items()}
+        fields = {
+            k: v[0]
+            # keep_blank_values matters: the logout field B129 is submitted with
+            # an empty value, and dropping it would make this stub blind to the
+            # exact bug it exists to catch.
+            for k, v in parse_qs(self.rfile.read(n).decode(), keep_blank_values=True).items()
+        }
         Stub.posts.append((path, fields))
 
         if path == "/general/status.html":       # the login form
@@ -140,6 +153,13 @@ class Stub(BaseHTTPRequestHandler):
                 self._send("<html><body>Logout</body></html>")
             else:
                 self._send(f'<html><body><input type="password" name="B128"/></body></html>')
+            return
+
+        # The device treats a POST carrying the logout form's field as a
+        # logout, and the settings change is silently lost.
+        if "B129" in fields and path != "/general/status.html":
+            Stub.logged_in = False
+            self._send("<html><body>logged out</body></html>")
             return
 
         if path == "/net/wireless/wireless.html" and Stub.wifi_drops:
@@ -167,10 +187,20 @@ res = pc.configure_printer(
 paths = [p for p, _ in Stub.posts]
 sent = {p: f for p, f in Stub.posts}
 
-check("identifies the printer", res.model == "QL-820NWB" and res.firmware == "1.32", res.firmware)
+check("identifies the printer through entity-escaped labels",
+      res.model == "QL-820NWB" and res.serial == "B6G868653" and res.firmware == "1.32",
+      f"{res.model!r} {res.serial!r} {res.firmware!r}")
 check("every step succeeded", res.ok, res.transcript())
 check("logs in before configuring", paths[0] == "/general/status.html")
 check("WiFi is applied last", paths[-1] == "/net/wireless/wireless.html", str(paths))
+
+print("— only the target form is submitted —")
+for path, fields in Stub.posts:
+    if path == "/general/status.html":
+        continue
+    check(f"no logout field in the POST to {path}", "B129" not in fields, str(fields))
+check("no stale header token is used",
+      all(f.get("CSRFToken") != "stale-header-token" for _, f in Stub.posts), "header token leaked")
 
 print("— whole forms are posted back, not just the change —")
 power = sent["/printer/power_settings.html"]

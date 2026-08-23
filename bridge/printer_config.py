@@ -27,6 +27,7 @@ import sys
 import re
 import time
 from dataclasses import dataclass, field
+from html import unescape
 from html.parser import HTMLParser
 
 import requests
@@ -63,21 +64,39 @@ SECRET_FIELDS = {F_PASSWORD, F_PASSPHRASE, "Be8", "Bec", "Bf0", "Bf4"}
 
 
 class _FormParser(HTMLParser):
-    """Pull every form control out of a page, with its current value.
+    """Pull one form's controls out of a page, with their current values.
 
     The device's forms must be posted back whole — sending only the changed
     field loses the rest — so this collects defaults for everything, including
     which `<option>` is selected and which radio is checked.
+
+    Crucially it collects **only the form being submitted**. Every page also
+    carries a logout form in its header, and including that form's hidden field
+    (`B129`) in a settings POST makes the printer treat the request as a logout
+    and reject the change.
     """
 
-    def __init__(self) -> None:
+    def __init__(self, want_action: str) -> None:
         super().__init__(convert_charrefs=True)
         self.fields: dict[str, str] = {}
+        self._want = want_action.split("?")[0]
+        self._in_form = False
         self._select: str | None = None
         self._select_has_selection = False
 
     def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
         a = {k: (v or "") for k, v in attrs}
+        if tag == "form":
+            action = a.get("action", "").split("?")[0]
+            # Match on the last path segment: the device writes actions both
+            # absolutely ("/net/wireless/wireless.html") and relatively
+            # ("wireless.html") for the same form.
+            self._in_form = bool(action) and (
+                action == self._want or action.rsplit("/", 1)[-1] == self._want.rsplit("/", 1)[-1]
+            )
+            return
+        if not self._in_form:
+            return
         if tag == "input":
             name, itype = a.get("name"), a.get("type", "text").lower()
             if not name or itype in ("submit", "button", "reset"):
@@ -103,6 +122,8 @@ class _FormParser(HTMLParser):
     def handle_endtag(self, tag: str) -> None:
         if tag == "select":
             self._select = None
+        elif tag == "form":
+            self._in_form = False
 
 
 def _redact(fields: dict[str, str]) -> dict[str, str]:
@@ -169,14 +190,18 @@ class PrinterWeb:
         return r.text
 
     def fields_of(self, path: str) -> dict[str, str]:
-        p = _FormParser()
+        """Current values of the form on `path` that posts back to `path`."""
+        p = _FormParser(path)
         p.feed(self.get(path))
         return p.fields
 
     def login(self) -> None:
-        """Authenticate. The form posts to the page it is displayed on."""
-        fields = self.fields_of(PAGE_STATUS)
-        token = fields.get("CSRFToken", "")
+        """Authenticate. The login form posts to the page it is displayed on,
+        so it cannot be told apart from that page's own settings form by action
+        alone — it is identified by carrying the password field."""
+        p = _FormParser(PAGE_STATUS)
+        p.feed(self.get(PAGE_STATUS))
+        token = p.fields.get("CSRFToken", "")
         r = self.session.post(
             self.base + PAGE_STATUS,
             data={"CSRFToken": token, F_PASSWORD: self.password, "loginurl": PAGE_STATUS},
@@ -198,7 +223,9 @@ class PrinterWeb:
 
 def _identity(web: PrinterWeb) -> tuple[str, str, str]:
     """Model, serial and firmware, for keying field names to a known version."""
-    html = web.get(PAGE_INFO)
+    # The device writes its labels with numeric entities — "Model&#32;Name" —
+    # so the markup has to be unescaped before any of them will match.
+    html = unescape(web.get(PAGE_INFO))
     text = re.sub(r"<[^>]+>", "|", html)
     text = re.sub(r"\s+", " ", text)
 
@@ -317,7 +344,7 @@ def wireless_active(ip: str, timeout: float = 5.0) -> bool | None:
         r.raise_for_status()
     except requests.RequestException:
         return None
-    text = re.sub(r"<[^>]+>", "|", r.text)
+    text = re.sub(r"<[^>]+>", "|", unescape(r.text))
     text = re.sub(r"\s+", " ", text)
     m = re.search(r"IEEE\s*802\.11[^|]*\|+\s*\(?(Active|Inactive)\)?", text)
     return (m.group(1) == "Active") if m else None
