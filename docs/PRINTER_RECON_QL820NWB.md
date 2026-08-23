@@ -234,35 +234,28 @@ triggered from the web UI. Two routes:
   when AC is applied", so cutting and restoring power should bring the printer
   back unattended. This is the only fully remote option.
 
-  > **TESTED REPEATEDLY, AND IT DOES NOT WORK AT ALL.** Not a first-cycle
-  > bootstrap problem: after several power cycles, with `B1c=1` confirmed still
-  > stored, the printer has never come back on by itself. Whatever "Auto Power
-  > On" means on firmware 1.32, it is not "resume when AC is restored".
+  > **It works — but only with the Ethernet cable unplugged.**
   >
-  > **There is no unattended power-on on this hardware.** A smart plug cannot
-  > substitute for someone pressing the button, so any provisioning or recovery
-  > flow that assumed one has to be redesigned around a physical visit. Original
-  > first-cycle note kept below for the record:
+  > With Ethernet connected, `B1c=1` had no effect across repeated power
+  > cycles: the printer stayed dark until its button was pressed. Unplug the
+  > cable and the same power cycle brings it up by itself. Brother document
+  > that the auto power *off* features are suppressed while the printer holds
+  > an active wired, wireless or Bluetooth connection; the auto power *on*
+  > behaviour appears to be affected by the same link state.
   >
-  > **TESTED, AND IT FAILED ON THE FIRST CYCLE.** With `B1c=1` saved, the power
-  > cord was pulled and reconnected: **the printer did not come back on.** It
-  > needed its power button pressed by hand. The settings themselves survived
-  > intact — the printer came up still reporting Raster — so this is not data
-  > loss, it is that Auto Power On was not yet in force during the cycle that
-  > was supposed to rely on it.
+  > (This unit had been running in the lobby for weeks beforehand with auto
+  > power on working, which is what prompted looking past "the setting is
+  > broken" — it never was.)
   >
-  > Whether it works on *subsequent* cycles is still untested, but the failure
-  > mode is now known and cheap to design around:
+  > **What this means for provisioning:** auto power on cannot be relied on
+  > during the Ethernet-attached configuration phase, which is exactly when a
+  > reboot is wanted. It becomes available once the printer is on WiFi and the
+  > cable is gone — i.e. in normal running, where it matters for recovering
+  > from a power cut. Plan the configuration reboot as a button press, and
+  > treat auto power on as a property of the deployed state rather than the
+  > provisioning state.
   >
-  > **Have the operator press the power button by hand for the first boot, and
-  > only depend on a smart plug afterwards** — and treat "the printer did not
-  > come back" as an expected outcome the runbook warns about, not a fault.
-  > Anything that depends on an unattended first power cycle is unsafe.
-- **The operator power-cycles it**, which is fine during a provisioning visit
-  and is what the guided wizard should instruct.
-
-Using auto-power-off as a self-reboot does not work: the shortest interval is
-10 minutes, and the printer would stay off afterwards rather than coming back.
+  > Boot takes roughly 90 seconds to a couple of minutes either way.
 
 ## Boot time
 
