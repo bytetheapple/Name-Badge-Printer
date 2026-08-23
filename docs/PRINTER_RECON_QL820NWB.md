@@ -234,6 +234,16 @@ triggered from the web UI. Two routes:
   when AC is applied", so cutting and restoring power should bring the printer
   back unattended. This is the only fully remote option.
 
+  > **TESTED REPEATEDLY, AND IT DOES NOT WORK AT ALL.** Not a first-cycle
+  > bootstrap problem: after several power cycles, with `B1c=1` confirmed still
+  > stored, the printer has never come back on by itself. Whatever "Auto Power
+  > On" means on firmware 1.32, it is not "resume when AC is restored".
+  >
+  > **There is no unattended power-on on this hardware.** A smart plug cannot
+  > substitute for someone pressing the button, so any provisioning or recovery
+  > flow that assumed one has to be redesigned around a physical visit. Original
+  > first-cycle note kept below for the record:
+  >
   > **TESTED, AND IT FAILED ON THE FIRST CYCLE.** With `B1c=1` saved, the power
   > cord was pulled and reconnected: **the printer did not come back on.** It
   > needed its power button pressed by hand. The settings themselves survived
@@ -253,6 +263,42 @@ triggered from the web UI. Two routes:
 
 Using auto-power-off as a self-reboot does not work: the shortest interval is
 10 minutes, and the printer would stay off afterwards rather than coming back.
+
+## Boot time
+
+**~2 minutes from power-on until the printer answers on the network** (wired).
+Anything that reboots the printer and then polls for it needs a timeout well
+past that, and a progress message — two minutes of silence looks like a failure
+to an operator standing there.
+
+## Command mode may not need configuring at all
+
+`brother_ql` puts a **dynamic command-mode switch** in every job preamble:
+
+```
+00 00 1b 40 1b 69 61 01
+        ESC @  ESC i a 01   <- switch this connection to raster
+```
+
+So each print job asks the printer to be in raster mode *for that connection*,
+whatever its stored default. If that works, the persistent `B24` setting — and
+the separate form/template mode visible on the front panel — do not matter for
+**printing**. They would only matter for status queries, which this model
+ignores regardless.
+
+**This is the single most valuable thing left to test**, because it would
+remove the hardest setting from the automation entirely. It is also the one
+setting the web UI cannot fully reach: a sweep of every page found `Command
+Mode` and nothing else mode-related, so if the panel exposes a separate form
+mode, it is not web-configurable and `configure_printer()` could never have
+handled it anyway.
+
+**Blocked on media.** The unit arrived with DK-1234 (60mm x 86mm die-cut name
+badge) loaded, and `brother_ql` has no spec for that size — it knows `62`
+continuous plus a fixed set of die-cuts, none of them 60x86. A print attempt on
+the current roll would most likely fail on media mismatch and tell us nothing
+about command mode. **Load a 62mm continuous roll (what the deployment uses)
+before testing.**
 
 ## D. Apply behaviour and the "safe to unplug" signal
 
