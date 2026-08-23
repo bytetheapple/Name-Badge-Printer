@@ -310,7 +310,10 @@ tenants). Per-org deletion becomes a prefix operation.
 Today Google Sheets/Drive, ShulCloud, and selfie upload use **global** secrets.
 Each org now configures **their own**:
 
-- Google: their Sheet/Drive target + their service-account (or OAuth) credentials.
+- Google: their Sheet/Drive target + credentials. **Recommended tenant-friendly
+  method is OAuth "Connect Google" with the least-privilege `drive.file` scope
+  (Phase A5b — `docs/PHASE_A5B_GOOGLE_OAUTH.md`); the per-org service account is an
+  advanced option, and the anonymous Form POST a no-credential option.**
 - CRM (ShulCloud or other): their form endpoint/credentials.
 - Selfie: their Drive folder.
 
@@ -400,6 +403,8 @@ Shir Hadash becomes **org #1** with zero data loss:
    capture; guided wizard fallback. *(Can be prototyped single-tenant in parallel.)*
 5. **Public form & external API** — kiosk tokens, rate limiting, per-org API keys.
 6. **Per-tenant integrations & secrets** — Vault, per-org Google/CRM/selfie config.
+   - **A5b:** "Connect Google" OAuth (`drive.file`) as the tenant-friendly Google
+     method — `docs/PHASE_A5B_GOOGLE_OAUTH.md`.
 7. **Provisioning & super-admin** — manual provisioning tooling; cross-tenant ops.
 8. **(Later)** self-serve signup, billing, subdomains/custom domains, dedicated
    silo tier.
