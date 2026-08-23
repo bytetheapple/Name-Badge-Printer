@@ -92,19 +92,27 @@ def survey(web: PrinterWeb) -> dict:
         f"{'ACTIVE' if wireless.active else 'inactive'}",
     )
 
+    comms_html = web.get(PAGE_COMMS)
     comms = web.fields_of(PAGE_COMMS)
     _report(
         "communication settings",
         "\n".join(f"{k:8} = {v}" for k, v in _redact(comms).items())
+        + "\n\n"
+        + "\n".join(f"{k:8} {' | '.join(v)}" for k, v in select_options(comms_html).items())
         + f"\n\n{F_INTERFACE} is the radio's role: 0 = infrastructure/adhoc (client),"
-        " 1 = + wireless direct, 2 = wireless direct only",
+        " 1 = + wireless direct, 2 = wireless direct only"
+        + "\n(this page, as shown: " + _text(comms_html)[-300:] + ")",
     )
 
     try:
+        tcpip_html = web.get(PAGE_WIRELESS_TCPIP)
         tcpip = web.fields_of(PAGE_WIRELESS_TCPIP)
         _report(
             "wireless TCP/IP",
             "\n".join(f"{k:8} = {v}" for k, v in _redact(tcpip).items())
+            + "\n"
+            + "\n".join(f"{k:8} {' | '.join(v)}"
+                         for k, v in select_options(tcpip_html).items())
             or "(no fields found — the page may need a different path)",
         )
     except requests.RequestException as e:
