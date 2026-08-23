@@ -42,6 +42,29 @@ def find_on_lan(subnet: str | None) -> list[discover.Found]:
     return discover.discover_printers(subnet=subnet)
 
 
+def wait_for_printers(
+    subnet: str | None, timeout: float = 240.0, interval: float = 5.0
+) -> list[discover.Found]:
+    """Scan until a printer appears, rather than sleeping and hoping.
+
+    How long a reset printer takes to reach the network varies, so a fixed wait
+    is either too short to be reliable or longer than it needs to be. Polling
+    returns the moment it is actually there.
+    """
+    deadline = time.monotonic() + timeout
+    attempt = 0
+    while True:
+        attempt += 1
+        found = discover.discover_printers(subnet=subnet)
+        if found:
+            return found
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            return []
+        print(f"    nothing yet (attempt {attempt}, {int(remaining)}s left)…")
+        time.sleep(min(interval, remaining))
+
+
 FACTORY_RESET_STEPS = """
       On the printer's own screen:
 
@@ -91,10 +114,10 @@ def main() -> int:
     print("  A reset printer has no network settings, so it will take an")
     print("  address from Ethernet and become visible here.")
     ask("Plug in the Ethernet cable and make sure the printer is on.")
-    print("\n  giving it ~90s to come up…")
-    time.sleep(90)
+    print("\n  watching for it (this stops as soon as it appears)…")
 
-    found = find_on_lan(args.subnet) if not args.ip else [discover.Found(ip=args.ip)]
+    found = ([discover.Found(ip=args.ip)] if args.ip
+             else wait_for_printers(args.subnet))
     if not found:
         print("\n  Nothing found. Worth checking:")
         print("    - the cable and the switch port")
@@ -102,9 +125,24 @@ def main() -> int:
         print("    - that the reset finished (it takes a while, and must not be")
         print("      interrupted)")
         ask("Check those, then continue to try again.")
-        found = find_on_lan(args.subnet)
+        found = wait_for_printers(args.subnet, timeout=120)
         if not found:
             return 1
+
+    # Which one are we working on?
+    if len(found) > 1:
+        print("\n  More than one printer answered:")
+        for i, f in enumerate(found, 1):
+            print(f"    {i}. {f.ip:16} {f.mac or '?':18} {f.model or '?'}")
+        choice = input("\n  >>> Which one? [1] ").strip() or "1"
+        try:
+            printer = found[int(choice) - 1]
+        except (ValueError, IndexError):
+            print("  not a valid choice")
+            return 1
+    else:
+        printer = found[0]
+    print(f"\n  Using {printer.ip}" + (f" — {printer.model}" if printer.model else ""))
 
     # ------------------------------------------------------------- 2. inspect
     step(3, "Log in and confirm what we are talking to")
