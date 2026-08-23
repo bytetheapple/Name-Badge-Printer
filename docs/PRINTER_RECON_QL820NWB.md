@@ -72,16 +72,26 @@ which is why raster printing and status queries do not work until it is changed.
 Applied `B24=21`; the response contained `Submit OK` and the status page then
 reported `Emulation: Raster`.
 
-> **The web UI lies about this, and it matters.** `Submit OK` and the status
-> page both reflect *stored* configuration, not the *running* mode. With the
-> setting apparently applied, the printer still accepted a TCP connection on
-> 9100 and then **never answered a status request** — `status_check.py` timed
-> out, which is the behaviour of a printer still in P-touch Template mode.
+**Confirmed:** the setting survives a hard power cut (the cord was pulled and
+the page still reported Raster afterwards).
+
+**Not confirmed: whether the printer is actually in raster mode.** A status
+request on port 9100 goes unanswered both before and after a power cycle — but
+that proves nothing here, because `bridge/printer.py` already documents this
+model as one that *"doesn't answer the status request even though printing
+works fine"*. An earlier draft of this document treated that timeout as
+evidence that settings need a reboot to take effect; that was wrong, and the
+claim is withdrawn.
+
+> **The only trustworthy test of command mode on this model is an actual
+> print.** `configure_printer()` should verify by printing, not by a status
+> query and certainly not by reading the web UI back.
 >
-> **Settings do not take effect until the printer is power-cycled**, and the
-> only trustworthy confirmation is a functional one: a raster status query that
-> actually replies. `configure_printer()` must verify that way and never by
-> reading the web UI back.
+> A side-effect worth knowing: because this printer does not answer status
+> requests, the bridge will report its media type and width as unknown, and the
+> admin Status panel will show blanks for it. That is cosmetic — printing is
+> unaffected — but it means media detection cannot be relied on for these
+> units.
 
 Other fields on this page that must be posted back unchanged (with their
 factory values):
@@ -216,29 +226,28 @@ two actions, both destructive:
 | `btn_def=2` | Network reset |
 | `btn_def=6` | Factory reset |
 
-There is **no plain reboot**, so the power cycle the settings require cannot be
-triggered from the web UI. Two workable routes:
+There is **no plain reboot**. Whether a power cycle is even required is now
+open (see the note under setting 1), but if one is wanted, it cannot be
+triggered from the web UI. Two routes:
 
 - **Auto Power On (`B1c=1`) plus a smart plug.** Auto Power On means "come up
   when AC is applied", so cutting and restoring power should bring the printer
   back unattended. This is the only fully remote option.
 
-  > **UNVERIFIED, and there is a bootstrap problem.** Settings do not take
-  > effect until a power cycle — including, possibly, Auto Power On itself. On
-  > the **first** cycle after provisioning the printer is still running with
-  > `B1c=0`, so it may simply stay off. It probably works, because the value is
-  > written to NVRAM immediately and Auto Power On is read at power-up rather
-  > than by the running firmware — but that is an inference, not an observation.
+  > **TESTED, AND IT FAILED ON THE FIRST CYCLE.** With `B1c=1` saved, the power
+  > cord was pulled and reconnected: **the printer did not come back on.** It
+  > needed its power button pressed by hand. The settings themselves survived
+  > intact — the printer came up still reporting Raster — so this is not data
+  > loss, it is that Auto Power On was not yet in force during the cycle that
+  > was supposed to rely on it.
   >
-  > **Test:** with `B1c=1` stored but not yet active, pull the power and restore
-  > it. If the printer comes up by itself, the first cycle is safe. If it stays
-  > dark, the bootstrap problem is real.
+  > Whether it works on *subsequent* cycles is still untested, but the failure
+  > mode is now known and cheap to design around:
   >
-  > **Design around it regardless:** have the operator press the power button by
-  > hand for the first boot, and only depend on the smart plug afterwards. Once
-  > the printer has booted with `B1c=1` active, later cycles are certain. That
-  > confines the risk to a moment when someone is standing next to the machine
-  > anyway, and makes the answer to this question not load-bearing.
+  > **Have the operator press the power button by hand for the first boot, and
+  > only depend on a smart plug afterwards** — and treat "the printer did not
+  > come back" as an expected outcome the runbook warns about, not a fault.
+  > Anything that depends on an unattended first power cycle is unsafe.
 - **The operator power-cycles it**, which is fine during a provisioning visit
   and is what the guided wizard should instruct.
 
