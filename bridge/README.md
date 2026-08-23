@@ -40,7 +40,9 @@ Supabase print_jobs (queued)  --poll every 2s-->  bridge
 | `db.py` | Tiny PostgREST client, used only by the legacy path |
 | `test_client.py` | Offline tests for both backends (no Supabase, no printer) |
 | `printer_config.py` | Configure a QL-820NWB over its web UI (see below) |
+| `discover.py` | Find a printer on the LAN after it moves to WiFi |
 | `test_printer_config.py` | Offline tests for that, against a stub of the printer's web UI |
+| `test_discover.py` | Offline tests for discovery (no printer, no network) |
 | `badge.py` | Render a badge to a PIL image (also runnable standalone) |
 | `printer.py` | brother_ql send + TCP reachability + status parse |
 | `config.py` | Env configuration |
@@ -132,3 +134,38 @@ it.
   itself has to be a button press.
 - **This model does not answer status queries**, so media type and width show
   as unknown in the admin. Printing is unaffected.
+
+
+## Finding a printer after the WiFi cutover
+
+The printer's wired and wireless interfaces have **different MAC addresses**,
+so they take different DHCP leases: the moment it moves to WiFi its address
+changes and the old one is dead. `discover.py` finds it again.
+
+```bash
+./venv/bin/python discover.py                              # every Brother printer here
+./venv/bin/python discover.py --mac 44:f7:9f:bc:ab:e8      # one specific printer
+```
+
+The wireless MAC is printed by `printer_config.py` during configuration, which
+is the only time it can be read — afterwards the printer is no longer at the
+address you were talking to.
+
+Three routes, cheapest first, none needing an extra dependency:
+
+1. **mDNS.** Brother answers to `BRW<mac>.local` (wireless) or `BRN<mac>.local`
+   (wired), which the Pi resolves through avahi.
+2. **A subnet sweep** of port 9100, for networks that block multicast.
+3. **Identification** of what turns up: the ARP table gives each candidate's
+   MAC — exact — and the printer's status page is readable *without logging
+   in*, which gives the model as a fallback.
+
+Two things learned from real hardware, both of which would otherwise have
+caused a puzzling field failure:
+
+- **mDNS also advertises a link-local `169.254.x.x` address** (and IPv6).
+  Taking the first answer sends the bridge somewhere unroutable, so answers are
+  ranked with our own subnet first and link-local last.
+- **mDNS answers are cached, so a printer that is switched off still resolves.**
+  Resolution is treated as a hint and every candidate is checked for an open
+  print port before being accepted.

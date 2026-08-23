@@ -168,12 +168,23 @@ class Step:
 
 
 @dataclass
+class Interface:
+    node_name: str = ""
+    mac: str = ""
+    active: bool = False
+
+
+@dataclass
 class Result:
     model: str = ""
     serial: str = ""
     firmware: str = ""
     steps: list[Step] = field(default_factory=list)
     wifi_applied: bool = False
+    #: Read before the WiFi step, because afterwards the printer is gone from
+    #: this address and the wireless MAC is the only way to find it again.
+    wired: Interface = field(default_factory=Interface)
+    wireless: Interface = field(default_factory=Interface)
 
     @property
     def ok(self) -> bool:
@@ -188,6 +199,11 @@ class Result:
             lines.append(
                 f"  ! firmware {self.firmware} differs from the verified {FIRMWARE_VERIFIED};"
                 " field names may not match"
+            )
+        if self.wireless.mac:
+            lines.append(
+                f"  wireless interface {self.wireless.node_name or '?'} "
+                f"({self.wireless.mac}) — find it at {self.wireless.node_name or '?'}.local"
             )
         for s in self.steps:
             lines.append(f"  [{'ok ' if s.ok else 'FAIL'}] {s.name}"
@@ -276,6 +292,47 @@ def _identity(web: PrinterWeb) -> tuple[str, str, str]:
     return after("Model Name"), after("Serial no."), after("Firmware Version")
 
 
+def _interfaces(web: PrinterWeb) -> tuple[Interface, Interface]:
+    """The wired and wireless interfaces, in that order.
+
+    Both node names and both MACs are on the network status page. The wireless
+    one is what matters: it is what the printer will answer to once it has
+    moved, and it cannot be read afterwards from this side of the cable.
+    """
+    text = re.sub(r"<[^>]+>", "|", unescape(web.get(PAGE_NETSTATUS)))
+    text = re.sub(r"\s+", " ", text)
+    names = re.findall(r"Node Name\s*\|+\s*([A-Za-z0-9]+)", text)
+    macs = re.findall(r"MAC address\s*\|+\s*([0-9a-fA-F:-]{11,})", text)
+    states = re.findall(r"\((Active|Inactive)\)", text)
+
+    def at(i: int) -> Interface:
+        return Interface(
+            node_name=names[i] if i < len(names) else "",
+            mac=(macs[i].replace("-", ":").lower() if i < len(macs) else ""),
+            active=(states[i] == "Active") if i < len(states) else False,
+        )
+
+    return at(0), at(1)
+
+
+def wait_for_wireless(ip: str, timeout: float = 180.0, interval: float = 5.0, log=None) -> bool:
+    """Poll until the printer reports its wireless interface up.
+
+    This is the "safe to unplug the Ethernet cable" signal. Note it has to be
+    asked of the printer over the *wired* connection, before the cable is
+    pulled — which is the only window in which both are reachable.
+    """
+    say = log or (lambda _m: None)
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        state = wireless_active(ip)
+        if state:
+            return True
+        say("    wireless not up yet …")
+        time.sleep(interval)
+    return False
+
+
 def configure_printer(
     ip: str,
     password: str,
@@ -303,7 +360,10 @@ def configure_printer(
 
     web.login()
     result.model, result.serial, result.firmware = _identity(web)
+    result.wired, result.wireless = _interfaces(web)
     say(f"connected to {result.model or 'printer'} at {ip} (firmware {result.firmware or '?'})")
+    if result.wireless.mac:
+        say(f"  its wireless interface is {result.wireless.node_name} ({result.wireless.mac})")
     if result.firmware and result.firmware != FIRMWARE_VERIFIED:
         say(
             f"WARNING: firmware {result.firmware} has not been verified "
@@ -429,9 +489,40 @@ def main() -> int:
     print()
     print(result.transcript())
     print()
-    if args.ssid:
-        print("The printer is joining WiFi and will take a NEW IP address.")
-        print("Wait ~90s, then confirm with the network status page before unplugging Ethernet.")
+    if not args.ssid:
+        return 0 if result.ok else 1
+
+    # The printer is now moving to WiFi. It keeps answering on Ethernet until
+    # the cable comes out, which is the only window in which we can ask it
+    # whether the wireless side came up.
+    import discover
+
+    print("Waiting for the wireless interface to come up …")
+    up = wait_for_wireless(args.ip, log=lambda m: print(m, flush=True))
+    if not up:
+        print()
+        print("The wireless interface has not come up. The printer is still on Ethernet,")
+        print("so nothing is lost — check the SSID and passphrase and run this again.")
+        return 1
+
+    print("Wireless is up. It is now safe to unplug the Ethernet cable.")
+    mac = result.wireless.mac
+    if not mac:
+        print("(Could not read the wireless MAC, so the new address must be found by hand.)")
+        return 0
+
+    name = discover.node_name_for(mac)
+    print()
+    print(f"After unplugging, the printer answers to {name}.local on a NEW address.")
+    print("Looking for it now (this only succeeds once the cable is out) …")
+    found = discover.find_printer(mac=mac)
+    if found:
+        print(f"  found at {found.ip} via {found.via}"
+              + (f" — {found.model}" if found.model else ""))
+        print(f"  set this printer's address to {found.ip} in the admin.")
+    else:
+        print(f"  not found yet — that is expected while Ethernet is still connected.")
+        print(f"  once unplugged, run:  ./venv/bin/python discover.py --mac {mac}")
     return 0 if result.ok else 1
 
 
