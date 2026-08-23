@@ -1,14 +1,10 @@
 // Public endpoint the form polls to watch its print job.
-// Reads a single job's status with the service_role key (anon has no table access).
+//
+// The job id is an unguessable uuid, but when the caller also presents the
+// kiosk token it was created under, the lookup is additionally scoped to that
+// org — so a job id alone can never be used to probe another tenant.
 import { corsHeaders, json } from "../_shared/cors.ts";
-
-const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
-const SERVICE_ROLE = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-
-const restHeaders = {
-  apikey: SERVICE_ROLE,
-  Authorization: `Bearer ${SERVICE_ROLE}`,
-};
+import { REST, resolveKiosk, restHeaders } from "../_shared/kiosk.ts";
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -26,8 +22,14 @@ Deno.serve(async (req) => {
   const jobId = String(body.job_id ?? "");
   if (!UUID_RE.test(jobId)) return json({ ok: false, error: "Invalid job id" }, 400);
 
+  let scope = "";
+  if (body.kiosk_token || body.printer_id) {
+    const { kiosk } = await resolveKiosk(body);
+    if (kiosk) scope = `&org_id=eq.${kiosk.org_id}`;
+  }
+
   const res = await fetch(
-    `${SUPABASE_URL}/rest/v1/print_jobs?id=eq.${jobId}&select=status,error`,
+    `${REST}/print_jobs?id=eq.${jobId}${scope}&select=status,error`,
     { headers: restHeaders },
   );
   if (!res.ok) return json({ ok: false, error: "Lookup failed" }, 500);

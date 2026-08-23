@@ -12,6 +12,8 @@ const SERVICE_ROLE = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const SA_EMAIL = Deno.env.get("GOOGLE_SA_CLIENT_EMAIL") ?? "";
 const SA_KEY = (Deno.env.get("GOOGLE_SA_PRIVATE_KEY") ?? "").replace(/\\n/g, "\n");
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 const restHeaders = {
   apikey: SERVICE_ROLE,
   Authorization: `Bearer ${SERVICE_ROLE}`,
@@ -90,11 +92,22 @@ Deno.serve(async (req) => {
   const first = String(body.first_name ?? "").trim();
   const last = String(body.last_name ?? "").trim();
   const image = String(body.image ?? "");
+  if (!UUID_RE.test(entryId)) return json({ ok: false, error: "Invalid sign-in" }, 400);
   if (!image) return json({ ok: false, error: "No image" }, 400);
   if (!SA_EMAIL || !SA_KEY) return json({ ok: false, error: "Google service account not configured" });
 
+  // The Drive folder is per organization, so the entry decides which settings
+  // row applies. Reading it off the entry (rather than the request) also means
+  // a selfie can only ever be attached to the org that entry belongs to.
+  const entryRes = await fetch(
+    `${SUPABASE_URL}/rest/v1/form_entries?id=eq.${entryId}&select=org_id`,
+    { headers: restHeaders },
+  );
+  const orgId = entryRes.ok ? (await entryRes.json())[0]?.org_id : null;
+  if (!orgId) return json({ ok: false, error: "Unknown sign-in" }, 404);
+
   const cfgRes = await fetch(
-    `${SUPABASE_URL}/rest/v1/app_settings?id=eq.1&select=selfie_drive_folder_id`,
+    `${SUPABASE_URL}/rest/v1/app_settings?org_id=eq.${orgId}&select=selfie_drive_folder_id`,
     { headers: restHeaders },
   );
   const folderId = (await cfgRes.json())[0]?.selfie_drive_folder_id;
@@ -141,7 +154,7 @@ Deno.serve(async (req) => {
     }
 
     if (entryId && upData.webViewLink) {
-      await fetch(`${SUPABASE_URL}/rest/v1/form_entries?id=eq.${entryId}`, {
+      await fetch(`${SUPABASE_URL}/rest/v1/form_entries?id=eq.${entryId}&org_id=eq.${orgId}`, {
         method: "PATCH",
         headers: restHeaders,
         body: JSON.stringify({ selfie_link: upData.webViewLink }),
