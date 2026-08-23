@@ -137,29 +137,31 @@ console.log(' ', JSON.stringify(await q(`
          (select count(*) from public.platform_admins) as platform_admins,
          (select slug from public.organizations limit 1) as slug`)))
 
-console.log('— the writers that exist today keep working, unchanged —')
-// submit-badge / print-badge run with the service_role key and send no org_id.
+console.log('— the writers all stamp org_id themselves (A4) —')
+// submit-badge and print-badge resolve the org from the kiosk token / api key
+// and send it explicitly, which is what let the transitional trigger go.
 try {
   await db.exec(`
     set role service_role;
-    insert into public.form_entries (first_name, last_name, visitor_type, printer_id, google_sync_status, shulcloud_sync_status)
-    select 'New', 'Signin', 'visitor', id, 'pending', 'pending' from public.printers limit 1;
-    insert into public.print_jobs (entry_id, printer_id, type, status)
-    select id, printer_id, 'badge', 'queued' from public.form_entries where first_name = 'New';
-    insert into public.print_jobs (printer_id, type, status, first_name)
-    select id, 'badge', 'queued', 'ApiCaller' from public.printers limit 1;
+    insert into public.form_entries (org_id, first_name, last_name, visitor_type, printer_id, google_sync_status, shulcloud_sync_status)
+    select org_id, 'New', 'Signin', 'visitor', id, 'pending', 'pending' from public.printers limit 1;
+    insert into public.print_jobs (org_id, entry_id, printer_id, type, status)
+    select org_id, id, printer_id, 'badge', 'queued' from public.form_entries where first_name = 'New';
+    insert into public.print_jobs (org_id, printer_id, type, status, first_name)
+    select org_id, id, 'badge', 'queued', 'ApiCaller' from public.printers limit 1;
     reset role;`)
-  ok('public sign-in + print API inserts (service_role, no org_id sent)')
+  ok('public sign-in + print API inserts (org resolved from the token)')
 } catch (e) { bad('service_role inserts', e) }
 
 try {
   await db.exec(asUser(ADMIN, `
-    insert into public.printers (name, port) values ('Second Printer', 9100);
-    insert into public.print_jobs (type, status, printer_id)
-    select 'test', 'queued', id from public.printers where name = 'Second Printer';
+    insert into public.printers (org_id, name, port)
+    select id, 'Second Printer', 9100 from public.organizations limit 1;
+    insert into public.print_jobs (org_id, type, status, printer_id)
+    select org_id, 'test', 'queued', id from public.printers where name = 'Second Printer';
     update public.printer_config set label_media = '62' where id = 1;
     update public.app_settings set selfie_mode = 'optional' where id = 1;`))
-  ok('admin portal writes (authenticated, no org_id sent)')
+  ok('admin portal writes (authenticated, org_id stamped)')
 } catch (e) { bad('admin portal writes', e) }
 
 const stamp = await q(`
@@ -225,6 +227,63 @@ try {
   await db.exec('rollback').catch(() => {})
 }
 
+console.log('— kiosk tokens (A4) —')
+const kt = await q(`
+  select count(*) as printers,
+         count(kiosk_token) as tokened,
+         count(distinct kiosk_token) as distinct_tokens,
+         bool_and(kiosk_token ~ '^k_[0-9a-f]{32}$') as well_formed
+  from public.printers`)
+if (Number(kt.printers) === Number(kt.tokened) && Number(kt.printers) === Number(kt.distinct_tokens) && kt.well_formed)
+  ok(`every printer has a unique, well-formed kiosk token (${kt.printers})`)
+else bad(`kiosk tokens: ${JSON.stringify(kt)}`)
+
+console.log('— rate limits and the queue cap (A4) —')
+const ids = await q(`
+  select (select id from public.organizations order by created_at limit 1) as org,
+         (select id from public.printers order by created_at limit 1)      as printer`)
+const gate = async (ip, badges = 1) =>
+  (await q(`select public.check_submit_allowed(
+      '${ids.org}'::uuid, '${ids.printer}'::uuid, ${ip === null ? 'null' : `'${ip}'`}, ${badges}
+    ) as reason`)).reason
+
+// A first sign-in from a fresh address is always fine.
+const first = await gate('203.0.113.10')
+if (first === null) ok('a normal sign-in is allowed')
+else bad(`a normal sign-in was blocked: ${first}`)
+
+// Default is 6/minute per IP; the 7th should be turned away.
+let tripped = null
+for (let i = 0; i < 8 && !tripped; i++) tripped = await gate('203.0.113.10')
+if (tripped && /device/i.test(tripped)) ok(`per-IP limit trips: "${tripped}"`)
+else bad(`per-IP limit did not trip (got ${JSON.stringify(tripped)})`)
+
+// …and it must not punish the person standing next to them.
+const neighbour = await gate('203.0.113.99')
+if (neighbour === null) ok('a different device is unaffected by that limit')
+else bad(`a different device was wrongly blocked: ${neighbour}`)
+
+// An unknown IP must not crash the check (the header can be absent).
+const noIp = await gate(null)
+if (noIp === null) ok('a request with no client IP still works')
+else bad(`a request with no IP was blocked: ${noIp}`)
+
+// Queue cap: a backlog the printer cannot clear turns new sign-ins away.
+await db.exec(`
+  insert into public.print_jobs (org_id, printer_id, type, status)
+  select '${ids.org}'::uuid, '${ids.printer}'::uuid, 'badge', 'queued'
+  from generate_series(1, 45)`)
+const capped = await gate('203.0.113.77')
+if (capped && /waiting to print/i.test(capped)) ok(`queue cap trips: "${capped}"`)
+else bad(`queue cap did not trip (got ${JSON.stringify(capped)})`)
+await db.exec(`delete from public.print_jobs where status = 'queued' and entry_id is null`)
+
+// The limiter's own bookkeeping must not grow without bound.
+const pruned = await q(`
+  select count(*) filter (where at < now() - interval '1 day') as stale from public.submit_events`)
+if (Number(pruned.stale) === 0) ok('old rate-limit events are pruned')
+else bad(`rate-limit events not pruned: ${JSON.stringify(pruned)}`)
+
 console.log('— negative control: a leaky policy must FAIL the test —')
 const leaky = await build((sql, f) =>
   f.includes('_rls')
@@ -261,14 +320,20 @@ console.log('— the migrations are idempotent (safe to paste twice) —')
 try { for (const f of mt) await db.exec(read(f)); ok(`re-applying all ${mt.length} multi-tenant migrations is a no-op`) }
 catch (e) { bad('re-applying the multi-tenant migrations', e) }
 
-console.log('— failsafe: once a second org exists, an unstamped insert must fail —')
+console.log('— with the trigger retired, an unstamped insert is always refused —')
 await db.exec(`insert into public.organizations (slug, name) values ('second-tenant', 'Second Tenant');`)
+const trig = await q(`
+  select count(*) as n from pg_trigger t join pg_class c on c.oid = t.tgrelid
+  where not t.tgisinternal and t.tgname like '%_set_org_id'`)
+if (Number(trig.n) === 0) ok('the transitional org_id trigger is gone')
+else bad(`${trig.n} transitional org_id trigger(s) still installed`)
+
 try {
   await db.exec(`
     set role service_role;
     insert into public.form_entries (first_name, visitor_type) values ('Unstamped', 'visitor');
     reset role;`)
-  bad('a second org exists and an org_id-less insert still succeeded — it could land in the wrong tenant')
+  bad('an org_id-less insert succeeded — a row could land in the wrong tenant')
 } catch (e) {
   await db.exec('reset role')
   const msg = String(e.message).split('\n')[0]
