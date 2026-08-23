@@ -39,6 +39,8 @@ Supabase print_jobs (queued)  --poll every 2s-->  bridge
 | `client.py` | Server conversation: bridge token (preferred) or legacy `service_role` |
 | `db.py` | Tiny PostgREST client, used only by the legacy path |
 | `test_client.py` | Offline tests for both backends (no Supabase, no printer) |
+| `printer_config.py` | Configure a QL-820NWB over its web UI (see below) |
+| `test_printer_config.py` | Offline tests for that, against a stub of the printer's web UI |
 | `badge.py` | Render a badge to a PIL image (also runnable standalone) |
 | `printer.py` | brother_ql send + TCP reachability + status parse |
 | `config.py` | Env configuration |
@@ -88,3 +90,45 @@ service for auto-start (see `install.sh` output).
 
 Badge appearance (header / subtitle / sizes / dimensions) is driven by the
 `badge_template` JSON in `printer_config`, editable from the admin console.
+
+
+## Configuring a new printer
+
+`printer_config.py` drives a QL-820NWB's web UI over Ethernet to get it ready
+for kiosk use: clock, panel language, power behaviour, and joining the WiFi
+network. Every field name comes from
+[docs/PRINTER_RECON_QL820NWB.md](../docs/PRINTER_RECON_QL820NWB.md), captured
+from a factory-reset unit on **firmware 1.32** — a different firmware is
+reported and warned about rather than silently assumed to match.
+
+```bash
+# dry run: everything except WiFi, so the wired link stays up
+PRINTER_WEB_PASSWORD=xxxx ./venv/bin/python printer_config.py 192.168.1.27
+
+# the real thing, WiFi last
+PRINTER_WEB_PASSWORD=xxxx PRINTER_WIFI_PASSPHRASE=yyyy \
+  ./venv/bin/python printer_config.py 192.168.1.27 --ssid "Lobby-WiFi"
+```
+
+The web-UI password is the code printed on the back of the printer, and is read
+from the environment so it stays out of shell history and process lists.
+
+It prints a redacted transcript of everything it attempted — safe to paste into
+a ticket — and neither the WiFi passphrase nor the printer password appears in
+it.
+
+### Things worth knowing
+
+- **Command mode is deliberately not touched.** brother_ql puts a dynamic
+  switch (`ESC i a 01`) in every job, so the printer rasterises whatever its
+  stored mode says. Verified on hardware: a badge printed while the panel still
+  showed form mode.
+- **WiFi is applied last and the wired link drops as it applies.** That is
+  expected and reported as success. The printer then takes a **different IP**
+  (the two interfaces have separate MACs), so it has to be rediscovered.
+- **Wait ~90 seconds** after any reboot before expecting the printer to answer.
+- **Auto power on does not work while Ethernet is connected.** It applies once
+  the printer is on WiFi with the cable removed, so the configuration reboot
+  itself has to be a button press.
+- **This model does not answer status queries**, so media type and width show
+  as unknown in the admin. Printing is unaffected.
