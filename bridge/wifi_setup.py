@@ -28,6 +28,7 @@ import requests
 from printer_config import (
     F_INTERFACE,
     F_PASSPHRASE,
+    F_RADIO_ON_POWER,
     PAGE_COMMS,
     PAGE_NETSTATUS,
     PAGE_WIRELESS,
@@ -195,6 +196,14 @@ def main() -> int:
     if args.dry_run:
         print("\ndry run — nothing was changed.")
         return 0
+
+    # The radio has to be switched on, not merely configured. "Keep current
+    # state" leaves a wireless LAN that has never been up exactly where it is.
+    if state["comms"].get(F_RADIO_ON_POWER) != "0":
+        print("\nturning the wireless LAN on at power-on "
+              f"({F_RADIO_ON_POWER}: {state['comms'].get(F_RADIO_ON_POWER)} -> 0) …")
+        ok, sent, body = web.submit(PAGE_COMMS, {F_RADIO_ON_POWER: "0"})
+        print("  " + ("done" if ok else f"FAILED: {_explain(body)}"))
 
     changes, drop = wifi_changes(args.ssid, passphrase or None)
     print(f"  encryption: {'AES (WPA2)' if passphrase else 'none (open network)'};"

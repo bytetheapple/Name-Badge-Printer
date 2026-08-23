@@ -51,6 +51,7 @@ F_PASSWORD = "B128"          # login
 F_AUTO_POWER_ON = "B1c"      # 0 disable, 1 enable
 F_AUTO_POWER_OFF_AC = "B1d"  # 0 None … 6 60 Mins
 F_LANGUAGE = "B28"           # 3 English
+F_RADIO_ON_POWER = "B31"     # 0 on by default, 1 off by default, 2 keep current state
 F_INTERFACE = "B32"          # 0 infrastructure/adhoc, 1 +wireless direct, 2 direct
 F_COMM_MODE = "B62"          # 1 infrastructure, 2 ad-hoc
 F_SSID = "Bde"
@@ -299,6 +300,12 @@ class PrinterWeb:
 
         `drop` removes fields the page's own script would have disabled, since
         a browser does not submit those and the printer may reject them.
+
+        Success is decided by **reading the page back** and checking the values
+        took, falling back to the success marker only when there is nothing
+        readable to compare. The marker is not reliable everywhere — the
+        wireless page stores its settings without emitting one, so trusting it
+        reports failure on a write that worked.
         """
         fields = self.fields_of(path)
         fields.update(changes)
@@ -312,7 +319,21 @@ class PrinterWeb:
             headers={"Referer": self.base + path},
         )
         r.raise_for_status()
-        return (SUCCESS_MARKER in r.text), fields, r.text
+
+        if SUCCESS_MARKER in r.text:
+            return True, fields, r.text
+
+        # Read back what actually stuck. Secrets are never echoed, so they
+        # cannot be verified this way and are not counted against the result.
+        checkable = {k: v for k, v in changes.items() if k not in SECRET_FIELDS}
+        if not checkable:
+            return False, fields, r.text
+        try:
+            now = self.fields_of(path)
+        except requests.RequestException:
+            return False, fields, r.text
+        applied = all(now.get(k) == v for k, v in checkable.items())
+        return applied, fields, r.text
 
 
 def _identity(web: PrinterWeb) -> tuple[str, str, str]:

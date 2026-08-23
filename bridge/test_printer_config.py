@@ -12,6 +12,7 @@ the WiFi step reads as success, and that no secret reaches the transcript.
 import json
 import os
 import sys
+import re
 import threading
 import time
 from http.server import BaseHTTPRequestHandler, HTTPServer
@@ -108,7 +109,10 @@ class Stub(BaseHTTPRequestHandler):
     posts = []          # (path, fields)
     logged_in = False
     wifi_drops = False   # simulate the link dying as WiFi applies
-    power_error = False  # simulate the printer rejecting a value
+    power_error = False   # simulate the printer rejecting a value
+    silent_power = False  # stores the change but emits no success marker
+    ignore_power = False  # claims nothing and stores nothing
+    stored = {}           # what a silent page has accepted
 
     def log_message(self, *a):
         pass
@@ -129,6 +133,14 @@ class Stub(BaseHTTPRequestHandler):
             return
         # Every real page carries a logout form in its header once signed in.
         # Its hidden B129 must never end up in a settings POST.
+        if path == "/printer/power_settings.html" and Stub.stored:
+            for k, v in Stub.stored.items():
+                page = re.sub(rf'(<select name="{k}">)(.*?)(</select>)',
+                              lambda m: m.group(1)
+                              + re.sub(r'\s*selected="selected"', '', m.group(2)).replace(
+                                  f'value="{v}"', f'value="{v}" selected="selected"', 1)
+                              + m.group(3), page, flags=re.S)
+
         header = (
             f'<form method="post" action="/general/status.html">'
             f'<input type="hidden" name="CSRFToken" value="stale-header-token"/>'
@@ -170,6 +182,12 @@ class Stub(BaseHTTPRequestHandler):
         if "B129" in fields and path != "/general/status.html":
             Stub.logged_in = False
             self._send("<html><body>logged out</body></html>")
+            return
+
+        if path == "/printer/power_settings.html" and Stub.silent_power:
+            if not Stub.ignore_power:
+                Stub.stored.update({k: v for k, v in fields.items() if k.startswith("B1")})
+            self._send("<html><body>Wireless settings</body></html>")
             return
 
         if path == "/printer/power_settings.html" and Stub.power_error:
@@ -250,6 +268,21 @@ open_changes, open_drop = _pc.wifi_changes("Guest", None)
 check("selects Open System", open_changes.get("B63") == "1")
 check("selects no encryption", open_changes.get("B64") == "1")
 check("drops the passphrase too", "Bf8" in open_drop, str(open_drop))
+
+print("— a page that stores without a success marker still counts as applied —")
+Stub.logged_in, Stub.silent_power, Stub.stored = False, True, {}
+res_s = pc.configure_printer(IP, PASSWORD, set_clock=False)
+step_s = [x for x in res_s.steps if "power" in x.name][0]
+check("verifies by reading the page back", step_s.ok, step_s.detail)
+Stub.silent_power, Stub.stored = False, {}
+
+print("— but a page that silently discards the change does not —")
+Stub.logged_in, Stub.silent_power, Stub.ignore_power, Stub.stored = False, True, True, {}
+res_i = pc.configure_printer(IP, PASSWORD, set_clock=False)
+step_i = [x for x in res_i.steps if "power" in x.name][0]
+check("reports failure when the value did not stick", not step_i.ok, step_i.detail)
+Stub.silent_power = Stub.ignore_power = False
+Stub.stored = {}
 
 print("— a failed step reports what the printer said —")
 Stub.logged_in, Stub.power_error = False, True

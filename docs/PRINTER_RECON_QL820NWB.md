@@ -36,7 +36,11 @@ each page load. So the automation shape is fixed:
 1. `GET` the page → scrape `CSRFToken` (and the current value of every field)
 2. `POST` back to the same URL with the token, the page's `pageid`, and **all**
    the fields — not just the one being changed
-3. Confirm success by looking for `<div class="postSuccess">Submit OK</div>`
+3. Confirm success by **reading the page back** and checking the values took.
+   `<div class="postSuccess">Submit OK</div>` appears on most pages but **not
+   on the wireless page**, which stores its settings and says nothing — so
+   trusting the marker reports failure on a write that plainly worked. Secrets
+   are never echoed back, so a passphrase cannot be verified this way.
 
 A plain cookie jar plus an HTML scrape is enough; no JavaScript execution is
 required for any of the four settings. Three details are not optional, all
@@ -193,6 +197,12 @@ being precise about which does what.
 |---|---|---|
 | `B32` | Selected Interface: `0` Infrastructure or Adhoc, `1` Infrastructure and Wireless Direct, `2` Wireless Direct | `0` |
 | `B31` | Network Settings on Power On: `0` On, `1` Off, `2` Keep Current State | `2` |
+
+> **`B31=2` is why a correctly configured radio can still never come up.** The
+> SSID, WPA/AES and passphrase can all be stored and confirmed on the wireless
+> page while the interface stays `inactive` with `Channel 0` and no receiving
+> signal — because "keep current state" leaves a wireless LAN that has never
+> been on exactly where it is. Set `B31=0` to bring the radio up.
 | `B15e` | hidden | `1` |
 
 `0` already means "act as a client", so no change is needed. Note that while
