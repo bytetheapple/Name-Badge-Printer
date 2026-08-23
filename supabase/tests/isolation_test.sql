@@ -79,6 +79,10 @@ insert into public.app_settings (org_id) values
   ('aaaaaaaa-0000-4000-8000-00000000000a'),
   ('bbbbbbbb-0000-4000-8000-00000000000b');
 
+insert into public.bridge_tokens (org_id, name, token_hash, token_prefix) values
+  ('aaaaaaaa-0000-4000-8000-00000000000a', 'A bridge', 'hash-a-0000000000000000', 'nbk_aaaa'),
+  ('bbbbbbbb-0000-4000-8000-00000000000b', 'B bridge', 'hash-b-0000000000000000', 'nbk_bbbb');
+
 -- Only user B is a platform admin, so user A must not see this table at all
 -- and user B must see exactly their own row.
 insert into public.platform_admins (user_id)
@@ -101,7 +105,7 @@ begin
   -- production data fails here too.
   foreach tbl in array array[
     'form_entries', 'print_jobs', 'printers',
-    'printer_config', 'printer_status', 'app_settings'
+    'printer_config', 'printer_status', 'app_settings', 'bridge_tokens'
   ] loop
     execute format('select count(*) from public.%I where org_id <> $1', tbl)
       into n using mine;
@@ -248,7 +252,7 @@ begin
   foreach tbl in array array[
     'form_entries', 'print_jobs', 'printers', 'printer_config',
     'printer_status', 'app_settings', 'organizations', 'memberships',
-    'platform_admins'
+    'platform_admins', 'bridge_tokens'
   ] loop
     begin
       execute format('select count(*) from public.%I', tbl) into n;

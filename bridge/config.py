@@ -6,6 +6,11 @@ from dotenv import load_dotenv
 load_dotenv()  # loads bridge/.env if present
 
 SUPABASE_URL = os.environ.get("SUPABASE_URL", "").rstrip("/")
+# The scoped per-device credential (preferred). Issued in the admin under
+# Print servers, and shown only once.
+BRIDGE_TOKEN = os.environ.get("BRIDGE_TOKEN", "")
+# Deprecated: the project-wide key, which bypasses RLS and can reach every
+# tenant. Only used when no BRIDGE_TOKEN is set.
 SERVICE_ROLE_KEY = os.environ.get("SUPABASE_SERVICE_ROLE_KEY", "")
 
 POLL_INTERVAL = float(os.environ.get("POLL_INTERVAL_SECONDS", "2"))
@@ -16,17 +21,14 @@ FONT_REGULAR = os.environ.get("FONT_REGULAR", "")
 
 
 def require():
-    """Exit with a clear message if required env vars are missing."""
-    missing = [
-        name
-        for name, value in {
-            "SUPABASE_URL": SUPABASE_URL,
-            "SUPABASE_SERVICE_ROLE_KEY": SERVICE_ROLE_KEY,
-        }.items()
-        if not value
-    ]
-    if missing:
+    """Exit with a clear message if the configuration cannot work."""
+    if not SUPABASE_URL:
         raise SystemExit(
-            f"Missing required env: {', '.join(missing)}. "
+            "Missing required env: SUPABASE_URL. "
             "Copy bridge/.env.example to bridge/.env and fill it in."
+        )
+    if not BRIDGE_TOKEN and not SERVICE_ROLE_KEY:
+        raise SystemExit(
+            "Missing credentials: set BRIDGE_TOKEN (issue one in the admin under "
+            "Print servers). See bridge/.env.example."
         )

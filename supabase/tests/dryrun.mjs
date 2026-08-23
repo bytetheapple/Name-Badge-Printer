@@ -61,6 +61,11 @@ begin
   for obj in select * from pg_event_trigger_ddl_commands() loop
     if obj.command_tag = 'CREATE TABLE' and obj.schema_name = 'public' then
       execute format('alter table %s enable row level security', obj.object_identity);
+      -- …and exposes it to the Data API roles. Modelling this is what makes a
+      -- migration's own REVOKE meaningful here instead of being papered over.
+      execute format(
+        'grant select, insert, update, delete on %s to anon, authenticated, service_role',
+        obj.object_identity);
     end if;
   end loop;
 end
@@ -69,9 +74,9 @@ create event trigger rls_on_new_tables on ddl_command_end
   when tag in ('CREATE TABLE') execute function public._rls_on_new_tables();
 `
 
+// Tables are granted at creation by the event trigger above, exactly as the
+// real project does it. Sequences still need a blanket grant.
 const GRANTS = `
-grant select, insert, update, delete on all tables in schema public
-  to anon, authenticated, service_role;
 grant usage, select on all sequences in schema public
   to anon, authenticated, service_role;
 `
