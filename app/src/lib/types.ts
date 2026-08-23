@@ -39,6 +39,20 @@ export interface ApiKey {
   revoked_at: string | null
 }
 
+export type IntegrationKind = 'google_form' | 'shulcloud' | 'google_drive'
+
+/** One organization's settings for one external system. Credentials are not
+ *  here — they live in Vault and are never returned to the browser. */
+export interface Integration {
+  id: string
+  org_id: string
+  kind: IntegrationKind
+  enabled: boolean
+  config: Record<string, unknown>
+  updated_at: string
+  created_at: string
+}
+
 /** A member of an organization, as returned by the org_members() function. */
 export interface OrgMember {
   user_id: string

@@ -79,6 +79,10 @@ insert into public.app_settings (org_id) values
   ('aaaaaaaa-0000-4000-8000-00000000000a'),
   ('bbbbbbbb-0000-4000-8000-00000000000b');
 
+insert into public.integrations (org_id, kind, enabled, config) values
+  ('aaaaaaaa-0000-4000-8000-00000000000a', 'google_form', true, '{"response_url": "https://a.example/form"}'),
+  ('bbbbbbbb-0000-4000-8000-00000000000b', 'google_form', true, '{"response_url": "https://b.example/form"}');
+
 insert into public.bridge_tokens (org_id, name, token_hash, token_prefix) values
   ('aaaaaaaa-0000-4000-8000-00000000000a', 'A bridge', 'hash-a-0000000000000000', 'nbk_aaaa'),
   ('bbbbbbbb-0000-4000-8000-00000000000b', 'B bridge', 'hash-b-0000000000000000', 'nbk_bbbb');
@@ -105,7 +109,8 @@ begin
   -- production data fails here too.
   foreach tbl in array array[
     'form_entries', 'print_jobs', 'printers',
-    'printer_config', 'printer_status', 'app_settings', 'bridge_tokens'
+    'printer_config', 'printer_status', 'app_settings', 'bridge_tokens',
+    'integrations'
   ] loop
     execute format('select count(*) from public.%I where org_id <> $1', tbl)
       into n using mine;
@@ -252,7 +257,7 @@ begin
   foreach tbl in array array[
     'form_entries', 'print_jobs', 'printers', 'printer_config',
     'printer_status', 'app_settings', 'organizations', 'memberships',
-    'platform_admins', 'bridge_tokens'
+    'platform_admins', 'bridge_tokens', 'integrations'
   ] loop
     begin
       execute format('select count(*) from public.%I', tbl) into n;

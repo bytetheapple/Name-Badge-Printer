@@ -1,32 +1,43 @@
-// Pushes a form entry into the existing Google Form by POSTing to its public
-// formResponse endpoint. The form's response URL and field ids come from secrets
-// so they can change without a code edit. Updates the entry's google_sync_status.
+// Pushes a form entry into a Google Form by POSTing to its public formResponse
+// endpoint, and updates the entry's google_sync_status.
 //
-// Secrets (set with `supabase secrets set ...`):
+// The form URL and field ids come from the entry's own organization
+// (integrations, kind 'google_form'). An org with nothing configured falls back
+// to the project-wide environment variables — but only while there is exactly
+// one organization, because past that point the fallback would push one
+// congregation's visitors into another's form.
+//
+// Environment fallback (set with `supabase secrets set ...`):
 //   GOOGLE_FORM_RESPONSE_URL  https://docs.google.com/forms/d/e/<FORM_ID>/formResponse
-//   GOOGLE_ENTRY_NAME         entry.<id>   (required)
+//   GOOGLE_ENTRY_FIRST_NAME   entry.<id>   (required)
+//   GOOGLE_ENTRY_LAST_NAME    entry.<id>   (optional)
 //   GOOGLE_ENTRY_PHONE        entry.<id>   (optional)
-//   GOOGLE_ENTRY_EMAIL        entry.<id>   (optional)
+//   GOOGLE_COLLECT_EMAIL      "true" to use Google's built-in email capture
+//   GOOGLE_EXTRA_FIELDS       {"entry.<id>": "value"} for fixed answers
 import { corsHeaders, json } from "../_shared/cors.ts";
+import { orgOfEntry, resolveSettings } from "../_shared/integration.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_ROLE = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-const FORM_URL = Deno.env.get("GOOGLE_FORM_RESPONSE_URL") ?? "";
-const F_FIRST = Deno.env.get("GOOGLE_ENTRY_FIRST_NAME") ?? "";
-const F_LAST = Deno.env.get("GOOGLE_ENTRY_LAST_NAME") ?? "";
-const F_PHONE = Deno.env.get("GOOGLE_ENTRY_PHONE") ?? "";
+// The environment defaults, in the same shape an org's own config uses.
 // Email is collected via Google's built-in "Collect email addresses"
 // (Responder input) feature, which uses the special `emailAddress` field.
-const COLLECT_EMAIL = (Deno.env.get("GOOGLE_COLLECT_EMAIL") ?? "") === "true";
-// Fixed values for required questions the kiosk doesn't ask about, as a JSON
-// object of { "entry.<id>": "value" }.
-const EXTRA_FIELDS: Record<string, string> = (() => {
-  try {
-    return JSON.parse(Deno.env.get("GOOGLE_EXTRA_FIELDS") ?? "{}");
-  } catch {
-    return {};
-  }
-})();
+// extra_fields carries fixed answers to required questions the kiosk does not
+// ask about, as { "entry.<id>": "value" }.
+const envDefaults = () => ({
+  response_url: Deno.env.get("GOOGLE_FORM_RESPONSE_URL") ?? "",
+  entry_first: Deno.env.get("GOOGLE_ENTRY_FIRST_NAME") ?? "",
+  entry_last: Deno.env.get("GOOGLE_ENTRY_LAST_NAME") ?? "",
+  entry_phone: Deno.env.get("GOOGLE_ENTRY_PHONE") ?? "",
+  collect_email: (Deno.env.get("GOOGLE_COLLECT_EMAIL") ?? "") === "true",
+  extra_fields: (() => {
+    try {
+      return JSON.parse(Deno.env.get("GOOGLE_EXTRA_FIELDS") ?? "{}");
+    } catch {
+      return {};
+    }
+  })(),
+});
 
 const restHeaders = {
   apikey: SERVICE_ROLE,
@@ -55,9 +66,20 @@ Deno.serve(async (req) => {
   const entryId = String(body.entry_id ?? "");
   if (!entryId) return json({ ok: false, error: "entry_id required" }, 400);
 
+  const orgId = await orgOfEntry(entryId);
+  const settings = await resolveSettings(orgId, "google_form", envDefaults);
+
+  const FORM_URL = String(settings?.config.response_url ?? "");
+  const F_FIRST = String(settings?.config.entry_first ?? "");
+  const F_LAST = String(settings?.config.entry_last ?? "");
+  const F_PHONE = String(settings?.config.entry_phone ?? "");
+  const COLLECT_EMAIL = Boolean(settings?.config.collect_email);
+  const EXTRA_FIELDS = (settings?.config.extra_fields ?? {}) as Record<string, string>;
+
   if (!FORM_URL || !F_FIRST) {
-    // Not configured yet — leave the entry pending rather than marking it failed.
-    return json({ ok: false, error: "Google sync is not configured" });
+    // Not configured for this org — leave the entry pending rather than marking
+    // it failed, which is what the admin's "resync" button relies on.
+    return json({ ok: false, error: "Google sync is not configured for this organization" });
   }
 
   const res = await fetch(
@@ -73,7 +95,7 @@ Deno.serve(async (req) => {
   if (F_LAST && entry.last_name) form.set(F_LAST, entry.last_name);
   if (F_PHONE && entry.phone) form.set(F_PHONE, entry.phone);
   if (COLLECT_EMAIL && entry.email) form.set("emailAddress", entry.email);
-  for (const [key, value] of Object.entries(EXTRA_FIELDS)) form.set(key, value);
+  for (const [key, value] of Object.entries(EXTRA_FIELDS)) form.set(key, String(value));
 
   try {
     const gres = await fetch(FORM_URL, {

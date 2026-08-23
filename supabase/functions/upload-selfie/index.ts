@@ -1,16 +1,26 @@
 // Uploads a visitor selfie to Google Drive using a service account.
 // Filename: First_Last_YYYY-MM-DD_HHMMSS.jpg, in the configured Drive folder.
 //
-// Secrets:
+// The service account comes from the entry's own organization (integrations,
+// kind 'google_drive': client email in config, private key in Vault). An org
+// with none configured falls back to the environment below, but only while
+// there is exactly one organization — past that, one congregation's selfies
+// would be uploaded with another's credentials.
+//
+// Environment fallback:
 //   GOOGLE_SA_CLIENT_EMAIL   service account email
 //   GOOGLE_SA_PRIVATE_KEY    service account private key (PEM; \n-escaped is fine)
-// Folder id comes from app_settings.selfie_drive_folder_id (set in the admin).
+// Folder id comes from app_settings.selfie_drive_folder_id (set in the admin),
+// which is already per-organization — it is a setting, not a credential.
 import { corsHeaders, json } from "../_shared/cors.ts";
+import { orgOfEntry, resolveSettings } from "../_shared/integration.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_ROLE = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-const SA_EMAIL = Deno.env.get("GOOGLE_SA_CLIENT_EMAIL") ?? "";
-const SA_KEY = (Deno.env.get("GOOGLE_SA_PRIVATE_KEY") ?? "").replace(/\\n/g, "\n");
+const envDefaults = () => ({
+  sa_client_email: Deno.env.get("GOOGLE_SA_CLIENT_EMAIL") ?? "",
+});
+const envPrivateKey = () => (Deno.env.get("GOOGLE_SA_PRIVATE_KEY") ?? "").replace(/\\n/g, "\n");
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -34,7 +44,7 @@ function pemToPkcs8(pem: string): ArrayBuffer {
   return buf.buffer;
 }
 
-async function getAccessToken(): Promise<string> {
+async function getAccessToken(SA_EMAIL: string, SA_KEY: string): Promise<string> {
   const now = Math.floor(Date.now() / 1000);
   const header = { alg: "RS256", typ: "JWT" };
   const claim = {
@@ -94,7 +104,6 @@ Deno.serve(async (req) => {
   const image = String(body.image ?? "");
   if (!UUID_RE.test(entryId)) return json({ ok: false, error: "Invalid sign-in" }, 400);
   if (!image) return json({ ok: false, error: "No image" }, 400);
-  if (!SA_EMAIL || !SA_KEY) return json({ ok: false, error: "Google service account not configured" });
 
   // The Drive folder is per organization, so the entry decides which settings
   // row applies. Reading it off the entry (rather than the request) also means
@@ -105,6 +114,15 @@ Deno.serve(async (req) => {
   );
   const orgId = entryRes.ok ? (await entryRes.json())[0]?.org_id : null;
   if (!orgId) return json({ ok: false, error: "Unknown sign-in" }, 404);
+
+  const settings = await resolveSettings(orgId, "google_drive", envDefaults);
+  const SA_EMAIL = String(settings?.config.sa_client_email ?? "");
+  // The org's key comes out of Vault; the environment one is the single-tenant
+  // fallback and is \n-escaped.
+  const SA_KEY = settings?.secret ? settings.secret.replace(/\\n/g, "\n") : envPrivateKey();
+  if (!SA_EMAIL || !SA_KEY) {
+    return json({ ok: false, error: "Google service account is not configured for this organization" });
+  }
 
   const cfgRes = await fetch(
     `${SUPABASE_URL}/rest/v1/app_settings?org_id=eq.${orgId}&select=selfie_drive_folder_id`,
@@ -122,7 +140,7 @@ Deno.serve(async (req) => {
   const filename = `${slug(first)}_${slug(last)}_${stamp(new Date())}.jpg`;
 
   try {
-    const token = await getAccessToken();
+    const token = await getAccessToken(SA_EMAIL, SA_KEY);
     const metadata = { name: filename, parents: [folderId] };
     const boundary = `sfb-${crypto.randomUUID()}`;
     const enc = new TextEncoder();
