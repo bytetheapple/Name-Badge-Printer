@@ -257,6 +257,26 @@ triggered from the web UI. Two routes:
   >
   > Boot takes roughly 90 seconds to a couple of minutes either way.
 
+## What `configure_printer()` actually has to do
+
+After testing, the original four-setting list reduces considerably:
+
+| Original setting | Verdict |
+|---|---|
+| 1. Forms mode → off | **Not needed.** Every job switches to raster itself. |
+| 2. WiFi Infrastructure mode | **No-op.** `B32=0` and `B62=1` are already the factory defaults; set them explicitly for certainty, but nothing changes. |
+| 3. WiFi SSID + passphrase | **Genuinely required.** `Bde`, `B63=3`, `Bf8`. |
+| 4. Auto power-on | **Worth setting** (`B1c=1`), though it only takes effect once the printer is off Ethernet. |
+
+Worth adding, none of which were on the original list:
+
+- `B1d=0` — auto power off, otherwise 60 minutes
+- Date, time and panel language, so the first-boot wizard is answered remotely
+
+So the automation is essentially **"join this WiFi network, and set a handful of
+conveniences"** — much less than the recon set out to build, because the setting
+that looked hardest turned out to be unnecessary.
+
 ## Boot time
 
 **~2 minutes from power-on until the printer answers on the network** (wired).
@@ -279,19 +299,25 @@ the separate form/template mode visible on the front panel — do not matter for
 **printing**. They would only matter for status queries, which this model
 ignores regardless.
 
-**This is the single most valuable thing left to test**, because it would
-remove the hardest setting from the automation entirely. It is also the one
-setting the web UI cannot fully reach: a sweep of every page found `Command
-Mode` and nothing else mode-related, so if the panel exposes a separate form
-mode, it is not web-configurable and `configure_printer()` could never have
-handled it anyway.
+**TESTED ON HARDWARE — IT WORKS.** A test badge was rendered and sent through
+the bridge's own `print_image()` while the front panel still showed form mode,
+and **the label printed**. The dynamic switch is sufficient: the printer's
+stored command mode and its panel form mode are both irrelevant to printing.
 
-**Blocked on media.** The unit arrived with DK-1234 (60mm x 86mm die-cut name
-badge) loaded, and `brother_ql` has no spec for that size — it knows `62`
-continuous plus a fixed set of die-cuts, none of them 60x86. A print attempt on
-the current roll would most likely fail on media mismatch and tell us nothing
-about command mode. **Load a 62mm continuous roll (what the deployment uses)
-before testing.**
+Two things follow:
+
+1. **Setting 1 comes off the automation list.** It was the hardest of the four,
+   the only one the web UI cannot fully reach (a sweep of every page found
+   `Command Mode` and nothing else mode-related), and it turns out not to be
+   needed. It affects only status queries, which this model does not answer
+   regardless.
+2. `_relax_media_validation()` in `bridge/printer.py` earns its keep — the job
+   went through with 62mm-continuous geometry on a 60x86 die-cut roll, which
+   the printer would otherwise have rejected as the wrong media.
+
+The print was misaligned to the label borders, as expected: a 1063 x 696 dot
+image sized for a 62mm endless roll does not fit an 86mm die-cut badge. That is
+geometry, not command mode.
 
 ## D. Apply behaviour and the "safe to unplug" signal
 
