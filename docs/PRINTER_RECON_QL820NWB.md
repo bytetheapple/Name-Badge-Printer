@@ -39,7 +39,32 @@ each page load. So the automation shape is fixed:
 3. Confirm success by looking for `<div class="postSuccess">Submit OK</div>`
 
 A plain cookie jar plus an HTML scrape is enough; no JavaScript execution is
-required for any of the four settings.
+required for any of the four settings. Three details are not optional, all
+found the hard way when every write silently failed:
+
+1. **Submit only the target form.** Every page carries a **logout form in its
+   header**, and its hidden `B129` riding along in a settings POST makes the
+   printer treat the request as a logout: the change is dropped and the
+   response carries no success marker. Scope the scrape to the form whose
+   `action` matches the page — noting the device writes the same form's action
+   both absolutely (`/net/wireless/wireless.html`) and relatively
+   (`wireless.html`).
+
+2. **Normalise the CSRF token's newlines to CRLF.** The token is wrapped across
+   several lines inside the `value` attribute. A browser normalises those to
+   CRLF when submitting; sending the raw LF that an HTML parser hands you is a
+   different byte string.
+
+3. **Send browser-ish headers** — a real `User-Agent` and a `Referer` for the
+   page being posted.
+
+Points 2 and 3 were applied together and the writes started working, so it is
+not established which of them mattered — the CRLF normalisation is the more
+likely culprit, but that is inference. Anyone shortening this should retain
+both until they have evidence to drop one.
+
+Labels in the markup use numeric entities (`Model&#32;Name`), so unescape
+before matching any of them.
 
 ## Page map
 
