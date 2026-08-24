@@ -8,10 +8,16 @@
 //   { printers?:   [{ id, reachable, media_type, media_width, error_state }],
 //     scanned?:    true,   // a scan just ran; `discovered` is its full result
 //     discovered?: [{ ip, mac, model, node_name }],
-//     provision_result?: { session_id, task, ok, next_state, data, log, error } }
+//     provision_result?: { session_id, task, ok, next_state, data, log, error },
+//     rotation_error?: "…" }   // could not store the replacement credential
 // Response:
 //   { ok, config: {...}, printers: [...], job: {...} | null, scan: boolean,
-//     provision: {...} | null }
+//     provision: {...} | null, bridge_token?: "nbk_…" }
+//
+// `bridge_token`, when present, is a replacement credential the device must
+// store and use from its next poll. Credentials renew themselves because a
+// print server has no operator — see _shared/rotation.ts. It is a secret and
+// must never be logged.
 //
 // `provision` is one step of a guided printer setup, already claimed for this
 // bridge. The other half of that setup happens in the browser — the steps that
@@ -34,6 +40,7 @@ import {
   restHeaders,
 } from "../_shared/bridge-auth.ts";
 import { applyResult, claimStep } from "../_shared/provisioning.ts";
+import { noteFailure, noteUsed, rotate, rotationDue, sweep, tokenRow } from "../_shared/rotation.ts";
 
 const nowIso = () => new Date().toISOString();
 
@@ -129,6 +136,25 @@ Deno.serve(async (req) => {
         body: JSON.stringify(rows),
       });
     }
+  }
+
+  // ---- credential rotation --------------------------------------------------
+  // Before anything else: the token that just authenticated is recorded as
+  // used, which is what retires whatever it replaced. Revoking on confirmed
+  // use rather than on issue is the whole safety of the scheme.
+  const token = await tokenRow(bridge.id);
+  let bridgeToken: string | undefined;
+  if (token) {
+    await noteUsed(token, now);
+
+    if (typeof body.rotation_error === "string" && body.rotation_error) {
+      // It could not keep the last replacement. Back off rather than mint a
+      // fresh one on every poll for ever.
+      await noteFailure(token, body.rotation_error, now);
+    } else if (rotationDue(token, Date.now())) {
+      bridgeToken = (await rotate(token, now)) ?? undefined;
+    }
+    await sweep();
   }
 
   // ---- a provisioning step the bridge has finished --------------------------
@@ -234,5 +260,5 @@ Deno.serve(async (req) => {
   // that closed the previous one.
   const provision = await claimStep(bridge.org_id, now);
 
-  return json({ ok: true, config, printers, job, scan, provision });
+  return json({ ok: true, config, printers, job, scan, provision, bridge_token: bridgeToken });
 });

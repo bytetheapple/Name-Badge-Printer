@@ -24,6 +24,7 @@ from dataclasses import dataclass, field
 import requests
 
 import config
+import credential
 import db
 
 _TIMEOUT = 15
@@ -43,6 +44,9 @@ class Poll:
     #: One step of a provisioning session for the bridge to run, already claimed
     #: by the server: {session_id, task, …context, …the secrets that step needs}.
     provision: dict | None = None
+    #: This poll carried a replacement credential, which has been stored. Worth
+    #: a log line and nothing more — the value itself is never logged.
+    rotated: bool = False
 
 
 class BridgeApiClient:
@@ -52,7 +56,23 @@ class BridgeApiClient:
 
     def __init__(self, token):
         self._url = f"{config.SUPABASE_URL}/functions/v1"
+        self._token = token
         self._headers = {"x-bridge-key": token, "Content-Type": "application/json"}
+        #: Set when storing a replacement failed, and sent on the next poll so
+        #: the server stops minting one every couple of seconds.
+        self._rotation_error = None
+
+    def _adopt(self, token):
+        """Store a replacement credential and start using it.
+
+        Order matters: the token is made durable on disk *before* it is used,
+        because using it is what tells the server to retire the current one. A
+        crash between the two would otherwise leave the device holding a
+        credential that has just been revoked.
+        """
+        credential.store(token)      # raises if it cannot be made durable
+        self._token = token
+        self._headers["x-bridge-key"] = token
 
     def _post(self, fn, payload):
         r = requests.post(
@@ -79,16 +99,37 @@ class BridgeApiClient:
                 # the admin can distinguish "found nothing" from "still going".
                 "scanned": discovered is not None,
                 "discovered": discovered or [],
+                **({"rotation_error": self._rotation_error} if self._rotation_error else {}),
                 # Present only on the poll after a provisioning step finished.
                 **({"provision_result": provision_result} if provision_result else {}),
             },
         )
+        replacement = body.get("bridge_token")
+        adopted = False
+        if replacement:
+            try:
+                self._adopt(replacement)
+                self._rotation_error = None
+                adopted = True
+            except Exception as e:  # noqa: BLE001 — never fatal
+                # The credential in hand is still valid: the server does not
+                # retire it until the replacement is actually used. Report the
+                # failure so it stops offering one, and carry on printing.
+                self._rotation_error = f"{type(e).__name__}: {e}"[:200]
+        elif self._rotation_error:
+            # Reported once; the server has recorded it and backed off.
+            self._rotation_error = None
+
         return Poll(
             config=body.get("config") or {},
             printers=body.get("printers") or [],
             job=body.get("job"),
             scan=bool(body.get("scan")),
             provision=body.get("provision"),
+            # Whether the credential actually changed, not whether one was
+            # offered — a device that could not store it has not rotated, and
+            # saying otherwise would put a false line in the log.
+            rotated=adopted,
         )
 
     def complete(self, job_id, ok, error=None):
@@ -146,6 +187,8 @@ class LegacyClient:
 
 def make_client():
     """Prefer the scoped token; fall back to service_role only if that is all there is."""
-    if config.BRIDGE_TOKEN:
-        return BridgeApiClient(config.BRIDGE_TOKEN)
+    if config.BRIDGE_TOKEN or credential.stored():
+        # The stored credential wins: the bootstrap value in .env is retired by
+        # the server the first time it is used.
+        return BridgeApiClient(credential.current(config.BRIDGE_TOKEN))
     return LegacyClient()
