@@ -112,6 +112,7 @@ export default function PrinterConfig() {
   const [tab, setTab] = useState<string>('add')
   const [editing, setEditing] = useState<Printer | null>(null)
   const [busy, setBusy] = useState<string | null>(null)
+  const [adding, setAdding] = useState(false)
   const [notice, setNotice] = useState<string | null>(null)
 
   const loadPrinters = useCallback(async () => {
@@ -133,6 +134,20 @@ export default function PrinterConfig() {
   useEffect(() => {
     if (tab !== 'add' && !printers.some((p) => p.id === tab)) setTab('add')
   }, [printers, tab])
+
+  /** For a printer a scan cannot see — a different network segment, or
+   *  multicast blocked. Its address is filled in on its own tab. */
+  async function addByHand() {
+    setAdding(true)
+    const { data } = await supabase
+      .from('printers')
+      .insert({ org_id: orgId, name: 'New Printer', port: 9100 })
+      .select('id')
+      .maybeSingle()
+    setAdding(false)
+    await loadPrinters()
+    if (data?.id) setTab(data.id as string) // adding one means wanting to set it up
+  }
 
   async function testPrint(printer: Printer) {
     setBusy(printer.id)
@@ -186,7 +201,14 @@ export default function PrinterConfig() {
         {notice && <div className="notice">{notice}</div>}
 
         {tab === 'add' && (
-          <DiscoverPrinters printers={printers} onAdded={() => void loadPrinters()} />
+          <>
+            <DiscoverPrinters printers={printers} onAdded={() => void loadPrinters()} />
+            <div className="add-by-hand">
+              <button className="secondary btn-sm" onClick={addByHand} disabled={adding}>
+                {adding ? 'Adding…' : 'Add a printer by hand'}
+              </button>
+            </div>
+          </>
         )}
 
         {current && (

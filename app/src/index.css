@@ -880,3 +880,11 @@ td.actions-cell {
   border-top: 1px solid var(--border);
   margin-top: 32px;
 }
+
+/* Last thing on the Add a Printer tab: the way in for a printer a scan
+   cannot see. Set apart so it reads as the fallback, not the main path. */
+.add-by-hand {
+  margin-top: 32px;
+  padding-top: 16px;
+  border-top: 1px solid var(--border);
+}
