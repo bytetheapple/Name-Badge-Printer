@@ -762,14 +762,14 @@ function PrinterPassword({
 
   return (
     <div className="provision-step">
-      <h3>The printer's own code</h3>
+      <h3>Enter the printer's Password (Pwd:)</h3>
       <p>
         Setting up the printer at <code>{session.wired_ip}</code>
         {session.model ? ` — ${session.model}` : ''}.
       </p>
       <p className="muted small">
-        Every printer has its own code, so this must be the one on <em>this</em> printer's label,
-        not another's. After a factory reset it is what the printer expects.
+        Look on the back of the printer. Below the bar code, look for &ldquo;Pwd: xxxxxx&rdquo; and
+        enter what comes after &ldquo;Pwd:&nbsp;&rdquo;.
       </p>
 
       {error && <div className="error">{error}</div>}
@@ -777,7 +777,6 @@ function PrinterPassword({
       <label className="field">
         Printer code
         <input value={code} onChange={(e) => setCode(e.target.value)} autoComplete="off" autoFocus />
-        <span className="muted small">Look for "Pwd: " on the printer itself.</span>
       </label>
 
       <button onClick={() => void go()} disabled={busy || saving}>
