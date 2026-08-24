@@ -727,6 +727,22 @@ function ManualAddress({
 }
 
 /**
+ * The code out of what someone typed off the label.
+ *
+ * The label reads "Pwd: aguQreSK", so that is what gets typed — copying only
+ * the second half is a thing you do once you know it matters. Rejecting it
+ * would be pedantry, and worse, the failure would arrive minutes later as a
+ * refused login.
+ *
+ * The colon is required before anything is stripped. Without that guard a code
+ * that happened to begin with those three letters would be quietly mangled,
+ * which is a far worse failure than not helping.
+ */
+function printerCode(input: string): string {
+  return input.replace(/^\s*pwd\s*:\s*/i, '').trim()
+}
+
+/**
  * The code on the chosen printer's own label.
  *
  * Asked here rather than at the start because each printer has a different
@@ -748,12 +764,13 @@ function PrinterPassword({
   const [error, setError] = useState<string | null>(null)
 
   async function go() {
-    if (!code.trim()) return setError('Enter the code from the printer.')
+    const secret = printerCode(code)
+    if (!secret) return setError('Enter the code from the printer.')
     setSaving(true)
     const { error } = await supabase.rpc('set_provisioning_secret', {
       p_session: session.id,
       p_kind: 'web_password',
-      p_secret: code.trim(),
+      p_secret: secret,
     })
     setSaving(false)
     if (error) return setError(error.message)
@@ -775,7 +792,6 @@ function PrinterPassword({
       {error && <div className="error">{error}</div>}
 
       <label className="field">
-        Printer code
         <input value={code} onChange={(e) => setCode(e.target.value)} autoComplete="off" autoFocus />
       </label>
 
