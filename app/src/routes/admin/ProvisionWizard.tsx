@@ -491,11 +491,6 @@ function Step({
             through: choose the language, then press OK through the date and time. They will show
             2017 — that is fine, the clock gets set later.
           </p>
-          <p className="warn">
-            This has to be finished now. Switching the printer off and on returns to the same
-            screen, and until it is done the printer cannot be used — and finishing it overwrites
-            the clock, which is why it cannot wait until after we configure anything.
-          </p>
           <button onClick={() => void advance('cable')} disabled={busy}>
             I have finished the setup screens
           </button>
