@@ -5,9 +5,16 @@
 // against its own org's printers — never as authority.
 //
 // Request  (POST, header `x-bridge-key`):
-//   { printers?: [{ id, reachable, media_type, media_width, error_state }] }
+//   { printers?:   [{ id, reachable, media_type, media_width, error_state }],
+//     discovered?: [{ ip, mac, model, node_name }] }
 // Response:
-//   { ok, config: {...}, printers: [...], job: {...} | null }
+//   { ok, config: {...}, printers: [...], job: {...} | null, scan: boolean }
+//
+// `scan` asks the bridge to look for printers on its LAN and report them in
+// `discovered` on a later poll. It is only ever true just after an admin asks,
+// because a subnet sweep every two seconds would be absurd — and the bridge is
+// the only thing that can see those printers at all, since they are on the
+// customer's network.
 // The returned job is already claimed (status -> printing); report the outcome
 // to bridge-complete.
 import { corsHeaders, json } from "../_shared/cors.ts";
@@ -80,6 +87,55 @@ Deno.serve(async (req) => {
     });
   }
 
+  // ---- scan results the bridge is reporting back ---------------------------
+  const discovered = Array.isArray(body.discovered) ? body.discovered : [];
+  if (discovered.length) {
+    const rows = discovered
+      .map((d) => d as Record<string, unknown>)
+      .filter((d) => typeof d.ip === "string" && d.ip)
+      .map((d) => ({
+        org_id: bridge.org_id,
+        ip: String(d.ip),
+        mac: d.mac ? String(d.mac) : null,
+        model: d.model ? String(d.model) : null,
+        node_name: d.node_name ? String(d.node_name) : null,
+        last_seen: now,
+      }));
+    if (rows.length) {
+      // on_conflict keeps first_seen from the original row, so an address that
+      // keeps turning up reads as "seen since", not "found again just now".
+      await fetch(`${REST}/discovered_printers?on_conflict=org_id,ip`, {
+        method: "POST",
+        headers: { ...restHeaders, Prefer: "resolution=merge-duplicates" },
+        body: JSON.stringify(rows),
+      });
+    }
+  }
+
+  // ---- has an admin asked for a scan? --------------------------------------
+  // Clearing the request as we hand it over means one ask produces one scan,
+  // even if several bridges poll for the same org.
+  let scan = false;
+  const askRes = await fetch(
+    `${REST}/printer_status?org_id=eq.${bridge.org_id}&scan_requested_at=not.is.null` +
+      `&select=scan_requested_at`,
+    { headers: restHeaders },
+  );
+  if (askRes.ok) {
+    const rows = await askRes.json();
+    if (rows.length) {
+      // Ignore a stale request: a bridge that was offline for an hour should
+      // not start sweeping the moment it reappears.
+      const asked = new Date(rows[0].scan_requested_at).getTime();
+      scan = Date.now() - asked < 5 * 60 * 1000;
+      await fetch(`${REST}/printer_status?org_id=eq.${bridge.org_id}`, {
+        method: "PATCH",
+        headers: restHeaders,
+        body: JSON.stringify({ scan_requested_at: null }),
+      });
+    }
+  }
+
   // ---- what the bridge needs to render -------------------------------------
   const cfgRes = await fetch(
     `${REST}/printer_config?org_id=eq.${bridge.org_id}&select=label_media,dpi,badge_template`,
@@ -145,5 +201,5 @@ Deno.serve(async (req) => {
     }
   }
 
-  return json({ ok: true, config, printers, job });
+  return json({ ok: true, config, printers, job, scan });
 });

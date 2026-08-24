@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react'
 import { supabase } from '../../lib/supabase'
 import { useOrg } from '../../lib/org'
 import BridgeTokens from './BridgeTokens'
+import DiscoverPrinters from './DiscoverPrinters'
 import type { Printer, PrinterConfigRow } from '../../lib/types'
 import defaultHeader from '../../assets/shir-hadash-logo.png'
 
@@ -340,6 +341,7 @@ export default function PrinterConfig() {
     <>
       <h1>Printer</h1>
       <BridgeTokens />
+      <DiscoverPrinters onAdded={() => void loadPrinters()} />
 
       <div className="section-head">
         <h2>Printers</h2>

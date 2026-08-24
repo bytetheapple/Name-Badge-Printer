@@ -19,6 +19,7 @@ from PIL import Image
 
 import client as client_module
 import config
+import discover
 import printer
 from badge import render_badge, render_test_badge
 
@@ -134,6 +135,7 @@ def main():
 
     last_probe = 0.0
     printers = []
+    discovered = None
 
     while True:
         try:
@@ -145,9 +147,23 @@ def main():
                 reports = probe_printers(printers)
                 last_probe = now
 
-            cfg, printers, job = client.poll(reports)
-            if job:
-                handle_job(client, job, cfg, printers)
+            result = client.poll(reports, discovered)
+            discovered = None
+            cfg, printers = result.config, result.printers
+
+            if result.scan:
+                # Only ever asked for just after an admin presses "scan", so the
+                # cost of a sweep is paid deliberately rather than every tick.
+                _log("scan requested; looking for printers on the local network")
+                found = discover.discover_printers()
+                discovered = [
+                    {"ip": f.ip, "mac": f.mac, "model": f.model, "node_name": f.node_name}
+                    for f in found
+                ]
+                _log(f"found {len(discovered)} printer(s); reporting on the next poll")
+
+            if result.job:
+                handle_job(client, result.job, cfg, printers)
                 continue  # loop again immediately to drain the queue
         except Exception as e:  # noqa: BLE001 - keep the loop alive through transient errors
             _log(f"loop error: {e}", err=True)
