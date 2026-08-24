@@ -104,7 +104,14 @@ check("reports what it found", r.data["candidates"] == [
 install(found=())
 r = pt.run("discover", BASE)
 check("nothing found is a failure, not an empty success", not r.ok)
-check("says what to check", "Ethernet cable" in (r.error or ""), r.error or "")
+# A printer that answers a ping can still be missed: the sweep covers one /24
+# and needs port 9100 open. The message has to name what was actually looked at
+# and offer the way past it, or it reads as "it did not work".
+check("names the subnet it swept", "10.0.0" in (r.error or ""), r.error or "")
+check("names the first-run screens, which hold the print service down",
+      "first-run" in (r.error or ""), r.error or "")
+check("offers naming the address directly",
+      "enter it directly" in (r.error or ""), r.error or "")
 check("does not advance the session", r.next_state == "", r.next_state)
 
 print("— a printer already in service must not be mistaken for a new one —")
