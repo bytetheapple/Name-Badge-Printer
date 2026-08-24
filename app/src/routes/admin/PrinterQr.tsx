@@ -41,6 +41,11 @@ export default function PrinterQr({
         if (!canvas || cancelled) return
         await QRCode.toCanvas(canvas, url, { width: 600, margin: 2, errorCorrectionLevel: 'H' })
         if (!cancelled) await drawLogo(canvas)
+        // qrcode writes an inline width/height onto the canvas, which beats the
+        // stylesheet — so the displayed size has to be handed back to CSS. The
+        // bitmap is untouched, and that is what the PNG and the label use.
+        canvas.style.width = ''
+        canvas.style.height = ''
       } catch (e) {
         setError((e as Error).message)
       }
