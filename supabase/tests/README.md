@@ -12,6 +12,12 @@ The results are collected in a table and selected at the end because the SQL
 editor renders result sets only and **discards `raise notice` output**. Keep it
 that way for anything an operator is meant to read.
 
+## `applied_check.sql`
+
+Read-only. Reports which migrations are actually in this database, phase by
+phase. Worth running whenever you are unsure — migrations are applied by hand,
+so nothing else records what has gone in.
+
 ## `dryrun.mjs`
 
 Applies every migration, in order, to a throwaway in-process Postgres
