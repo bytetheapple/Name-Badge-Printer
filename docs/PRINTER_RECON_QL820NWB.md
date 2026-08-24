@@ -272,8 +272,48 @@ For a WPA2 network: `B62=1`, `B63=3`, **`B64=4`**, `Bde=<ssid>`,
 > offering only None and WEP. The JS is fetchable without logging in, which
 > makes it the authority on any of this page's couplings.
 
-There is also a **Browse** button that scans for nearby APs — not needed for
-automation, but it exists if a guided wizard ever wants to offer a picker.
+### The Browse button — a site survey, captured
+
+`GET /net/wireless/wireless.html?wlan=3` returns the printer's own scan of
+nearby access points. **Confirmed against hardware** (firmware 1.32,
+2026-08-24), and it needs a logged-in session like the rest of the UI.
+
+This is the right source for a network picker, and the only trustworthy one:
+the printer is 2.4GHz (802.11b/g/n), so a list it produced itself cannot offer
+a network it is unable to join. A list from a phone or from the bridge can, and
+choosing a 5GHz network fails exactly the way a wrong passphrase does.
+
+Each result row looks like this — the names below are substituted, the markup
+is verbatim:
+
+```html
+<tr><td><input type="radio" name="lsel" value="Example-2G"/></td>
+<td><img src="../../common/images/ap.gif" alt="Infrastructure" /><input
+    type="hidden" name="ltyp_0" id="ltyp_0" value="1" /></td>
+<td class="searchSsid">Example-2G</td>
+<td><input type="hidden" name="lch_0" id="lch_0" value="11" />11</td>
+<td>.11b/g/n</td>
+<td>***</td></tr>
+```
+
+Four things worth knowing before parsing it:
+
+- The **`lsel` radio value** is the name the form itself would submit, which
+  makes it the authority. `td.searchSsid` is the same name rendered to read.
+- The Wireless Mode cell is **`.11b/g/n`**, not `802.11b/g/n`. The `802` is
+  absent from the markup entirely.
+- **One row per access point**, so a site with two APs — or a dual-band router
+  — lists the same SSID more than once. The row for the currently-associated
+  network carries `checked="checked"`.
+- A **second table** follows, for adding a network by hand. Its channel
+  dropdown lists every channel there is, so anything matching on "a cell
+  holding a channel number" will read that form as a result unless it is
+  excluded.
+
+Signal strength is rendered as asterisks (`***`, `*`), not a number.
+
+Parsed by `printer_config.parse_scan()`, with the captured page as a fixture in
+`bridge/test_printer_config.py`.
 
 ---
 

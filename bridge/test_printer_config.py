@@ -328,12 +328,45 @@ check("reads the wireless interface state", pc.wireless_active(IP) is False)
 check("returns None when unreachable", pc.wireless_active("127.0.0.1:1") is None)
 
 print("— the wireless scan table —")
-# NOTE: the QL-820NWB's real scan markup has never been captured. These are
-# constructed from the shapes such a table plausibly takes, so this proves the
-# parser is sane, NOT that it matches the printer. Capture a real page with
-#   curl -s 'http://<ip>/net/wireless/wireless.html?wlan=3'
-# and add it here before trusting the picker.
-SCAN = (
+# Captured from a real QL-820NWB on firmware 1.32 (192.168.1.69, 2026-08-24),
+# byte for byte apart from the network names, which are the site's own and have
+# no business in a public repository. Two rows carry the same SSID because two
+# access points answered for it.
+REAL_SCAN = """<table class="contents" summary="Browse SSID"><tr><th>&nbsp;</th><th>Type</th><th class="searchSsid">Name&#32;(SSID)</th><th>Channel</th><th>Wireless&#32;Mode</th><th>Signal</th></tr><tr><td><input type="radio" name="lsel" value="Example-2G"/></td>
+<td><img src="../../common/images/ap.gif" alt="Infrastructure" /><input type="hidden" name="ltyp_0" id="ltyp_0" value="1" /></td>
+<td class="searchSsid">Example-2G</td>
+<td><input type="hidden" name="lch_0" id="lch_0" value="11" />11</td>
+<td>.11b/g/n</td>
+<td>***</td></tr>
+<tr><td><input type="radio" name="lsel" value="Example-2G" checked="checked" /></td>
+<td><img src="../../common/images/ap.gif" alt="Infrastructure" /><input type="hidden" name="ltyp_1" id="ltyp_1" value="1" /></td>
+<td class="searchSsid">Example-2G</td>
+<td><input type="hidden" name="lch_1" id="lch_1" value="1" />1</td>
+<td>.11b/g/n</td>
+<td>*</td></tr>
+<tr><td><input type="radio" name="lsel" value="RMD000000000000"/></td>
+<td><img src="../../common/images/ap.gif" alt="Infrastructure" /><input type="hidden" name="ltyp_2" id="ltyp_2" value="1" /></td>
+<td class="searchSsid">RMD000000000000</td>
+<td><input type="hidden" name="lch_2" id="lch_2" value="11" />11</td>
+<td>.11b/g/n</td>
+<td>*</td></tr>
+</table>"""
+
+found = pc.parse_scan(REAL_SCAN)
+check("reads the real page", found == ["Example-2G", "RMD000000000000"], str(found))
+check("lists a network once however many APs answer", len(found) == 2, str(found))
+check("skips the header, which also carries class=searchSsid", "Name (SSID)" not in found)
+
+# The radio's value is what the form itself would submit. Falling back to the
+# rendered cell matters for a name the page escapes differently than it stores.
+only_cells = REAL_SCAN.replace('name="lsel"', 'name="other"')
+check("falls back to the rendered name if the radios change",
+      pc.parse_scan(only_cells) == ["Example-2G", "RMD000000000000"],
+      str(pc.parse_scan(only_cells)))
+
+# Neither anchor present: a different firmware laying the page out its own way.
+# These fixtures are constructed, so this is the shape test, not a real page.
+STRUCTURAL = (
     "<table>"
     "<tr><th>SSID</th><th>Channel</th><th>Mode</th><th>Signal</th></tr>"
     "<tr><td>Guest-2G</td><td>6</td><td>802.11b/g/n</td><td>-52</td></tr>"
@@ -341,24 +374,29 @@ SCAN = (
     "<tr><td>Guest-2G</td><td>6</td><td>802.11b/g/n</td><td>-52</td></tr>"
     "</table>"
 )
-found = pc.parse_scan(SCAN)
-check("reads the names", found == ["Guest-2G", "Lobby WiFi"], str(found))
-check("skips the header row", "SSID" not in found)
-check("decodes entities in a name", "Lobby WiFi" in found)
-check("lists each network once", len(found) == 2, str(found))
+fallback = pc.parse_scan(STRUCTURAL)
+check("unrecognised markup falls back to the row shape",
+      fallback == ["Guest-2G", "Lobby WiFi"], str(fallback))
+check("the fallback skips the header row", "SSID" not in fallback)
+check("the fallback decodes entities", "Lobby WiFi" in fallback)
 
 check("no table at all yields nothing", pc.parse_scan("<html><body>none</body></html>") == [])
 check("malformed markup does not raise", pc.parse_scan("<table><tr><td>x") == [])
 
-# A row of unrelated numbers must not be mistaken for a network. Channels are
-# 1..14, which is the only thing separating a scan row from any other table.
+# A row of unrelated numbers must not be read as a network. Channels are 1..14,
+# which is the only thing separating a scan row from any other table.
 other = pc.parse_scan(
     "<table><tr><td>Total pages</td><td>4211</td><td>since reset</td></tr></table>")
 check("an unrelated table is not read as networks", other == [], str(other))
 
-nested = pc.parse_scan(
-    "<table><tr><td><b>Sanctuary</b></td><td>1</td><td>IEEE 802.11g</td><td>-70</td></tr></table>")
-check("markup inside a name is handled", nested == ["Sanctuary"], str(nested))
+# The real page carries a second table — the "add it by hand" form — whose
+# channel dropdown lists every channel there is. It must not be read as results.
+check("the manual-entry form below the results is not read as networks",
+      pc.parse_scan(
+          '<table><tr><th>Type</th><th>Channel</th><th>Name (SSID)</th></tr>'
+          '<tr><td><select><option>Infrastructure</option></select></td>'
+          '<td><select><option>1 </option><option>2 </option></select></td>'
+          '<td><input name="add_ssid"/></td></tr></table>') == [], "read the form as a network")
 
 print()
 if FAILURES:

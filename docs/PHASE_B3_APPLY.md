@@ -106,23 +106,12 @@ reset.
 Naming a network that is not in the list stays available, because a printer is
 often set up at a desk and installed somewhere else.
 
-> **Not yet proven against hardware.** The scan page's markup has never been
-> captured — the recon only established that the Browse button exists. The
-> parser is written to the shape such a table plausibly takes and is tested
-> against constructed fixtures, so the picker may come up empty on the first
-> real run. That degrades to typing the network name, which is what the
-> previous version did anyway, so it costs nothing but the convenience.
->
-> To pin it down, capture a real page while a printer is on Ethernet:
->
-> ```
-> curl -s 'http://<printer-ip>/net/wireless/wireless.html?wlan=3' > scan.html
-> ```
->
-> That needs a logged-in session, so easiest is to open the wireless page in a
-> browser, press **Browse**, and save the resulting HTML. With that in hand the
-> parser can be fixed against reality and the fixture added to
-> `bridge/test_printer_config.py`.
+The scan endpoint is confirmed against hardware (firmware 1.32) and the
+captured page is a fixture in `bridge/test_printer_config.py`. What is *not*
+yet confirmed is the survey taken while the printer is on Ethernet with its
+radio idle, which is when provisioning actually reads it — the capture was made
+from a printer already on WiFi. If the list comes up empty at step 5, that is
+the likely reason, and typing the network name still works.
 
 ## The secrets
 

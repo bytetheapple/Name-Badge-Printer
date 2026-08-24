@@ -537,26 +537,88 @@ class _TableParser(HTMLParser):
 _CHANNELS = range(1, 15)
 
 
+class _ScanParser(HTMLParser):
+    """The two things on the scan page that name a network.
+
+    Captured from a QL-820NWB on firmware 1.32, where each result row is:
+
+        <td><input type="radio" name="lsel" value="Lobby-WiFi"/></td>
+        <td><img alt="Infrastructure"><input type="hidden" name="ltyp_0" …></td>
+        <td class="searchSsid">Lobby-WiFi</td>
+        <td><input type="hidden" name="lch_0" value="11"/>11</td>
+        …
+
+    The radio's value is what the form itself would submit, which makes it the
+    authority; the `searchSsid` cell is the same name rendered for a person to
+    read. Both are collected because they fail differently — a name the page
+    escapes for display would still be intact in the radio value.
+    """
+
+    def __init__(self):
+        super().__init__(convert_charrefs=True)
+        self.selectable: list[str] = []
+        self.labelled: list[str] = []
+        self._cell: list[str] | None = None
+
+    def handle_starttag(self, tag, attrs):
+        a = dict(attrs)
+        if tag == "input" and a.get("name") == "lsel" and a.get("value"):
+            self.selectable.append(a["value"])
+        elif tag == "td" and "searchSsid" in (a.get("class") or ""):
+            self._cell = []
+
+    def handle_data(self, data):
+        if self._cell is not None:
+            self._cell.append(data)
+
+    def handle_endtag(self, tag):
+        if tag == "td" and self._cell is not None:
+            name = re.sub(r"\s+", " ", "".join(self._cell)).strip()
+            if name:
+                self.labelled.append(name)
+            self._cell = None
+
+
+def _dedupe(names) -> list[str]:
+    """Order preserved. The same SSID appears once per access point, and a site
+    with two APs or a dual-band router lists it twice."""
+    seen: set[str] = set()
+    out: list[str] = []
+    for name in names:
+        if name and name not in seen:
+            seen.add(name)
+            out.append(name)
+    return out
+
+
 def parse_scan(html: str) -> list[str]:
     """SSIDs out of the wireless page's scan table.
 
-    Structural rather than a regex over flattened text: the printer's exact
-    markup for this table has never been captured, so matching on the *shape*
-    of a scan row — a name, a channel in 1..14, and a cell naming 802.11 — is
-    far likelier to survive contact with it than matching on punctuation.
+    Reads the markup the printer actually emits, with a structural fallback in
+    case a different firmware lays the page out another way: a row carrying a
+    name, a channel in 1..14, and a cell naming 802.11 is a scan result
+    wherever it sits.
 
-    Returns [] if nothing looks like a scan row, which callers must read as
-    "no opinion" rather than "no networks".
+    Returns [] if nothing looks like a scan result, which callers must read as
+    "no opinion" rather than "there are no networks".
     """
-    parser = _TableParser()
+    scan = _ScanParser()
     try:
-        parser.feed(html)
+        scan.feed(html)
     except Exception:  # noqa: BLE001 — malformed markup is not worth a crash
         return []
+    found = _dedupe(scan.selectable) or _dedupe(scan.labelled)
+    if found:
+        return found
 
-    seen: set[str] = set()
+    # Fallback: no recognised markup, so go by the shape of the row.
+    table = _TableParser()
+    try:
+        table.feed(html)
+    except Exception:  # noqa: BLE001
+        return []
     out: list[str] = []
-    for row in parser.rows:
+    for row in table.rows:
         if len(row) < 3:
             continue
         channel = any(c.isdigit() and int(c) in _CHANNELS for c in row[1:])
@@ -564,14 +626,11 @@ def parse_scan(html: str) -> list[str]:
         if not (channel and mode):
             continue
         name = next((c for c in row if c), "")
-        # A header row can otherwise satisfy the shape test on a page that puts
-        # an example in its heading.
+        # A header row can otherwise satisfy the shape test.
         if not name or name.lower() in ("ssid", "name", "network"):
             continue
-        if name not in seen:
-            seen.add(name)
-            out.append(name)
-    return out
+        out.append(name)
+    return _dedupe(out)
 
 
 def visible_networks(web: PrinterWeb) -> list[str]:
