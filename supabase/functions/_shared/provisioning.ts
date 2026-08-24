@@ -111,6 +111,19 @@ export async function claimStep(
     ssid: session.ssid ?? null,
     wireless_mac: session.wireless_mac ?? null,
   };
+  if (task === "discover") {
+    // So the sweep can tell a printer being set up from one already working,
+    // and keep looking rather than stopping at the first thing that answers.
+    const res = await fetch(
+      `${REST}/printers?org_id=eq.${orgId}&select=printer_ip`,
+      { headers: restHeaders },
+    );
+    step.known_ips = res.ok
+      ? ((await res.json()) as { printer_ip: string | null }[])
+          .map((p) => p.printer_ip)
+          .filter(Boolean)
+      : [];
+  }
   for (const kind of SECRETS_FOR[task]) {
     const value = await rpc("provisioning_secret", { p_session: session.id, p_kind: kind });
     if (typeof value === "string" && value) step[kind] = value;
@@ -198,15 +211,17 @@ export async function applyResult(
   const next = String(result.next_state ?? "");
   if (next) patch.state = next;
 
-  // A single candidate is not a choice worth making anyone make.
+  // Candidates are annotated with the printer they already are, if any, so the
+  // operator is never offered a working printer as though it were a new one.
+  //
+  // There is deliberately no shortcut past this step when only one printer
+  // answers. There used to be — "a single candidate is not a choice worth
+  // making anyone make" — and it wrote settings to a congregation's live
+  // printer, unasked, because that printer was the only one that had finished
+  // booting. Choosing which hardware gets reconfigured is exactly the choice
+  // worth making someone make.
   if (next === "select") {
-    const candidates = (patch.candidates ?? []) as unknown[];
-    if (candidates.length === 1) {
-      const only = candidates[0] as Record<string, unknown>;
-      patch.wired_ip = only.ip ?? null;
-      patch.model = only.model ?? null;
-      patch.state = "configure";
-    }
+    patch.candidates = await annotate(orgId, (patch.candidates ?? []) as Candidate[]);
   }
 
   if (next === "done") {
@@ -232,6 +247,40 @@ async function patchSession(
     `${REST}/provisioning_sessions?id=eq.${sessionId}&org_id=eq.${orgId}&state=eq.${task}`,
     { method: "PATCH", headers: restHeaders, body: JSON.stringify(patch) },
   );
+}
+
+interface Candidate {
+  ip?: string;
+  mac?: string | null;
+  model?: string | null;
+  via?: string;
+  /** The name of the printer this already is, if the org has it configured. */
+  configured_as?: string | null;
+}
+
+/**
+ * Mark any candidate that is already a printer in this organization.
+ *
+ * A subnet sweep finds every supported printer on the network, including the
+ * ones already in service. Those are the *last* thing an operator wants to
+ * reconfigure, and the easiest to pick by mistake when a freshly reset printer
+ * has not finished booting.
+ */
+async function annotate(orgId: string, candidates: Candidate[]): Promise<Candidate[]> {
+  if (!candidates.length) return candidates;
+  const res = await fetch(
+    `${REST}/printers?org_id=eq.${orgId}&select=name,printer_ip`,
+    { headers: restHeaders },
+  );
+  if (!res.ok) return candidates;
+  const known = new Map<string, string>();
+  for (const p of (await res.json()) as { name: string; printer_ip: string | null }[]) {
+    if (p.printer_ip) known.set(p.printer_ip.trim(), p.name);
+  }
+  return candidates.map((c) => ({
+    ...c,
+    configured_as: known.get(String(c.ip ?? "").trim()) ?? null,
+  }));
 }
 
 /** Add the finished printer, so the operator does not have to retype what we

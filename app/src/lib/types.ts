@@ -84,6 +84,8 @@ export interface ProvisioningCandidate {
   mac: string | null
   model: string | null
   via: string
+  /** The printer this already is, if the org has it configured. */
+  configured_as?: string | null
 }
 
 /** One entry in a session's transcript — what the print server reported. */

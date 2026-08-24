@@ -107,6 +107,38 @@ check("nothing found is a failure, not an empty success", not r.ok)
 check("says what to check", "Ethernet cable" in (r.error or ""), r.error or "")
 check("does not advance the session", r.next_state == "", r.next_state)
 
+print("— a printer already in service must not be mistaken for a new one —")
+# The bug this guards: a printer running for weeks answers a sweep instantly,
+# while the one actually being set up is still working through a factory reset.
+# Stopping at the first answer returns the wrong printer every time, and the
+# step that follows used to reconfigure it without anyone choosing it.
+IN_SERVICE = discover.Found(ip="10.0.0.9", mac="aa:bb:cc:dd:ee:ff",
+                            model="Brother QL-820NWB", via="sweep")
+
+install(found=(IN_SERVICE,))
+r = pt.run("discover", {**BASE, "known_ips": ["10.0.0.9"]})
+check("finding only a known printer is a failure", not r.ok)
+check("says the new printer has not arrived",
+      "already in service" in (r.error or ""), r.error or "")
+check("still reports what it saw, so the operator can make sense of it",
+      [c["ip"] for c in r.data.get("candidates", [])] == ["10.0.0.9"], str(r.data))
+check("does not advance to configure", r.next_state == "", r.next_state)
+
+# With both on the network, the sweep succeeds and hands over both — the
+# annotation of which is which happens server-side.
+install(found=(IN_SERVICE, FOUND))
+r = pt.run("discover", {**BASE, "known_ips": ["10.0.0.9"]})
+check("a new printer alongside a known one succeeds", r.ok and r.next_state == "select")
+check("both are reported", {c["ip"] for c in r.data["candidates"]} == {"10.0.0.9", "10.0.0.5"},
+      str(r.data["candidates"]))
+check("the transcript marks the one in service",
+      any("already in service" in ln for ln in r.log), str(r.log))
+
+# No known printers at all: unchanged behaviour, the first find wins.
+install(found=(FOUND,))
+r = pt.run("discover", {**BASE, "known_ips": []})
+check("with nothing in service it still returns promptly", r.ok and r.next_state == "select")
+
 print("— configure —")
 install()
 r = pt.run("configure", BASE)

@@ -13,10 +13,10 @@ const COLUMNS =
 const BRIDGE_STATES = new Set(['discover', 'configure', 'wifi', 'rediscover'])
 
 const WAITING_LABEL: Record<string, string> = {
-  discover: 'Looking for the printer on the wired network…',
-  configure: 'Configuring the printer…',
-  wifi: 'Writing the wireless settings…',
-  rediscover: 'Looking for the printer on the wireless network…',
+  discover: 'Step 4 of 8 — looking for the printer on the wired network…',
+  configure: 'Step 5 of 8 — configuring the printer you chose…',
+  wifi: 'Step 6 of 8 — writing the wireless settings…',
+  rediscover: 'Step 8 of 8 — looking for the printer on the wireless network…',
 }
 
 /** Rough worst case per step, so the wait can say something honest. */
@@ -419,6 +419,7 @@ function Step({
 
     case 'select': {
       const candidates = (session.candidates ?? []) as ProvisioningCandidate[]
+      const fresh = candidates.filter((c) => !c.configured_as)
       return (
         <div className="provision-step">
           <h3>4. Which printer is this?</h3>
@@ -432,9 +433,11 @@ function Step({
           ) : (
             <>
               <p className="muted small">
-                {candidates.length === 1
-                  ? 'One printer answered.'
-                  : `${candidates.length} printers answered.`}
+                {fresh.length === 0
+                  ? 'Only printers already in service answered — none of these is the one you are setting up.'
+                  : fresh.length === 1
+                    ? 'One new printer answered.'
+                    : `${fresh.length} new printers answered.`}
               </p>
               <table className="data">
                 <thead>
@@ -447,7 +450,7 @@ function Step({
                 </thead>
                 <tbody>
                   {candidates.map((c) => (
-                    <tr key={c.ip}>
+                    <tr key={c.ip} style={c.configured_as ? { opacity: 0.6 } : undefined}>
                       <td>
                         <code>{c.ip}</code>
                       </td>
@@ -456,15 +459,22 @@ function Step({
                       </td>
                       <td>{c.model ?? 'unknown'}</td>
                       <td>
-                        <button
-                          className="btn-sm"
-                          disabled={busy}
-                          onClick={() =>
-                            void advance('configure', { wired_ip: c.ip, model: c.model ?? null })
-                          }
-                        >
-                          This one
-                        </button>
+                        {/* A printer already in service is shown so the list
+                            makes sense, but never offered as a target: setting
+                            it up again would rewrite a working printer. */}
+                        {c.configured_as ? (
+                          <span className="muted small">Already set up as {c.configured_as}</span>
+                        ) : (
+                          <button
+                            className="btn-sm"
+                            disabled={busy}
+                            onClick={() =>
+                              void advance('configure', { wired_ip: c.ip, model: c.model ?? null })
+                            }
+                          >
+                            This one
+                          </button>
+                        )}
                       </td>
                     </tr>
                   ))}
