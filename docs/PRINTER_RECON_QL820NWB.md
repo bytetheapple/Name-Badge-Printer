@@ -390,11 +390,18 @@ Confirmed end to end on hardware:
 
    > The icon is the only trustworthy signal at this point. A radio that never
    > associates leaves every web page reporting the settings as correct, since
-   > they *are* stored — what has failed is the join. **An icon that never goes
-   > solid means the passphrase is wrong**, not that the configuration failed.
-   > The printer is still reachable over Ethernet, so re-running just the
-   > wireless step with the right passphrase is enough; there is no need to
-   > start from a reset.
+   > they *are* stored — what has failed is the join. **A blinking icon that
+   > never goes solid means the passphrase is wrong**, not that the
+   > configuration failed.
+   >
+   > **There is no recovery from that.** Once the radio comes up the printer is
+   > in wireless mode and stops answering on Ethernet, so a printer that failed
+   > to authenticate is unreachable at every address. The only way back is
+   > another factory reset.
+   >
+   > That makes the passphrase the single most expensive thing to get wrong in
+   > the whole process, and the reason provisioning shows it back for checking
+   > before applying it.
 5. The printer is now on a **different IP**, because the wireless interface has
    its own MAC and its own DHCP lease. Find it by its wireless MAC:
    `discover.py --mac <wireless-mac>`, which resolves `BRW<mac>.local`.

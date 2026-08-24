@@ -46,6 +46,8 @@ Supabase print_jobs (queued)  --poll every 2s-->  bridge
 | `test_printer_config.py` | Offline tests for that, against a stub of the printer's web UI |
 | `test_discover.py` | Offline tests for discovery (no printer, no network) |
 | `test_provision.py` | Walks every provisioning step with the network and operator stubbed |
+| `labels.py` | Registers DK-1234, which `brother_ql` does not ship |
+| `test_labels.py` | Tests for that |
 | `badge.py` | Render a badge to a PIL image (also runnable standalone) |
 | `printer.py` | brother_ql send + TCP reachability + status parse |
 | `config.py` | Env configuration |

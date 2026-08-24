@@ -11,7 +11,8 @@ from datetime import datetime
 from PIL import Image, ImageDraw, ImageFont
 
 import config
-from brother_ql.labels import ALL_LABELS
+import labels  # registers DK-1234; must be imported before the label table is read
+from brother_ql import labels as _bql_labels
 
 DPI = 300
 MM = DPI / 25.4  # pixels per millimetre (~11.81)
@@ -30,7 +31,9 @@ def _load_header_image(name: str):
         return None
 
 
-_LABELS = {label.identifier: label for label in ALL_LABELS}
+# Read through the module rather than binding the tuple at import: registering
+# a label replaces ALL_LABELS, so a by-value import would miss the addition.
+_LABELS = {label.identifier: label for label in _bql_labels.ALL_LABELS}
 
 
 def _label_render_size(label: str, length_mm: float) -> tuple[int, int]:
