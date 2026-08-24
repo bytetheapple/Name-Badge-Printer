@@ -143,7 +143,7 @@ export default function DiscoverPrinters({
       )}
 
       {newPrinters.length > 0 && (
-        <table className="table" style={{ marginTop: 16 }}>
+        <table className="data" style={{ marginTop: 16 }}>
           <thead>
             <tr>
               <th>IP Address</th>

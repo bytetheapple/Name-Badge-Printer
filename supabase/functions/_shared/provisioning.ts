@@ -118,6 +118,22 @@ export async function claimStep(
   return step;
 }
 
+/**
+ * Where a failed step hands the operator back to.
+ *
+ * It must be a state the *operator* owns, never the one that just failed: the
+ * bridge polls every couple of seconds, so leaving a session sitting in a
+ * bridge state would have it claimed again immediately and retried forever
+ * with nobody watching. Each of these is the step where there is actually
+ * something a person can do about it.
+ */
+const RECOVER_AT: Record<BridgeTask, string> = {
+  discover: "cable",           // check the cable, the switch, the reset
+  configure: "select",         // pick the printer again, or re-enter the password
+  wifi: "wifi_confirm",        // check the network name and passphrase
+  rediscover: "power_cycle",   // turn it off and on again, watch the icon
+};
+
 /** Columns a bridge is allowed to write back. Anything else it sends is
  *  ignored — the bridge reports observations, it does not steer the session. */
 const WRITABLE = new Set([
@@ -133,9 +149,9 @@ const WRITABLE = new Set([
 /**
  * Record what a step did and move the session on.
  *
- * A failed step leaves the session where it was so the operator can read the
- * transcript and try again — the physical situation has usually not changed,
- * and sending them back to the start of a factory reset would be cruel.
+ * A failed step hands control back to the operator at the last point where
+ * they can do something about it — never back to the start of a factory reset,
+ * and never left sitting in a bridge state where it would be retried forever.
  */
 export async function applyResult(
   orgId: string,
@@ -172,6 +188,7 @@ export async function applyResult(
 
   if (!ok) {
     patch.error = String(result.error ?? "That step did not finish.").slice(0, 1000);
+    patch.state = RECOVER_AT[task as BridgeTask];
     await patchSession(sessionId, orgId, task, patch);
     return;
   }

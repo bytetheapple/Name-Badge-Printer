@@ -66,6 +66,51 @@ export interface DiscoveredPrinter {
   last_seen: string
 }
 
+/** One printer a scan turned up during a guided setup. */
+export interface ProvisioningCandidate {
+  ip: string
+  mac: string | null
+  model: string | null
+  via: string
+}
+
+/** One entry in a session's transcript — what the print server reported. */
+export interface ProvisioningLogEntry {
+  at: string
+  step: string
+  ok: boolean
+  text: string
+}
+
+/**
+ * A printer setup in progress.
+ *
+ * `state` is the step it is waiting on. Four of them belong to the print
+ * server (discover, configure, wifi, rediscover) and the rest to whoever is
+ * standing at the printer.
+ */
+export interface ProvisioningSession {
+  id: string
+  org_id: string
+  state: string
+  printer_name: string | null
+  location: string | null
+  ssid: string | null
+  candidates: ProvisioningCandidate[]
+  wired_ip: string | null
+  model: string | null
+  serial: string | null
+  firmware: string | null
+  wireless_mac: string | null
+  wireless_ip: string | null
+  printer_id: string | null
+  task_started_at: string | null
+  log: ProvisioningLogEntry[]
+  error: string | null
+  created_at: string
+  updated_at: string
+}
+
 /** A member of an organization, as returned by the org_members() function. */
 export interface OrgMember {
   user_id: string
