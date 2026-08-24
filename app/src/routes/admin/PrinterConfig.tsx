@@ -140,14 +140,44 @@ function PrinterDialog({
  *  something new rather than re-reading the same rows. */
 const STATUS_REFRESH_MS = 20000
 
+/**
+ * The printer whose tab was last open, so leaving the page and coming back
+ * does not send you somewhere else.
+ *
+ * Only ever a printer id — never 'add'. Someone who has just finished setting a
+ * printer up is left on the Add tab, and returning them there every visit
+ * afterwards would defeat the point of landing on a printer at all.
+ *
+ * A stale id from a deleted printer, or from another organization, simply does
+ * not match and the first printer is used instead.
+ */
+const TAB_KEY = 'nbk.printerTab'
+
+const rememberedTab = () => {
+  try {
+    return window.localStorage.getItem(TAB_KEY) ?? ''
+  } catch {
+    return '' // private browsing, or storage disabled
+  }
+}
+
+const rememberTab = (id: string) => {
+  try {
+    window.localStorage.setItem(TAB_KEY, id)
+  } catch {
+    /* not worth failing over */
+  }
+}
+
 export default function PrinterConfig() {
   const { orgId, isAdmin } = useOrg()
   const [printers, setPrinters] = useState<Printer[]>([])
   const [loading, setLoading] = useState(true)
   //: 'add' until the first load says whether there is a printer to show.
   const [tab, setTab] = useState<string>('add')
-  //: Whether the landing tab has been picked. Without this the twenty-second
-  //: status refresh would drag the operator back to the first printer.
+  //: Whether the landing tab has been picked for this visit. Without it the
+  //: twenty-second status refresh would drag the operator back off whichever
+  //: printer they had opened.
   const landed = useRef(false)
   //: null = closed, 'add' = adding by hand, otherwise the printer being edited.
   const [dialog, setDialog] = useState<'add' | Printer | null>(null)
@@ -184,8 +214,17 @@ export default function PrinterConfig() {
   useEffect(() => {
     if (loading || landed.current) return
     landed.current = true
-    setTab(printers[0]?.id ?? 'add')
+    const remembered = rememberedTab()
+    const known = printers.some((p) => p.id === remembered)
+    setTab(known ? remembered : (printers[0]?.id ?? 'add'))
   }, [loading, printers])
+
+  // Follow the operator's choice, so the next visit starts where this one
+  // ended. The Add tab is deliberately not recorded — see TAB_KEY.
+  function openTab(id: string) {
+    setTab(id)
+    if (id !== 'add') rememberTab(id)
+  }
 
   // A deleted printer leaves its tab pointing at nothing.
   useEffect(() => {
@@ -234,7 +273,7 @@ export default function PrinterConfig() {
           printer is added. */}
       <div className="printer-tabs" role="tablist">
         {printers.map((p) => (
-          <PrinterTab key={p.id} printer={p} active={tab === p.id} onSelect={() => setTab(p.id)} />
+          <PrinterTab key={p.id} printer={p} active={tab === p.id} onSelect={() => openTab(p.id)} />
         ))}
         <button
           type="button"
