@@ -31,51 +31,79 @@ function PrinterTab({
   )
 }
 
-/** Edit a printer's details. A dialog rather than fields on the page, so the
- *  page can read as a plain summary of what is set up. */
-function EditPrinter({
+/** Add or edit a printer.
+ *
+ *  A dialog rather than fields on the page, so the page can read as a plain
+ *  summary of what is set up. Adding by hand collects the address here because
+ *  that is the entire reason for doing it by hand — a printer a scan cannot see
+ *  is a printer whose address someone has to type.
+ */
+function PrinterDialog({
+  orgId,
   printer,
   onClose,
   onSaved,
 }: {
-  printer: Printer
+  orgId: string
+  /** Omitted when adding. */
+  printer?: Printer
   onClose: () => void
-  onSaved: () => void
+  onSaved: (id?: string) => void
 }) {
-  const [name, setName] = useState(printer.name)
-  const [location, setLocation] = useState(printer.location ?? '')
-  const [ip, setIp] = useState(printer.printer_ip ?? '')
+  const adding = !printer
+  const [name, setName] = useState(printer?.name ?? '')
+  const [location, setLocation] = useState(printer?.location ?? '')
+  const [ip, setIp] = useState(printer?.printer_ip ?? '')
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   async function save() {
+    if (!name.trim()) {
+      setError('Give the printer a name.')
+      return
+    }
+    // Only insisted on when adding by hand: an existing printer may legitimately
+    // be mid-setup with no address yet.
+    if (adding && !ip.trim()) {
+      setError("Enter the printer's address — that is what adding by hand is for.")
+      return
+    }
     setSaving(true)
     setError(null)
-    const { error } = await supabase
-      .from('printers')
-      .update({
-        name: name.trim() || 'Unnamed printer',
-        location: location.trim() || null,
-        printer_ip: ip.trim() || null,
-      })
-      .eq('id', printer.id)
+    const fields = {
+      name: name.trim(),
+      location: location.trim() || null,
+      printer_ip: ip.trim() || null,
+    }
+    const { data, error } = adding
+      ? await supabase
+          .from('printers')
+          .insert({ org_id: orgId, port: 9100, ...fields })
+          .select('id')
+          .maybeSingle()
+      : await supabase.from('printers').update(fields).eq('id', printer!.id).select('id').maybeSingle()
     setSaving(false)
     if (error) {
       setError(error.message)
       return
     }
-    onSaved()
+    onSaved(data?.id as string | undefined)
     onClose()
   }
 
   return (
     <div className="modal-backdrop" onClick={onClose}>
       <div className="modal" role="dialog" aria-modal="true" onClick={(e) => e.stopPropagation()}>
-        <h2>Edit printer</h2>
+        <h2>{adding ? 'Add a printer' : 'Edit printer'}</h2>
         {error && <div className="error">{error}</div>}
         <label className="field">
           Name
-          <input value={name} onChange={(e) => setName(e.target.value)} autoFocus />
+          <input
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            placeholder="Lobby Printer"
+            autoFocus
+          />
         </label>
         <label className="field">
           Location
@@ -89,7 +117,9 @@ function EditPrinter({
           Address
           <input value={ip} onChange={(e) => setIp(e.target.value)} placeholder="192.168.1.69" />
           <span className="muted small">
-            Normally set by scanning. Change it if the printer has moved to a new address.
+            {adding
+              ? "The printer's address on your network."
+              : 'Change this if the printer has moved to a new address.'}
           </span>
         </label>
         <div className="modal-actions">
@@ -97,7 +127,7 @@ function EditPrinter({
             Cancel
           </button>
           <button onClick={() => void save()} disabled={saving}>
-            {saving ? 'Saving…' : 'Save'}
+            {saving ? 'Saving…' : adding ? 'Add printer' : 'Save'}
           </button>
         </div>
       </div>
@@ -110,9 +140,9 @@ export default function PrinterConfig() {
   const [printers, setPrinters] = useState<Printer[]>([])
   const [loading, setLoading] = useState(true)
   const [tab, setTab] = useState<string>('add')
-  const [editing, setEditing] = useState<Printer | null>(null)
+  //: null = closed, 'add' = adding by hand, otherwise the printer being edited.
+  const [dialog, setDialog] = useState<'add' | Printer | null>(null)
   const [busy, setBusy] = useState<string | null>(null)
-  const [adding, setAdding] = useState(false)
   const [notice, setNotice] = useState<string | null>(null)
 
   const loadPrinters = useCallback(async () => {
@@ -134,20 +164,6 @@ export default function PrinterConfig() {
   useEffect(() => {
     if (tab !== 'add' && !printers.some((p) => p.id === tab)) setTab('add')
   }, [printers, tab])
-
-  /** For a printer a scan cannot see — a different network segment, or
-   *  multicast blocked. Its address is filled in on its own tab. */
-  async function addByHand() {
-    setAdding(true)
-    const { data } = await supabase
-      .from('printers')
-      .insert({ org_id: orgId, name: 'New Printer', port: 9100 })
-      .select('id')
-      .maybeSingle()
-    setAdding(false)
-    await loadPrinters()
-    if (data?.id) setTab(data.id as string) // adding one means wanting to set it up
-  }
 
   async function testPrint(printer: Printer) {
     setBusy(printer.id)
@@ -204,8 +220,8 @@ export default function PrinterConfig() {
           <>
             <DiscoverPrinters printers={printers} onAdded={() => void loadPrinters()} />
             <div className="add-by-hand">
-              <button className="secondary btn-sm" onClick={addByHand} disabled={adding}>
-                {adding ? 'Adding…' : 'Add a printer by hand'}
+              <button className="secondary btn-sm" onClick={() => setDialog('add')}>
+                Add a printer by hand
               </button>
             </div>
           </>
@@ -223,7 +239,7 @@ export default function PrinterConfig() {
                 </div>
               </div>
               <div className="printer-summary-actions">
-                <button className="secondary btn-sm" onClick={() => setEditing(current)}>
+                <button className="secondary btn-sm" onClick={() => setDialog(current)}>
                   Edit
                 </button>
                 <button
@@ -249,11 +265,15 @@ export default function PrinterConfig() {
         )}
       </div>
 
-      {editing && (
-        <EditPrinter
-          printer={editing}
-          onClose={() => setEditing(null)}
-          onSaved={loadPrinters}
+      {dialog && orgId && (
+        <PrinterDialog
+          orgId={orgId}
+          printer={dialog === 'add' ? undefined : dialog}
+          onClose={() => setDialog(null)}
+          onSaved={async (id) => {
+            await loadPrinters()
+            if (id && dialog === 'add') setTab(id) // open what was just added
+          }}
         />
       )}
     </>
