@@ -20,6 +20,7 @@ from PIL import Image
 import client as client_module
 import config
 import discover
+import provision_task
 import printer
 from badge import render_badge, render_test_badge
 
@@ -167,6 +168,35 @@ def probe_printers(printers: list) -> list:
     return reports
 
 
+def handle_provision(request: dict) -> dict:
+    """Run one step of a guided printer setup and package up what happened.
+
+    The result goes back on the next poll rather than through a call of its
+    own: the bridge already has exactly one channel to the server, and a step
+    that finished is not more urgent than the next tick.
+    """
+    task = request.get("task")
+    session_id = request.get("session_id")
+    _log(f"provisioning step '{task}' for session {session_id}")
+
+    outcome = provision_task.run(task, request, log=lambda m: _log(f"  {m}"))
+
+    if outcome.ok:
+        _log(f"provisioning step '{task}' done -> {outcome.next_state}")
+    else:
+        _log(f"provisioning step '{task}' failed: {outcome.error}", err=True)
+
+    return {
+        "session_id": session_id,
+        "task": task,
+        "ok": outcome.ok,
+        "next_state": outcome.next_state,
+        "data": outcome.data,
+        "log": outcome.log,
+        "error": outcome.error,
+    }
+
+
 def main():
     config.require()
     client = client_module.make_client()
@@ -182,6 +212,7 @@ def main():
     last_probe = 0.0
     printers = []
     discovered = None
+    provision_result = None
 
     while True:
         try:
@@ -193,8 +224,9 @@ def main():
                 reports = probe_printers(printers)
                 last_probe = now
 
-            result = client.poll(reports, discovered)
+            result = client.poll(reports, discovered, provision_result)
             discovered = None
+            provision_result = None
             cfg, printers = result.config, result.printers
 
             if result.scan:
@@ -207,6 +239,13 @@ def main():
                     for f in found
                 ]
                 _log(f"found {len(discovered)} printer(s); reporting on the next poll")
+
+            if result.provision:
+                # One step of a guided printer setup, claimed for us by the
+                # server. These block the loop for as long as a few minutes —
+                # acceptable, because a printer being set up is not yet printing
+                # anything, and nobody is provisioning during a service.
+                provision_result = handle_provision(result.provision)
 
             if result.job:
                 handle_job(client, result.job, cfg, printers)

@@ -1,0 +1,287 @@
+"""Run one step of a provisioning session on the admin's behalf.
+
+`provision.py` is the same walkthrough driven from a terminal, with the
+operator answering prompts. Here the operator is in a browser instead, so the
+walkthrough is split in two: the physical steps happen there, and the steps
+that have to touch the printer happen here, one per poll.
+
+Each call does exactly one step and reports what happened. Nothing is retried
+silently and nothing carries state between calls — the session row in the
+database is the only memory, which is what lets the operator close the tab
+half way through a factory reset and come back to it.
+
+The four steps, in order:
+
+    discover     find printers on the wired network
+    configure    log in, identify it, apply the kiosk settings
+    wifi         write the wireless settings (the wired link drops)
+    rediscover   find it again on the wireless network
+
+Between `configure` and `wifi` the operator confirms the passphrase, and
+between `wifi` and `rediscover` they power-cycle the printer. Neither wait
+belongs here.
+"""
+from __future__ import annotations
+
+import time
+from dataclasses import dataclass, field
+
+import requests
+
+import discover
+import printer_config as pc
+
+#: Steps the bridge runs. Anything else in the session's `state` is waiting on
+#: a person and must never reach this module.
+TASKS = ("discover", "configure", "wifi", "rediscover")
+
+#: How long each step may take before it gives up and reports back. A factory
+#: reset takes around 90 seconds to reach the network and a wireless join a
+#: little less, so these are generous rather than tight: reporting "not found"
+#: too early sends the operator back to re-check cabling that was always fine.
+DISCOVER_TIMEOUT = 240.0
+REDISCOVER_TIMEOUT = 150.0
+_POLL_INTERVAL = 5.0
+
+
+@dataclass
+class TaskResult:
+    """What one step did, in a shape the server can store as-is."""
+
+    ok: bool
+    #: The state the session moves to. On failure the server keeps the operator
+    #: where they are so the step can be tried again.
+    next_state: str = ""
+    #: Columns to write back onto the session row.
+    data: dict = field(default_factory=dict)
+    #: Human-readable account, shown in the admin as the step's transcript.
+    log: list[str] = field(default_factory=list)
+    error: str | None = None
+
+
+def _found_json(f) -> dict:
+    return {"ip": f.ip, "mac": f.mac, "model": f.model, "via": f.via}
+
+
+def _wait_for_printers(subnet, timeout, say) -> list:
+    """Scan until something answers, rather than sleeping and hoping.
+
+    How long a reset printer takes to reach the network varies with the switch
+    and the DHCP server, so a fixed wait is either unreliable or slower than it
+    needs to be.
+    """
+    deadline = time.monotonic() + timeout
+    attempt = 0
+    while True:
+        attempt += 1
+        found = discover.discover_printers(subnet=subnet)
+        if found:
+            return found
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            return []
+        say(f"nothing yet (attempt {attempt}, {int(remaining)}s left)")
+        time.sleep(min(_POLL_INTERVAL, remaining))
+
+
+# --------------------------------------------------------------------- steps
+
+
+def _discover(ctx, say) -> TaskResult:
+    subnet = ctx.get("subnet")
+    say("looking for printers on the wired network")
+    found = _wait_for_printers(subnet, DISCOVER_TIMEOUT, say)
+    if not found:
+        return TaskResult(
+            ok=False,
+            log=say.lines,
+            error=(
+                "No printer answered. Check the Ethernet cable and the switch "
+                "port, that the printer is switched on, and that the factory "
+                "reset finished — it takes a while and must not be interrupted."
+            ),
+        )
+    say(f"found {len(found)} printer(s)")
+    for f in found:
+        say(f"  {f.ip}  {f.mac or '?'}  {f.model or '?'}")
+    return TaskResult(
+        ok=True,
+        next_state="select",
+        data={"candidates": [_found_json(f) for f in found]},
+        log=say.lines,
+    )
+
+
+def _configure(ctx, say) -> TaskResult:
+    ip = ctx.get("wired_ip")
+    password = ctx.get("web_password") or ""
+    if not ip:
+        return TaskResult(ok=False, log=say.lines, error="No printer was chosen.")
+
+    try:
+        result = pc.configure_printer(ip, password, log=say)
+    except RuntimeError:
+        return TaskResult(
+            ok=False,
+            log=say.lines,
+            error=(
+                "The printer refused that password. After a factory reset it is "
+                "the code printed on the back of the printer — if that is what "
+                "you entered, the reset probably did not finish."
+            ),
+        )
+    except requests.RequestException as e:
+        return TaskResult(
+            ok=False, log=say.lines, error=f"Could not reach the printer at {ip}: {e}"
+        )
+
+    say("")
+    for line in result.transcript().splitlines():
+        say(line)
+
+    data = {
+        "model": result.model,
+        "serial": result.serial,
+        "firmware": result.firmware,
+        "wireless_mac": result.wireless.mac,
+    }
+    if not result.ok:
+        return TaskResult(
+            ok=False,
+            data=data,
+            log=say.lines,
+            error=(
+                "Some settings did not apply. Stopping here rather than moving "
+                "the printer onto WiFi half-configured — see the transcript."
+            ),
+        )
+    if not result.wireless.mac:
+        # Without it the printer cannot be found again after the cutover, and
+        # finding it again is the only proof the WiFi settings worked.
+        return TaskResult(
+            ok=False,
+            data=data,
+            log=say.lines,
+            error=(
+                "The printer did not report a wireless MAC address, so it could "
+                "not be found again after moving to WiFi. Check the firmware "
+                f"version (this tooling expects {pc.FIRMWARE_VERIFIED})."
+            ),
+        )
+    return TaskResult(ok=True, next_state="wifi_confirm", data=data, log=say.lines)
+
+
+def _wifi(ctx, say) -> TaskResult:
+    ip = ctx.get("wired_ip")
+    ssid = ctx.get("ssid")
+    password = ctx.get("web_password") or ""
+    passphrase = ctx.get("wifi_passphrase") or ""
+    if not ip or not ssid:
+        return TaskResult(ok=False, log=say.lines, error="No printer or network was chosen.")
+
+    web = pc.PrinterWeb(ip, password)
+    try:
+        web.login()
+
+        # The catch that cost us an afternoon: the radio can be configured
+        # perfectly and still never come up, because "Network Settings on Power
+        # On" defaults to keeping whatever the last state was. It only takes
+        # effect at the next power-up, which is the very next step.
+        if web.fields_of(pc.PAGE_COMMS).get(pc.F_RADIO_ON_POWER) != "0":
+            say("turning the wireless LAN on at power-on")
+            web.submit(pc.PAGE_COMMS, {pc.F_RADIO_ON_POWER: "0"})
+
+        say(f"writing the settings for {ssid}")
+        changes, drop = pc.wifi_changes(ssid, passphrase)
+        ok, _sent, body = web.submit(pc.PAGE_WIRELESS, changes, drop)
+    except requests.RequestException as e:
+        # Losing the connection here is the expected outcome rather than a
+        # fault: the printer is either wired or wireless, and it just switched.
+        say(f"the wired link dropped while applying, which is expected ({type(e).__name__}: {e})")
+        return TaskResult(ok=True, next_state="power_cycle", log=say.lines)
+    except RuntimeError as e:
+        return TaskResult(ok=False, log=say.lines, error=str(e))
+
+    if not ok:
+        return TaskResult(ok=False, log=say.lines, error=pc._explain(body))
+    say("stored — the radio does not start until the printer restarts")
+    return TaskResult(ok=True, next_state="power_cycle", log=say.lines)
+
+
+def _rediscover(ctx, say) -> TaskResult:
+    mac = ctx.get("wireless_mac")
+    subnet = ctx.get("subnet")
+    say(f"looking for the printer on the wireless network ({mac or 'no MAC recorded'})")
+
+    deadline = time.monotonic() + REDISCOVER_TIMEOUT
+    attempt = 0
+    target = None
+    while True:
+        attempt += 1
+        target = discover.find_printer(mac=mac, subnet=subnet)
+        if target:
+            break
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            break
+        say(f"not there yet (attempt {attempt}, {int(remaining)}s left)")
+        time.sleep(min(_POLL_INTERVAL * 3, remaining))
+
+    if not target:
+        return TaskResult(
+            ok=False,
+            log=say.lines,
+            error=(
+                "The printer did not appear on the wireless network. If the WiFi "
+                "icon on its screen never became solid, the settings did land and "
+                "the network passphrase is almost certainly wrong. Also worth "
+                "checking: this model cannot see 5GHz networks at all."
+            ),
+        )
+    say(f"found at {target.ip} (via {target.via})")
+    return TaskResult(
+        ok=True,
+        next_state="done",
+        data={"wireless_ip": target.ip},
+        log=say.lines,
+    )
+
+
+_STEPS = {
+    "discover": _discover,
+    "configure": _configure,
+    "wifi": _wifi,
+    "rediscover": _rediscover,
+}
+
+
+class _Say:
+    """Collects the transcript while echoing it to the bridge's own log."""
+
+    def __init__(self, echo=None):
+        self.lines: list[str] = []
+        self._echo = echo
+
+    def __call__(self, message: str) -> None:
+        text = str(message)
+        self.lines.append(text)
+        if self._echo:
+            self._echo(text)
+
+
+def run(task: str, ctx: dict, log=None) -> TaskResult:
+    """Run one step. Never raises — a failure comes back as a TaskResult.
+
+    `ctx` is what the server sent for this step: the session's own columns plus
+    whichever secrets the step needs. The caller reports the result on its next
+    poll; nothing here writes to the database.
+    """
+    if task not in _STEPS:
+        return TaskResult(ok=False, error=f"unknown provisioning step {task!r}")
+
+    say = _Say(log)
+    try:
+        return _STEPS[task](ctx, say)
+    except Exception as e:  # noqa: BLE001 — a step must not take the bridge down
+        say(f"unexpected failure: {type(e).__name__}: {e}")
+        return TaskResult(ok=False, log=say.lines, error=f"{type(e).__name__}: {e}")
