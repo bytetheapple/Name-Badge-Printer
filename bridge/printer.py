@@ -14,8 +14,6 @@ import socket
 
 from brother_ql.backends.helpers import send
 from brother_ql.conversion import convert
-import labels  # registers DK-1234; must come before any label lookup
-labels.register()
 from brother_ql.raster import BrotherQLRaster
 
 MODEL = "QL-820NWB"

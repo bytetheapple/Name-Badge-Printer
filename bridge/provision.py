@@ -208,15 +208,8 @@ def main() -> int:
 
     # ---------------------------------------------------------------- 5. wifi
     step(5, "Join the WiFi network")
-    print(f"  Network:    {args.ssid}")
-    print(f"  Passphrase: {len(passphrase)} characters, "
-          f"starting {passphrase[:1]}… and ending …{passphrase[-1:]}")
-    print()
-    print("  CHECK THE PASSPHRASE NOW. This is the one step that cannot be")
-    print("  undone from here: once the radio comes up the printer is on WiFi")
-    print("  and stops answering on Ethernet, so a wrong passphrase leaves it")
-    print("  unreachable and the only way back is another factory reset.")
-    if not confirm("Is that the right network and passphrase? Apply it?"):
+    print(f"  Network: {args.ssid}")
+    if not confirm("Apply the wireless settings now?"):
         print("  Stopped. Nothing wireless was changed.")
         return 0
 
@@ -242,10 +235,8 @@ def main() -> int:
     print("  That icon is the only reliable indicator here: the web pages will")
     print("  report the settings as fine whether or not the radio ever joins.")
     print()
-    print("  A blinking icon that never goes solid means the printer is trying")
-    print("  and failing to authenticate — the passphrase is wrong. There is no")
-    print("  recovery from here: it is on WiFi now and will not answer on")
-    print("  Ethernet again, so the fix is to start over from a factory reset.")
+    print("  If it never becomes solid, the settings did land but the network")
+    print("  passphrase is probably wrong — see below.")
     ask("Turn the printer off and on, and wait for the WiFi icon to go solid.")
 
     # ------------------------------------------------------------ 7. rediscover
@@ -262,20 +253,18 @@ def main() -> int:
     if not target:
         print("\n  Not found.")
         print()
-        print("  If the WiFi icon blinked but never went solid, this is an")
-        print("  authentication failure — the passphrase is wrong. The settings")
-        print("  themselves landed; the join is what failed.")
+        print("  If the WiFi icon never became solid, the configuration did land")
+        print("  — it is almost certainly the passphrase. The printer is still")
+        print("  reachable over Ethernet, so there is no need to start again:")
         print()
-        print("  The printer is now in wireless mode and will not answer on")
-        print("  Ethernet again, so there is nothing left to talk to. Start over:")
-        print("  factory-reset it and run this script again with the correct")
-        print("  passphrase.")
+        print("      PRINTER_WEB_PASSWORD=… PRINTER_WIFI_PASSPHRASE='<correct>' \\")
+        print(f"        ./venv/bin/python wifi_setup.py {printer.ip} --ssid \"{args.ssid}\"")
         print()
-        print("  If the icon IS solid and it still was not found, the printer is")
-        print("  on the network and something else is wrong — check:")
+        print("  Then turn the printer off and on again and watch the icon.")
+        print()
+        print("  If the icon *is* solid but nothing was found, check instead:")
         print("    - is the network 2.4GHz? this model cannot see 5GHz at all")
         print("    - is this machine on the same network as the printer?")
-        print(f"    - try again: ./venv/bin/python discover.py --mac {wireless.mac}")
         return 1
     print(f"\n  Found at {target.ip} (via {target.via})")
 
