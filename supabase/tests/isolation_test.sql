@@ -250,6 +250,98 @@ begin
 end;
 $$;
 
+-- ------------------------------------- checks: the fleet firmware record
+-- Cross-tenant by design: a firmware version belongs to the hardware, not to
+-- the congregation. That makes who can read and write it worth pinning down.
+
+reset role;
+set local request.jwt.claims = '';
+
+do $$
+declare
+  row_ public.firmware_observations%rowtype;
+begin
+  perform public.record_firmware_observation('QL-820NWB', '1.32', true);
+  perform public.record_firmware_observation('QL-820NWB', '1.25', false,
+            array['set the panel language to English'], 'the printer said no');
+  perform public.record_firmware_observation('QL-820NWB', '1.25', false,
+            array['set the panel language to English', 'set the power behaviour'], 'again');
+  perform public.record_firmware_observation('QL-820NWB', '1.25', true);
+
+  select * into row_ from public.firmware_observations
+   where model = 'QL-820NWB' and firmware = '1.25';
+  if row_.attempts <> 3 or row_.successes <> 1 or row_.failures <> 2 then
+    raise exception 'TEST BROKEN: counted % attempts, % ok, % failed',
+      row_.attempts, row_.successes, row_.failures;
+  end if;
+  -- The actionable part: one step failing consistently is a moved field name.
+  if (row_.failed_steps ->> 'set the panel language to English')::int <> 2
+     or (row_.failed_steps ->> 'set the power behaviour')::int <> 1 then
+    raise exception 'TEST BROKEN: per-step counts are %', row_.failed_steps;
+  end if;
+  -- A later success must not erase what went wrong before it.
+  if row_.last_error is null then
+    raise exception 'TEST BROKEN: a success erased the last failure';
+  end if;
+  insert into public._isolation_results (signed_in, check_name)
+  values ('service_role', 'firmware_observations: counts, per-step tallies, last error');
+end;
+$$;
+
+set local request.jwt.claims = '{"sub":"aaaaaaaa-0000-4000-8000-000000000001","role":"authenticated"}';
+set local role authenticated;
+
+do $$
+declare
+  n bigint;
+begin
+  -- An ordinary org admin sees nothing: it describes every customer's hardware.
+  select count(*) into n from public.firmware_observations;
+  if n <> 0 then
+    raise exception 'ISOLATION FAILURE: an org admin can read % firmware row(s)', n;
+  end if;
+  insert into public._isolation_results (signed_in, check_name)
+  values ('org A owner', 'firmware_observations: invisible to a tenant');
+
+  begin
+    perform public.record_firmware_observation('QL-820NWB', '9.99', true);
+    raise exception 'ISOLATION FAILURE: a tenant wrote to the fleet firmware record';
+  exception when insufficient_privilege then null;
+  end;
+  insert into public._isolation_results (signed_in, check_name)
+  values ('org A owner', 'record_firmware_observation: not callable from the browser');
+
+  begin
+    insert into public.firmware_observations (model, firmware) values ('X', '1.0');
+    raise exception 'ISOLATION FAILURE: a tenant inserted into the fleet firmware record';
+  exception when insufficient_privilege then null;
+  end;
+  insert into public._isolation_results (signed_in, check_name)
+  values ('org A owner', 'firmware_observations: cannot be written directly');
+end;
+$$;
+
+-- A platform admin is who this is for.
+reset role;
+set local request.jwt.claims = '{"sub":"bbbbbbbb-0000-4000-8000-000000000001","role":"authenticated"}';
+set local role authenticated;
+
+do $$
+declare
+  n bigint;
+begin
+  select count(*) into n from public.firmware_observations;
+  if n < 2 then
+    raise exception 'ISOLATION FAILURE: a platform admin sees only % firmware row(s)', n;
+  end if;
+  insert into public._isolation_results (signed_in, check_name)
+  values ('platform admin', 'firmware_observations: visible to the platform team');
+end;
+$$;
+
+reset role;
+set local request.jwt.claims = '';
+
 -- --------------------------------- checks: issuing a print-server credential
 -- Minting is a platform-team action tied to imaging a card. An organization's
 -- own administrators must not be able to do it — not for another org, and not

@@ -158,6 +158,9 @@ check("succeeds and moves to the passphrase check",
 check("records the wireless MAC for the cutover",
       r.data["wireless_mac"] == WIRELESS.mac, str(r.data))
 check("keeps the transcript", any("set the clock" in ln for ln in r.log))
+check("reports the firmware outcome for the fleet record",
+      r.data["firmware_outcome"] == {"ok": True, "failed_steps": []},
+      str(r.data.get("firmware_outcome")))
 check("asks the printer which networks it can see",
       r.data["visible_networks"] == SEEN, str(r.data.get("visible_networks")))
 
@@ -177,6 +180,9 @@ install(result=good_result(ok=False))
 r = pt.run("configure", BASE)
 check("a failed setting stops before WiFi", not r.ok and r.next_state == "")
 check("explains why", "half-configured" in (r.error or ""), r.error or "")
+check("names which step failed, which is the part worth recording",
+      r.data["firmware_outcome"] == {"ok": False, "failed_steps": ["set the clock"]},
+      str(r.data.get("firmware_outcome")))
 
 # The wireless MAC is the only way to find the printer after the cutover, so a
 # printer that does not report one must not be moved onto WiFi at all.
@@ -225,6 +231,10 @@ check("says the code is per printer",
       "different one" in (r.error or ""), r.error or "")
 check("returns to the code, not to the choice of printer",
       r.next_state == "password", r.next_state)
+# The whole point of separating these: a mistyped password is not a property of
+# the firmware, and counting it as one would make the fleet record misleading.
+check("and records nothing against the firmware",
+      "firmware_outcome" not in r.data, str(r.data.get("firmware_outcome")))
 check("a Result knows it was refused", refused_result().refused is True)
 check("an ordinary failure is not mistaken for one",
       good_result(ok=False).refused is False)

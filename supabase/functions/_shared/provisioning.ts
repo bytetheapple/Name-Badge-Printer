@@ -209,6 +209,10 @@ export async function applyResult(
     if (WRITABLE.has(key)) patch[key] = value;
   }
 
+  // Fleet-wide, and deliberately not part of the session: a firmware version is
+  // a property of the hardware, not of the org that bought it.
+  await recordFirmware(data, String(result.error ?? ""));
+
   if (!ok) {
     patch.error = String(result.error ?? "That step did not finish.").slice(0, 1000);
     // A step may say where its failure belongs — it knows what went wrong, and
@@ -245,6 +249,35 @@ export async function applyResult(
   }
 
   await patchSession(sessionId, orgId, task, patch);
+}
+
+/**
+ * Note what this firmware did, if the step said anything about it.
+ *
+ * Absent when the outcome was not the configuration's to claim — a refused
+ * password, an unreachable printer — because attributing those to a firmware
+ * version is how a fleet record becomes misleading rather than useful.
+ */
+async function recordFirmware(data: Record<string, unknown>, error: string): Promise<void> {
+  const outcome = data.firmware_outcome as { ok?: boolean; failed_steps?: unknown } | undefined;
+  if (!outcome || typeof outcome !== "object") return;
+  const model = String(data.model ?? "").trim();
+  const firmware = String(data.firmware ?? "").trim();
+  if (!model || !firmware) return;
+
+  await fetch(`${REST}/rpc/record_firmware_observation`, {
+    method: "POST",
+    headers: restHeaders,
+    body: JSON.stringify({
+      p_model: model,
+      p_firmware: firmware,
+      p_ok: outcome.ok === true,
+      p_failed_steps: Array.isArray(outcome.failed_steps)
+        ? outcome.failed_steps.map(String)
+        : [],
+      p_error: outcome.ok === true ? null : error || null,
+    }),
+  });
 }
 
 async function patchSession(
