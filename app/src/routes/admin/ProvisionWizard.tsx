@@ -518,7 +518,7 @@ function Step({
       const fresh = candidates.filter((c) => !c.configured_as)
       return (
         <div className="provision-step">
-          <h3>4. Which printer is this?</h3>
+          <h3>4. Which printer do you want to configure?</h3>
           {candidates.length === 0 ? (
             <>
               <p>Nothing was found on the wired network.</p>
