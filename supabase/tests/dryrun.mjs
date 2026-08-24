@@ -441,6 +441,29 @@ try {
   else bad(`role negative control failed for the wrong reason: ${msg}`)
 }
 
+console.log('— negative control: without the trigger, an owner grants themselves a paid feature —')
+// A2's "owner updates organization" policy is column-blind, so the guard is the
+// only thing standing between an owner and the capability flag on their own row.
+// Remove the trigger outright. Renaming it does not disable it — a trigger
+// fires on its event, not on its name — and a control that does not actually
+// remove the guard proves nothing.
+const ungated = await build((sql, f) =>
+  f.includes('_mt_custom_integrations')
+    ? sql.replace(
+        `create trigger organizations_custom_integrations_guard
+  before update on public.organizations
+  for each row execute function public.enforce_custom_integrations_grant();`,
+        'select 1;')
+    : sql)
+try {
+  await ungated.exec(ROLES)
+  bad('negative control: an owner enabled custom integrations and the test PASSED')
+} catch (e) {
+  const msg = String(e.message).split('\n')[0]
+  if (msg.includes('enabled custom integrations')) ok(`without the guard it is caught: "${msg}"`)
+  else bad(`negative control failed for the wrong reason: ${msg}`)
+}
+
 console.log('— negative control: dropping either half of the B3 revoke must FAIL —')
 // A new function is EXECUTE-to-PUBLIC by default *and* this project grants the
 // Data API roles EXECUTE by name. Removing either revoke leaves the WiFi

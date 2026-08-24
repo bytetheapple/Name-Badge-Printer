@@ -1144,3 +1144,14 @@ td.actions-cell {
   margin: 0;
   flex: none;
 }
+
+/* Running text in a card — an explanation rather than a form. */
+.prose {
+  max-width: 62ch;
+}
+.prose p {
+  margin: 0 0 12px;
+}
+.prose p:last-child {
+  margin-bottom: 0;
+}

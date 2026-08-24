@@ -3,6 +3,8 @@ import { supabase } from '../../lib/supabase'
 import { useOrg } from '../../lib/org'
 import type { Integration, IntegrationKind } from '../../lib/types'
 
+export { CUSTOM_SPECS }
+
 const COLUMNS = 'id, org_id, kind, enabled, config, updated_at, created_at'
 
 type Field = {
@@ -23,7 +25,12 @@ type Spec = {
 }
 
 // What each integration needs, in the same shape the Edge Functions read.
-const SPECS: Spec[] = [
+//
+// Split by who owns the setup rather than by vendor. The two form syncs are
+// bespoke work — someone has to read a congregation's own form and copy its
+// field ids across — so they live behind the custom-integrations grant. Drive
+// is part of the product: any org that wants selfies needs it.
+const CUSTOM_SPECS: Spec[] = [
   {
     kind: 'google_form',
     title: 'Google Form',
@@ -68,6 +75,9 @@ const SPECS: Spec[] = [
       },
     ],
   },
+]
+
+const PLATFORM_SPECS: Spec[] = [
   {
     kind: 'google_drive',
     title: 'Google Drive (selfies)',
@@ -94,7 +104,7 @@ const SPECS: Spec[] = [
  * Vault, and there is no route that reads it back, so the field shows only
  * whether one is stored.
  */
-export default function Integrations() {
+export default function Integrations({ specs = PLATFORM_SPECS }: { specs?: Spec[] } = {}) {
   const { orgId, isAdmin } = useOrg()
   const [rows, setRows] = useState<Record<string, Integration>>({})
   const [hasSecret, setHasSecret] = useState<Record<string, boolean>>({})
@@ -117,7 +127,7 @@ export default function Integrations() {
     setRows(byKind)
 
     const flags: Record<string, boolean> = {}
-    for (const spec of SPECS.filter((s) => s.secret)) {
+    for (const spec of specs.filter((s) => s.secret)) {
       const { data: has } = await supabase.rpc('integration_has_secret', {
         p_org: orgId,
         p_kind: spec.kind,
@@ -126,7 +136,7 @@ export default function Integrations() {
     }
     setHasSecret(flags)
     setLoading(false)
-  }, [orgId])
+  }, [orgId, specs])
 
   useEffect(() => {
     void load()
@@ -198,7 +208,7 @@ export default function Integrations() {
       {notice && <div className="notice">{notice}</div>}
       {error && <div className="error">{error}</div>}
 
-      {SPECS.map((spec) => {
+      {specs.map((spec) => {
         const row = rows[spec.kind]
         const config = (row?.config ?? {}) as Record<string, unknown>
         return (

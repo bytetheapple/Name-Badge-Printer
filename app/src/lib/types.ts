@@ -5,6 +5,12 @@ export interface Organization {
   slug: string
   name: string
   status: 'active' | 'suspended'
+  /**
+   * Whether this org may configure bespoke sync targets. Granted by the
+   * platform team after the integration has actually been built — an org
+   * cannot turn it on for itself.
+   */
+  custom_integrations: boolean
 }
 
 /** One organization the signed-in user belongs to, with their role in it. */

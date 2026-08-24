@@ -67,7 +67,10 @@ export function OrgProvider({ children }: { children: ReactNode }) {
     }
     const ids = (rows ?? []).map((r) => r.org_id as string)
     const { data: orgRows, error: orgError } = ids.length
-      ? await supabase.from('organizations').select('id, slug, name, status').in('id', ids)
+      ? await supabase
+          .from('organizations')
+          .select('id, slug, name, status, custom_integrations')
+          .in('id', ids)
       : { data: [], error: null }
     if (orgError) {
       setError(orgError.message)

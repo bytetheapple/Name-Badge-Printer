@@ -14,6 +14,7 @@ import StatusPanel from './routes/admin/StatusPanel'
 import PrinterConfig from './routes/admin/PrinterConfig'
 import Settings from './routes/admin/Settings'
 import Members from './routes/admin/Members'
+import CustomIntegrations from './routes/admin/CustomIntegrations'
 
 const router = createBrowserRouter([
   { path: '/', element: <PublicForm /> },
@@ -34,6 +35,7 @@ const router = createBrowserRouter([
       { path: 'status', element: <StatusPanel /> },
       { path: 'config', element: <PrinterConfig /> },
       { path: 'settings', element: <Settings /> },
+      { path: 'integrations', element: <CustomIntegrations /> },
       { path: 'members', element: <Members /> },
     ],
   },

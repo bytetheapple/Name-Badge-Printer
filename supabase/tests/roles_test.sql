@@ -155,6 +155,17 @@ begin
   insert into public._role_results (acting_as, check_name)
   values ('staff', 'cannot see, start, or advance a printer setup');
 
+  -- Custom integrations are sold and switched on by us. An org must not be
+  -- able to grant itself a paid capability, and A2 gave owners a column-blind
+  -- update on their own organizations row — so this is worth pinning down.
+  update public.organizations set custom_integrations = true where id = org;
+  get diagnostics n = row_count;
+  if n <> 0 then
+    raise exception 'ROLE FAILURE: staff enabled custom integrations';
+  end if;
+  insert into public._role_results (acting_as, check_name)
+  values ('staff', 'cannot enable custom integrations');
+
   -- Integration settings are an admin concern, not a staff one.
   select count(*) into n from public.integrations where org_id = org;
   if n <> 0 then
@@ -324,6 +335,29 @@ begin
   get diagnostics n = row_count;
   if n <> 1 then raise exception 'ROLE FAILURE: owner could not rename the organization'; end if;
   insert into public._role_results (acting_as, check_name) values ('owner', 'renames the organization');
+
+  -- The same row, a different column. A2's update policy cannot tell them
+  -- apart, so if the trigger is missing this succeeds and an org helps itself
+  -- to a capability we charge for.
+  begin
+    update public.organizations set custom_integrations = true where id = org;
+    raise exception 'ROLE FAILURE: an owner enabled custom integrations for their own org';
+  exception when insufficient_privilege then null;
+  end;
+  insert into public._role_results (acting_as, check_name)
+  values ('owner', 'cannot enable custom integrations');
+
+  -- Writing the same value is not a change and must not be refused, or an
+  -- ordinary rename would fail whenever the client sends the whole row back.
+  update public.organizations
+     set name = 'Renamed again', custom_integrations = custom_integrations
+   where id = org;
+  get diagnostics n = row_count;
+  if n <> 1 then
+    raise exception 'ROLE FAILURE: the guard blocked an update that changed nothing';
+  end if;
+  insert into public._role_results (acting_as, check_name)
+  values ('owner', 'an unchanged flag does not block a rename');
 
   -- Owners may promote, which admins may not.
   update public.memberships set role = 'owner' where org_id = org and user_id = adminid;

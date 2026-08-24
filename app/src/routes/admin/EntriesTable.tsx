@@ -50,7 +50,18 @@ function DateFilter({
         setEditing(true)
         // The picker only opens on a real date input, which this becomes on
         // the very next render — so ask for it after that has happened.
-        requestAnimationFrame(() => e.target.showPicker?.())
+        //
+        // By then the browser may no longer count this as a user gesture, and
+        // showPicker() throws NotAllowedError rather than declining quietly.
+        // It is a convenience: the field is focused either way and can be
+        // typed into, and a second click opens the picker.
+        requestAnimationFrame(() => {
+          try {
+            e.target.showPicker?.()
+          } catch {
+            /* no gesture — the operator can click once more */
+          }
+        })
       }}
       onBlur={() => setEditing(false)}
       onChange={(e) => onChange(e.target.value)}
