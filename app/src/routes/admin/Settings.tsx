@@ -85,7 +85,7 @@ export default function Settings() {
 
       <form onSubmit={save} className="config-form">
         <section className="card">
-          <h2>Visitor selfie (applies to visitors only)</h2>
+          <h2>Selfie (visitors only)</h2>
           <label className="field">
             Selfie requirement
             <select
@@ -106,8 +106,7 @@ export default function Settings() {
               failing — and only the second is urgent. */}
           {hasFolder ? (
             <p className="muted small" style={{ marginTop: 8 }}>
-              Selfies upload as First_Last_Date_Time to the folder set under Integrations →
-              Google Drive.
+              Saved to Google Drive folder selected on Integrations tab.
             </p>
           ) : selfieMode === 'off' ? (
             <p className="muted small" style={{ marginTop: 8 }}>

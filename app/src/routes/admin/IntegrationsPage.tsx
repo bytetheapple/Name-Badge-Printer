@@ -52,7 +52,7 @@ export default function IntegrationsPage() {
           <>
             <p className="muted small">
               Visitor selfies are uploaded to Google Drive. Whether one is asked for at all is
-              set under Settings → Visitor selfie.
+              set under Settings → Selfie.
             </p>
             <Integrations />
             <DriveFolder />
