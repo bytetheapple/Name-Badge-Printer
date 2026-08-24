@@ -30,7 +30,7 @@ export default function BadgeDesign({
 }) {
   const [header, setHeader] = useState(printer.badge_header ?? 'WELCOME')
   const [subtitle, setSubtitle] = useState(printer.badge_subtitle ?? '')
-  const [useGraphic, setUseGraphic] = useState(Boolean(printer.header_image_url))
+  const [mode, setMode] = useState<'text' | 'logo' | 'image'>(printer.badge_header_mode ?? 'text')
   const [headerUrl, setHeaderUrl] = useState(printer.header_image_url ?? '')
   const [busy, setBusy] = useState(false)
   const [msg, setMsg] = useState<string | null>(null)
@@ -40,10 +40,24 @@ export default function BadgeDesign({
   useEffect(() => {
     setHeader(printer.badge_header ?? 'WELCOME')
     setSubtitle(printer.badge_subtitle ?? '')
-    setUseGraphic(Boolean(printer.header_image_url))
+    setMode(printer.badge_header_mode ?? 'text')
     setHeaderUrl(printer.header_image_url ?? '')
     setMsg(null)
   }, [printer])
+
+  /** Switch which of the three headers this printer prints. */
+  async function chooseMode(next: 'text' | 'logo' | 'image') {
+    setMode(next)
+    setBusy(true)
+    setMsg(null)
+    const { error } = await supabase
+      .from('printers')
+      .update({ badge_header_mode: next })
+      .eq('id', printer.id)
+    setBusy(false)
+    if (error) setMsg(`Error: ${error.message}`)
+    else onChanged()
+  }
 
   const dirty =
     header !== (printer.badge_header ?? 'WELCOME') ||
@@ -89,8 +103,12 @@ export default function BadgeDesign({
         .update({ header_image_url: url })
         .eq('id', printer.id)
       if (error) throw error
+      await supabase
+        .from('printers')
+        .update({ badge_header_mode: 'image' })
+        .eq('id', printer.id)
       setHeaderUrl(url)
-      setUseGraphic(true)
+      setMode('image')
       setMsg('Graphic updated.')
       onChanged()
     } catch (err) {
@@ -100,34 +118,16 @@ export default function BadgeDesign({
     }
   }
 
-  async function useTextHeader() {
-    setBusy(true)
-    setMsg(null)
-    // The stored object stays: it is content-addressed and may be shared with
-    // another printer. Detaching is enough.
-    const { error } = await supabase
-      .from('printers')
-      .update({ header_image_url: null })
-      .eq('id', printer.id)
-    setBusy(false)
-    if (error) {
-      setMsg(`Error: ${error.message}`)
-      return
-    }
-    setHeaderUrl('')
-    setUseGraphic(false)
-    onChanged()
-  }
-
-  const graphic = headerUrl || defaultHeader
+  // In image mode show the upload; otherwise the built-in logo is what 'logo' means.
+  const shown = mode === 'image' && headerUrl ? headerUrl : defaultHeader
 
   return (
     <div className="badge-design">
       <div>
         <div className="badge-preview" aria-label="Badge preview">
           <div className="badge-preview-header">
-            {useGraphic ? (
-              <img src={graphic} alt="" />
+            {mode !== 'text' ? (
+              <img src={shown} alt="" />
             ) : (
               <span>{header || ' '}</span>
             )}
@@ -147,8 +147,8 @@ export default function BadgeDesign({
           <label className="check">
             <input
               type="radio"
-              checked={!useGraphic}
-              onChange={() => void useTextHeader()}
+              checked={mode === 'text'}
+              onChange={() => void chooseMode('text')}
               disabled={busy}
             />
             Text
@@ -157,7 +157,7 @@ export default function BadgeDesign({
             className="grow"
             value={header}
             onChange={(e) => setHeader(e.target.value)}
-            disabled={useGraphic}
+            disabled={mode !== 'text'}
             placeholder="WELCOME"
           />
         </div>
@@ -167,11 +167,24 @@ export default function BadgeDesign({
           <label className="check">
             <input
               type="radio"
-              checked={useGraphic}
-              onChange={() => fileRef.current?.click()}
+              checked={mode === 'logo'}
+              onChange={() => void chooseMode('logo')}
               disabled={busy}
             />
-            Graphic
+            Built-in logo
+          </label>
+        </div>
+
+        <div className="field-row">
+          <span className="field-label" />
+          <label className="check">
+            <input
+              type="radio"
+              checked={mode === 'image'}
+              onChange={() => (headerUrl ? void chooseMode('image') : fileRef.current?.click())}
+              disabled={busy}
+            />
+            Your own graphic
           </label>
           <button
             className="secondary btn-sm"

@@ -83,6 +83,8 @@ export interface Printer {
   /** Badge wording, per printer: a lobby desk and a social hall can differ. */
   badge_header: string | null
   badge_subtitle: string | null
+  /** Which of the three possible headers this printer uses. */
+  badge_header_mode: 'text' | 'logo' | 'image'
   location: string | null
   printer_ip: string | null
   port: number

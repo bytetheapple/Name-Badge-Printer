@@ -35,6 +35,10 @@ with checks(phase, thing, present) as (values
    to_regprocedure('public.integration_for(uuid,text)') is not null),
   ('A5b', 'oauth_pending table',
    to_regclass('public.oauth_pending') is not null),
+  ('UI', 'printers.badge_header_mode',
+   exists (select 1 from information_schema.columns
+           where table_schema='public' and table_name='printers'
+             and column_name='badge_header_mode')),
   ('UI', 'printers.badge_header',
    exists (select 1 from information_schema.columns
            where table_schema='public' and table_name='printers'

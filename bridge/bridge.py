@@ -60,20 +60,46 @@ def resolve_header(url):
         return None
 
 
-def badge_template_for(target: dict, cfg: dict) -> dict:
+#: Shipped in bridge/assets/. Currently one congregation's mark — it should
+#: become a per-organization upload, at which point this constant goes away.
+BUNDLED_LOGO = "shir-hadash-logo.png"
+
+
+def badge_template_for(target: dict, cfg: dict, header_path: str | None = None) -> dict:
     """The template to render this printer's badges with.
 
     The wording is a property of the printer — a lobby desk and a social hall
     can reasonably say different things — so the printer's own header and
-    footer win over whatever the organization-wide template carries. Anything
-    the printer does not set falls back to the org, and then to the defaults in
-    badge.py.
+    footer win over whatever the organization-wide template carries.
+
+    The header is one of three things, and `badge_header_mode` says which, so
+    that what the admin shows and what prints cannot drift apart:
+
+        text   the header line, drawn as words
+        logo   the logo bundled with the bridge
+        image  a graphic uploaded for this printer
+
+    `header_path` is a already-downloaded image to use, which overrides the
+    mode: the external print API can attach a graphic to a single job.
     """
     template = dict(cfg.get("badge_template") or {})
     if target.get("badge_header") is not None:
         template["header"] = target["badge_header"]
     if target.get("badge_subtitle") is not None:
         template["subtitle"] = target["badge_subtitle"]
+
+    # Always decided here, never inherited from the org template: badge.py draws
+    # an image whenever header_image is set, so a leftover org value would
+    # silently override the printer's choice — and in a multi-tenant database
+    # that could mean printing another congregation's logo.
+    if header_path:
+        template["header_image"] = header_path
+    elif target.get("badge_header_mode") == "logo":
+        template["header_image"] = BUNDLED_LOGO
+    else:
+        # "text", or "image" whose upload could not be fetched — degrade to the
+        # header line rather than to somebody else's graphic.
+        template["header_image"] = ""
     return template
 
 
@@ -86,7 +112,14 @@ def handle_job(client, job: dict, cfg: dict, printers: list):
         if not target or not target.get("printer_ip"):
             raise RuntimeError("no printer assigned to this job (or its IP is unset)")
 
-        template = badge_template_for(target, cfg)
+        # A per-job graphic (external API) beats the printer's own setting; a
+        # printer set to "image" uses the one uploaded for it.
+        header_url = job.get("header_image_url")
+        if not header_url and target.get("badge_header_mode") == "image":
+            header_url = target.get("header_image_url")
+        header_path = resolve_header(header_url)
+
+        template = badge_template_for(target, cfg, header_path)
 
         if job.get("type") == "test":
             image = render_test_badge(template, label)
@@ -98,13 +131,8 @@ def handle_job(client, job: dict, cfg: dict, printers: list):
             pronouns = job.get("pronouns")
             if not first:
                 raise RuntimeError("no name or form entry for this job")
-            # Custom header: per-job (API) overrides the printer's default, which
-            # overrides the bundled logo in the template.
-            header_url = job.get("header_image_url") or target.get("header_image_url")
-            header_path = resolve_header(header_url)
-            job_template = {**template, "header_image": header_path} if header_path else template
             image = render_badge(
-                first or "", last or "", job_template, label, pronouns=pronouns or ""
+                first or "", last or "", template, label, pronouns=pronouns or ""
             )
 
         printer.print_image(
