@@ -137,6 +137,10 @@ function PrinterDialog({
   )
 }
 
+/** Slightly longer than the bridge's ~15s heartbeat, so most polls see
+ *  something new rather than re-reading the same rows. */
+const STATUS_REFRESH_MS = 20000
+
 export default function PrinterConfig() {
   const { orgId, isAdmin } = useOrg()
   const [printers, setPrinters] = useState<Printer[]>([])
@@ -161,6 +165,16 @@ export default function PrinterConfig() {
   useEffect(() => {
     void loadPrinters()
   }, [loadPrinters])
+
+  // The reachability dot is presented as live status, so it has to be. The
+  // bridge reports each printer's state on its heartbeat, roughly every 15
+  // seconds; without re-reading, the dot shows whatever was true when the page
+  // was opened and quietly goes stale.
+  useEffect(() => {
+    if (!orgId) return
+    const id = window.setInterval(() => void loadPrinters(), STATUS_REFRESH_MS)
+    return () => window.clearInterval(id)
+  }, [orgId, loadPrinters])
 
   // A deleted printer leaves its tab pointing at nothing.
   useEffect(() => {

@@ -50,6 +50,9 @@ export default function ProvisionWizard({ onFinished }: { onFinished: () => void
   const [starting, setStarting] = useState(false)
   const [showLog, setShowLog] = useState(false)
   const timer = useRef<number | null>(null)
+  //: Which session we have already announced, so the printer list is reloaded
+  //: once rather than on every poll.
+  const announced = useRef<string | null>(null)
 
   const load = useCallback(async () => {
     if (!orgId) return
@@ -85,6 +88,17 @@ export default function ProvisionWizard({ onFinished }: { onFinished: () => void
   useEffect(() => {
     void load()
   }, [load])
+
+  // The printer row is created the moment the last step reports done — by the
+  // server, not by this page — so the tab for it exists before anyone presses
+  // Finish. Waiting for that press left the page showing a printer list from
+  // before the setup, which reads as the setup having failed.
+  useEffect(() => {
+    if (session?.state === 'done' && session.printer_id && announced.current !== session.id) {
+      announced.current = session.id
+      onFinished()
+    }
+  }, [session, onFinished])
 
   // Poll only while the print server has the ball. The rest of the time the
   // only thing that changes this row is the operator, in this tab.
