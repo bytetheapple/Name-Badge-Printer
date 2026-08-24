@@ -151,6 +151,30 @@ check("normalises unpadded octets",
       or all(len(p) == 2 for p in discover.mac_of("127.0.0.1").split(":")),
       str(discover.mac_of("127.0.0.1")))
 
+print("— sweeping more than one network —")
+check("own network is searched first",
+      discover.candidate_subnets("192.168.0")[0] == "192.168.0",
+      str(discover.candidate_subnets("192.168.0")[:2]))
+check("and is not searched twice",
+      discover.candidate_subnets("192.168.0").count("192.168.0") == 1)
+check("covers the two a pair of routers in series hands out",
+      {"192.168.0", "192.168.1"} <= set(discover.candidate_subnets("10.1.1")))
+check("an unusual own network is still included",
+      "10.1.1" in discover.candidate_subnets("10.1.1"))
+check("no own network still yields somewhere to look",
+      len(discover.candidate_subnets(None)) > 0)
+
+swept = []
+real_sweep = discover.sweep
+discover.sweep = lambda subnet=None, **k: swept.append(subnet) or (
+    ["10.9.9.9"] if subnet == "192.168.4" else [])
+try:
+    hits = discover.sweep_wide(["192.168.0", "192.168.4"])
+    check("sweeps every network given", swept == ["192.168.0", "192.168.4"], str(swept))
+    check("and returns what any of them found", hits == ["10.9.9.9"], str(hits))
+finally:
+    discover.sweep = real_sweep
+
 print()
 if FAILURES:
     print(f"RESULT: {len(FAILURES)} failure(s): {', '.join(FAILURES)}")

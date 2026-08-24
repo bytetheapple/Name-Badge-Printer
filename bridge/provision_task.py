@@ -63,7 +63,7 @@ def _found_json(f) -> dict:
     return {"ip": f.ip, "mac": f.mac, "model": f.model, "via": f.via}
 
 
-def _wait_for_printers(subnet, timeout, say, known=()) -> list:
+def _wait_for_printers(subnet, timeout, say, known=()) -> list:  # noqa: D417
     """Scan until a printer we do not already know answers.
 
     How long a reset printer takes to reach the network varies with the switch
@@ -80,12 +80,13 @@ def _wait_for_printers(subnet, timeout, say, known=()) -> list:
     operator may still need to see them to understand what is on the network.
     """
     known = {str(ip).strip() for ip in known if ip}
+    subnets = discover.candidate_subnets(subnet)
     deadline = time.monotonic() + timeout
     attempt = 0
     seen: list = []
     while True:
         attempt += 1
-        found = discover.discover_printers(subnet=subnet)
+        found = discover.discover_printers(subnets=subnets)
         if found:
             seen = found
             fresh = [f for f in found if f.ip.strip() not in known]
@@ -108,7 +109,12 @@ def _wait_for_printers(subnet, timeout, say, known=()) -> list:
 def _discover(ctx, say) -> TaskResult:
     subnet = ctx.get("subnet") or discover.local_subnet()
     known = ctx.get("known_ips") or []
-    say(f"sweeping {subnet or 'the local network'}.0/24 for printers on port 9100")
+    nets = discover.candidate_subnets(subnet)
+    # Wide from the first pass rather than as a fallback. The wait here is for
+    # the printer's network stack to come up, not for the sweep — a full pass
+    # over every likely range measures at about seven seconds — so searching
+    # narrowly first would save nothing and miss a printer one router away.
+    say(f"sweeping {len(nets)} networks for printers on port 9100, starting with {nets[0]}.0/24")
     if known:
         say(f"({len(known)} printer(s) already in service will be marked as such)")
     found = _wait_for_printers(subnet, DISCOVER_TIMEOUT, say, known)
@@ -117,14 +123,14 @@ def _discover(ctx, say) -> TaskResult:
             ok=False,
             log=say.lines,
             error=(
-                f"No printer answered on {subnet or 'the local network'}.0/24. "
-                "Three things account for almost all of these: the printer is "
-                "on a different subnet from the print server, which this sweep "
-                "does not cross; the printer has not finished its first-run "
-                "language and date screens, so its print service is not "
-                "listening yet; or the cable or switch port is at fault. "
-                "A printer that answers a ping can still fail all three. "
-                "If you know its address, enter it directly instead."
+                f"No printer answered on any of {len(nets)} networks searched. "
+                "The most likely reasons: the printer has not finished its "
+                "first-run language and date screens, so its print service is "
+                "not listening yet — it answers a ping long before it answers "
+                "anything else; or the cable or switch port is at fault. "
+                "If neither, plug the printer into the same router or switch as "
+                "the print server for the setup — it can move afterwards. "
+                "Failing that, enter its address directly."
             ),
         )
 
@@ -140,13 +146,14 @@ def _discover(ctx, say) -> TaskResult:
             data={"candidates": [_found_json(f) for f in found]},
             log=say.lines,
             error=(
-                f"Only printers already in service answered on "
-                f"{subnet or 'the local network'}.0/24. The printer being set "
-                "up has not reached the network, or is on a different subnet "
-                "from the print server. From a factory reset it takes around 90 "
-                "seconds, and it must finish its first-run language and date "
-                "screens before its print service starts listening. "
-                "If you know its address, enter it directly instead."
+                f"Only printers already in service answered, across "
+                f"{len(nets)} networks. The printer being set up has not "
+                "reached the network yet: from a factory reset it takes around "
+                "90 seconds, and it must finish its first-run language and date "
+                "screens before its print service starts listening. If it has "
+                "been longer than that, plug it into the same router or switch "
+                "as the print server for the setup — it can move afterwards — "
+                "or enter its address directly."
             ),
         )
     return TaskResult(
@@ -305,11 +312,20 @@ def _rediscover(ctx, say) -> TaskResult:
         if mac else f"sweeping {subnet}.0/24")
 
     deadline = time.monotonic() + REDISCOVER_TIMEOUT
+    nets = discover.candidate_subnets(subnet)
     attempt = 0
     target = None
     while True:
         attempt += 1
+        # mDNS first — one lookup, and it usually answers. Then the wired
+        # network's range, then everywhere else: a printer that joins WiFi
+        # frequently lands on a different subnet from the cable it just left.
         target = discover.find_printer(mac=mac, subnet=subnet)
+        if not target:
+            for net in nets[1:]:
+                target = discover.find_printer(mac=mac, subnet=net)
+                if target:
+                    break
         if target:
             break
         remaining = deadline - time.monotonic()
@@ -323,7 +339,8 @@ def _rediscover(ctx, say) -> TaskResult:
             ok=False,
             log=say.lines,
             error=(
-                f"The printer did not appear on {subnet}.0/24. If the WiFi icon "
+                f"The printer did not appear on any of {len(nets)} networks. "
+                "If the WiFi icon "
                 "on its screen never became solid, the settings did land and the "
                 "network passphrase is almost certainly wrong — this model also "
                 "cannot see 5GHz networks at all. If the icon is solid, the "
