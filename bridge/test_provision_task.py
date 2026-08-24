@@ -184,7 +184,39 @@ install()
 pt.pc.configure_printer = lambda *a, **k: (_ for _ in ()).throw(RuntimeError("login refused"))
 r = pt.run("configure", BASE)
 check("a refused password is explained in plain words",
-      not r.ok and "code printed on the back" in (r.error or ""), r.error or "")
+      not r.ok and "code on" in (r.error or ""), r.error or "")
+check("and names the address, since the code is per printer",
+      "10.0.0.5" in (r.error or ""), r.error or "")
+check("and sends the operator back to re-enter it",
+      r.next_state == "password", r.next_state)
+
+print("— a session dropped part way through is a password problem, not firmware —")
+# What happened in the field: login appeared to work, the first write landed,
+# and every later one came back as the login page. The operator was shown a
+# firmware warning, because that is what the transcript led with.
+def refused_result():
+    r = pc.Result(model="QL-820NWB", serial="H2G", firmware="1.25")
+    r.wired, r.wireless = WIRED, WIRELESS
+    r.steps = [
+        pc.Step("set the clock", True),
+        pc.Step("set the panel language to English", False,
+                "the printer returned the login page (the session was not accepted)"),
+    ]
+    return r
+
+install(result=refused_result())
+r = pt.run("configure", BASE)
+check("is reported as a failure", not r.ok)
+check("blames the password, not the firmware",
+      "password" in (r.error or "").lower() and "firmware" not in (r.error or "").lower(),
+      r.error or "")
+check("says the code is per printer",
+      "different one" in (r.error or ""), r.error or "")
+check("returns to the code, not to the choice of printer",
+      r.next_state == "password", r.next_state)
+check("a Result knows it was refused", refused_result().refused is True)
+check("an ordinary failure is not mistaken for one",
+      good_result(ok=False).refused is False)
 
 install()
 pt.pc.configure_printer = lambda *a, **k: (_ for _ in ()).throw(

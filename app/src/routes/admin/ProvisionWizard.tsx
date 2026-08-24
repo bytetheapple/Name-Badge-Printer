@@ -222,13 +222,11 @@ function StartForm({
 }) {
   const [name, setName] = useState('')
   const [location, setLocation] = useState('')
-  const [webPassword, setWebPassword] = useState('')
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   async function start() {
     if (!name.trim()) return setError('Give the printer a name.')
-    if (!webPassword.trim()) return setError('Enter the printer code.')
 
     setSaving(true)
     setError(null)
@@ -248,20 +246,11 @@ function StartForm({
       return
     }
 
-    // Straight into the vault, never into a column, and deleted again as soon
-    // as the printer is on the network. The WiFi password is not asked for
-    // until step 5, once the printer can tell us which networks it can see.
-    const { error: secretError } = await supabase.rpc('set_provisioning_secret', {
-      p_session: data.id,
-      p_kind: 'web_password',
-      p_secret: webPassword,
-    })
-    if (secretError) {
-      await supabase.from('provisioning_sessions').delete().eq('id', data.id)
-      setSaving(false)
-      setError(secretError.message)
-      return
-    }
+    // Neither secret is asked for here. The printer's own code comes once a
+    // printer has been chosen — each has a different one on its label, so
+    // asking before we know which printer produces the wrong answer. The WiFi
+    // password comes at step 5, once the printer can say which networks it can
+    // see.
     setSaving(false)
     onStarted()
   }
@@ -281,16 +270,6 @@ function StartForm({
         Location
         <input value={location} onChange={(e) => setLocation(e.target.value)} />
       </label>
-      <label className="field">
-        Printer Code
-        <input
-          value={webPassword}
-          onChange={(e) => setWebPassword(e.target.value)}
-          autoComplete="off"
-        />
-        <span className="muted small">Look for "Pwd: " on the back of the printer itself.</span>
-      </label>
-
       <div className="modal-actions">
         <button className="secondary" onClick={onCancel} disabled={saving}>
           Cancel
@@ -322,6 +301,7 @@ const UNDER: Record<string, string> = {
   cable: 'cable',
   discover: 'select',
   select: 'select',
+  password: 'select',
   configure: 'wifi_confirm',
   wifi_confirm: 'wifi_confirm',
   wifi: 'power_cycle',
@@ -469,7 +449,7 @@ function Step({
                             className="btn-sm"
                             disabled={busy}
                             onClick={() =>
-                              void advance('configure', { wired_ip: c.ip, model: c.model ?? null })
+                              void advance('password', { wired_ip: c.ip, model: c.model ?? null })
                             }
                           >
                             This one
@@ -488,6 +468,9 @@ function Step({
         </div>
       )
     }
+
+    case 'password':
+      return <PrinterPassword session={session} busy={busy} advance={advance} />
 
     case 'wifi_confirm':
       return <WifiConfirm session={session} busy={busy} advance={advance} />
@@ -564,6 +547,67 @@ function Step({
  * and installed somewhere else, so naming a network that is not in the list
  * has to stay just as easy.
  */
+/**
+ * The code on the chosen printer's own label.
+ *
+ * Asked here rather than at the start because each printer has a different
+ * one, and until a printer has been chosen there is no right answer to give.
+ * Asking up front looked tidier and, in the field, produced a session holding
+ * one printer's code while the wizard talked to another.
+ */
+function PrinterPassword({
+  session,
+  busy,
+  advance,
+}: {
+  session: ProvisioningSession
+  busy: boolean
+  advance: (state: string, extra?: Record<string, unknown>) => Promise<void>
+}) {
+  const [code, setCode] = useState('')
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  async function go() {
+    if (!code.trim()) return setError('Enter the code from the printer.')
+    setSaving(true)
+    const { error } = await supabase.rpc('set_provisioning_secret', {
+      p_session: session.id,
+      p_kind: 'web_password',
+      p_secret: code.trim(),
+    })
+    setSaving(false)
+    if (error) return setError(error.message)
+    await advance('configure')
+  }
+
+  return (
+    <div className="provision-step">
+      <h3>The printer's own code</h3>
+      <p>
+        Setting up the printer at <code>{session.wired_ip}</code>
+        {session.model ? ` — ${session.model}` : ''}.
+      </p>
+      <p className="muted small">
+        Every printer has its own code, so this must be the one on <em>this</em> printer's label,
+        not another's. After a factory reset it is what the printer expects.
+      </p>
+
+      {error && <div className="error">{error}</div>}
+
+      <label className="field">
+        Printer code
+        <input value={code} onChange={(e) => setCode(e.target.value)} autoComplete="off" autoFocus />
+        <span className="muted small">Look for "Pwd: " on the printer itself.</span>
+      </label>
+
+      <button onClick={() => void go()} disabled={busy || saving}>
+        {saving ? 'Saving…' : 'Configure this printer'}
+      </button>
+    </div>
+  )
+}
+
 function WifiConfirm({
   session,
   busy,
