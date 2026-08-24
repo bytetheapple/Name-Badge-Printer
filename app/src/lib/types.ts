@@ -27,6 +27,12 @@ export interface BridgeToken {
   org_id: string
   name: string | null
   token_prefix: string | null
+  /** First successful connection. Null means the card has never been booted. */
+  first_used_at: string | null
+  superseded_at: string | null
+  /** Set when the device could not store a replacement credential. */
+  rotation_error: string | null
+  rotation_failed_at: string | null
   printer_ids: string[] | null
   last_seen: string | null
   created_at: string

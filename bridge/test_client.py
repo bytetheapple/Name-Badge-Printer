@@ -191,6 +191,62 @@ c.poll(None)
 check("an ordinary poll carries no provisioning result",
       "provision_result" not in Stub.seen[0]["body"], str(Stub.seen[0]["body"]))
 
+print("— credentials renew themselves —")
+import credential  # noqa: E402
+import tempfile, os  # noqa: E402
+
+credential.TOKEN_FILE = os.path.join(tempfile.mkdtemp(), "token")
+
+Stub.routes = {"/functions/v1/bridge-poll": (200, {"ok": True, "config": CONFIG,
+                                                   "printers": PRINTERS, "job": None,
+                                                   "bridge_token": "nbk_replacement"})}
+Stub.seen = []
+r = c.poll(None)
+check("says it rotated", r.rotated is True)
+check("stores the replacement", credential.stored() == "nbk_replacement")
+
+# The next request must carry the new credential. Using it is what tells the
+# server to retire the old one, so this is the step that completes the handover.
+Stub.routes = {"/functions/v1/bridge-poll": (200, {"ok": True, "config": CONFIG,
+                                                   "printers": PRINTERS, "job": None})}
+Stub.seen = []
+c.poll(None)
+check("authenticates with the new credential from the next poll",
+      Stub.seen[0]["bridge_key"] == "nbk_replacement", str(Stub.seen[0]["bridge_key"]))
+check("an ordinary poll reports no rotation error",
+      "rotation_error" not in Stub.seen[0]["body"], str(Stub.seen[0]["body"]))
+
+print("— a replacement that cannot be stored must not break the device —")
+# This is the dangerous case. The credential in hand is still valid precisely
+# because the server has not retired it, so the poll has to keep working and
+# the failure has to be reported rather than swallowed.
+real_store = credential.store
+credential.store = lambda t: (_ for _ in ()).throw(OSError("read-only file system"))
+Stub.routes = {"/functions/v1/bridge-poll": (200, {"ok": True, "config": CONFIG,
+                                                   "printers": PRINTERS, "job": None,
+                                                   "bridge_token": "nbk_cannot_store"})}
+Stub.seen = []
+r = c.poll(None)
+credential.store = real_store
+check("the poll still succeeds", r is not None and r.config == CONFIG)
+check("does not claim to have rotated", r.rotated is False)
+check("keeps the credential that still works", credential.stored() == "nbk_replacement")
+
+Stub.routes = {"/functions/v1/bridge-poll": (200, {"ok": True, "config": CONFIG,
+                                                   "printers": PRINTERS, "job": None})}
+Stub.seen = []
+c.poll(None)
+check("reports the failure so the server backs off",
+      "read-only file system" in str(Stub.seen[0]["body"].get("rotation_error")),
+      str(Stub.seen[0]["body"].get("rotation_error")))
+check("still authenticating with the working credential",
+      Stub.seen[0]["bridge_key"] == "nbk_replacement")
+
+Stub.seen = []
+c.poll(None)
+check("and stops repeating it once reported",
+      "rotation_error" not in Stub.seen[0]["body"], str(Stub.seen[0]["body"]))
+
 print("— a revoked or unknown token says so plainly —")
 Stub.routes = {"/functions/v1/bridge-poll": (401, {"ok": False, "error": "Unknown or revoked bridge key"})}
 try:
@@ -207,8 +263,17 @@ try:
 except RuntimeError as e:
     check("raises when ok is false", "printer_config missing" in str(e), str(e))
 
-print("— the deprecated service_role path still works for cutover —")
+print("— a rotated credential outranks everything else —")
+# The device above rotated, so bridge/token holds a credential. Even with .env
+# emptied it must keep using the scoped path rather than dropping back to the
+# project-wide key, which reaches every organization.
 config.BRIDGE_TOKEN = ""
+check("a stored credential still selects the scoped client",
+      isinstance(client.make_client(), client.BridgeApiClient))
+
+print("— the deprecated service_role path still works for cutover —")
+# A Pi mid-cutover has neither: no token in .env, and none stored yet.
+credential.TOKEN_FILE = os.path.join(tempfile.mkdtemp(), "token")
 legacy = client.make_client()
 check("falls back to the legacy client", isinstance(legacy, client.LegacyClient), legacy.mode)
 

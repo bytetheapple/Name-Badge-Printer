@@ -229,6 +229,9 @@ def main():
             provision_result = None
             cfg, printers = result.config, result.printers
 
+            if result.rotated:
+                _log("credential renewed and stored")
+
             if result.scan:
                 # Only ever asked for just after an admin presses "scan", so the
                 # cost of a sweep is paid deliberately rather than every tick.

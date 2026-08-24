@@ -27,7 +27,11 @@ def require():
             "Missing required env: SUPABASE_URL. "
             "Copy bridge/.env.example to bridge/.env and fill it in."
         )
-    if not BRIDGE_TOKEN and not SERVICE_ROLE_KEY:
+    # A device that has rotated no longer needs BRIDGE_TOKEN in .env — the
+    # bootstrap value has been retired and replaced by bridge/token.
+    import credential
+
+    if not BRIDGE_TOKEN and not SERVICE_ROLE_KEY and not credential.stored():
         raise SystemExit(
             "Missing credentials: set BRIDGE_TOKEN (issue one in the admin under "
             "Print servers). See bridge/.env.example."

@@ -27,3 +27,6 @@ supabase/.temp/
 .vscode/*
 !.vscode/extensions.json
 .idea/
+
+# The bridge writes its own rotated credential here.
+bridge/token
