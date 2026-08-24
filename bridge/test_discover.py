@@ -126,11 +126,17 @@ discover.mac_of = lambda ip: "00:11:22:33:44:55"
 found = discover.find_printer(mac=WIRELESS_MAC)
 check("returns nothing rather than the wrong device", found is None, str(found))
 
-print("— without a MAC, fall back to the model, which is only a hint —")
-found = discover.find_printer(model_hint="Brother")
-check("finds a Brother printer", found is not None and found.model == "Brother QL-820NWB")
-found = discover.find_printer(model_hint="Zebra")
-check("does not match a different make", found is None, str(found))
+print("— without a MAC, fall back to the model —")
+found = discover.find_printer()
+check("finds the supported model", found is not None and found.model == "Brother QL-820NWB")
+found = discover.find_printer(models=("QL-1110NWB",))
+check("does not match an unsupported model", found is None, str(found))
+
+print("— only supported models are offered —")
+check("the QL-820NWB is supported", discover.is_supported("Brother QL-820NWB"))
+check("an office laser is not", not discover.is_supported("Brother HL-L2350DW"))
+check("a bare 'Brother' is not enough", not discover.is_supported("Brother"))
+check("nothing at all is not", not discover.is_supported(None))
 
 print("— scan and add —")
 listed = discover.discover_printers()

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import { useOrg } from '../../lib/org'
-import type { DiscoveredPrinter } from '../../lib/types'
+import type { DiscoveredPrinter, Printer } from '../../lib/types'
 
 const COLUMNS = 'id, org_id, ip, mac, model, node_name, first_seen, last_seen'
 const POLL_MS = 3000
@@ -15,7 +15,14 @@ const GIVE_UP_MS = 90_000
  * cannot reach. So it asks the bridge, which is on that network, and waits for
  * what it reports back.
  */
-export default function DiscoverPrinters({ onAdded }: { onAdded: () => void }) {
+export default function DiscoverPrinters({
+  printers,
+  onAdded,
+}: {
+  /** Already configured, so a scan can say which of its results are old news. */
+  printers: Printer[]
+  onAdded: () => void
+}) {
   const { orgId, isAdmin } = useOrg()
   const [found, setFound] = useState<DiscoveredPrinter[]>([])
   const [scanning, setScanning] = useState(false)
@@ -103,13 +110,18 @@ export default function DiscoverPrinters({ onAdded }: { onAdded: () => void }) {
       setAdding(null)
       return
     }
-    // Drop it from the scan cache so the list shows what is still unclaimed.
-    await supabase.from('discovered_printers').delete().eq('id', p.id)
+    // The row stays: it is a record of what is on the network, and an added
+    // printer still is. It flips to "already active" immediately, which is
+    // clearer feedback than the row disappearing.
     setAdding(null)
     setNotice(`Added ${p.ip}. Give it a name and check the layout below.`)
     await load()
     onAdded()
   }
+
+  /** The configured printer at this address, if there is one. */
+  const alreadyAdded = (p: DiscoveredPrinter) =>
+    printers.find((existing) => existing.printer_ip === p.ip)
 
   if (!isAdmin) return null
 
@@ -117,8 +129,9 @@ export default function DiscoverPrinters({ onAdded }: { onAdded: () => void }) {
     <section className="card">
       <h2>Find a printer</h2>
       <p className="muted small">
-        Asks the print server to look for printers on the network it is connected to. Only it can
-        see them — this page cannot reach the local network directly.
+        Asks the print server to look for label printers on the network it is connected to. Only it
+        can see them — this page cannot reach the local network directly. Other devices that answer
+        on the network, such as office printers, are left out.
       </p>
       {error && <div className="error">{error}</div>}
       {notice && <div className="notice">{notice}</div>}
@@ -153,13 +166,19 @@ export default function DiscoverPrinters({ onAdded }: { onAdded: () => void }) {
                 <td>{p.model ?? 'unknown'}</td>
                 <td className="muted small">{new Date(p.last_seen).toLocaleTimeString()}</td>
                 <td>
-                  <button
-                    className="secondary btn-sm"
-                    disabled={adding === p.id}
-                    onClick={() => void add(p)}
-                  >
-                    {adding === p.id ? 'Adding…' : 'Add'}
-                  </button>
+                  {alreadyAdded(p) ? (
+                    <span className="muted small">
+                      Already active as <strong>{alreadyAdded(p)!.name}</strong>
+                    </span>
+                  ) : (
+                    <button
+                      className="secondary btn-sm"
+                      disabled={adding === p.id}
+                      onClick={() => void add(p)}
+                    >
+                      {adding === p.id ? 'Adding…' : 'Add'}
+                    </button>
+                  )}
                 </td>
               </tr>
             ))}

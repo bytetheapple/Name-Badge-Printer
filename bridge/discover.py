@@ -32,6 +32,19 @@ import requests
 PRINT_PORT = 9100
 STATUS_PAGE = "/general/status.html"
 
+#: The models this product supports. A site's network usually has other Brother
+#: devices on it — office lasers answer on 9100 and identify as Brother too —
+#: and offering those as label printers is just noise to whoever is choosing.
+SUPPORTED_MODELS = ("QL-820NWB",)
+
+
+def is_supported(model: str | None, models: tuple[str, ...] = SUPPORTED_MODELS) -> bool:
+    """Is this a printer we can actually drive?"""
+    if not model:
+        return False
+    lowered = model.lower()
+    return any(m.lower() in lowered for m in models)
+
 
 @dataclass
 class Found:
@@ -181,7 +194,7 @@ def find_printer(
     mac: str | None = None,
     node_name: str | None = None,
     subnet: str | None = None,
-    model_hint: str = "Brother",
+    models: tuple[str, ...] = SUPPORTED_MODELS,
     sweep_timeout: float = 0.4,
 ) -> Found | None:
     """Locate one printer, preferring the cheap routes.
@@ -207,20 +220,27 @@ def find_printer(
         found = Found(ip=ip, mac=mac_of(ip), model=model_of(ip), node_name=name, via="sweep")
         if wanted and found.mac == wanted:
             return found                              # exact: the MAC matches
-        if not wanted and found.model and model_hint.lower() in found.model.lower():
+        if not wanted and is_supported(found.model, models):
             # Remember it, but keep looking for something better.
             loose = loose or found
     return loose
 
 
 def discover_printers(
-    subnet: str | None = None, model_hint: str = "Brother", sweep_timeout: float = 0.4
+    subnet: str | None = None,
+    models: tuple[str, ...] = SUPPORTED_MODELS,
+    sweep_timeout: float = 0.4,
 ) -> list[Found]:
-    """Every printer of interest on the subnet — for a 'scan and add' screen."""
+    """Supported printers on the subnet — for a 'scan and add' screen.
+
+    Filtered here rather than in the admin so the noise never reaches it: an
+    office laser answers on 9100 and calls itself a Brother, and listing one as
+    a candidate label printer would only invite someone to pick it.
+    """
     out: list[Found] = []
     for ip in sweep(subnet, timeout=sweep_timeout):
         model = model_of(ip)
-        if model and model_hint.lower() in model.lower():
+        if is_supported(model, models):
             out.append(Found(ip=ip, mac=mac_of(ip), model=model, via="sweep"))
     return out
 

@@ -341,7 +341,7 @@ export default function PrinterConfig() {
     <>
       <h1>Printer</h1>
       <BridgeTokens />
-      <DiscoverPrinters onAdded={() => void loadPrinters()} />
+      <DiscoverPrinters printers={printers} onAdded={() => void loadPrinters()} />
 
       <div className="section-head">
         <h2>Printers</h2>
