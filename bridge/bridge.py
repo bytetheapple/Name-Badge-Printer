@@ -60,15 +60,33 @@ def resolve_header(url):
         return None
 
 
+def badge_template_for(target: dict, cfg: dict) -> dict:
+    """The template to render this printer's badges with.
+
+    The wording is a property of the printer — a lobby desk and a social hall
+    can reasonably say different things — so the printer's own header and
+    footer win over whatever the organization-wide template carries. Anything
+    the printer does not set falls back to the org, and then to the defaults in
+    badge.py.
+    """
+    template = dict(cfg.get("badge_template") or {})
+    if target.get("badge_header") is not None:
+        template["header"] = target["badge_header"]
+    if target.get("badge_subtitle") is not None:
+        template["subtitle"] = target["badge_subtitle"]
+    return template
+
+
 def handle_job(client, job: dict, cfg: dict, printers: list):
     job_id = job["id"]
     try:
-        template = cfg.get("badge_template") or {}
         label = cfg.get("label_media", "62")
 
         target = next((p for p in printers if p["id"] == job.get("printer_id")), None)
         if not target or not target.get("printer_ip"):
             raise RuntimeError("no printer assigned to this job (or its IP is unset)")
+
+        template = badge_template_for(target, cfg)
 
         if job.get("type") == "test":
             image = render_test_badge(template, label)

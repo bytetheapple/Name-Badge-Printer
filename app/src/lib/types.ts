@@ -80,6 +80,9 @@ export interface Printer {
   name: string
   /** Opaque, rotatable identifier encoded in this printer's lobby QR code. */
   kiosk_token: string
+  /** Badge wording, per printer: a lobby desk and a social hall can differ. */
+  badge_header: string | null
+  badge_subtitle: string | null
   location: string | null
   printer_ip: string | null
   port: number

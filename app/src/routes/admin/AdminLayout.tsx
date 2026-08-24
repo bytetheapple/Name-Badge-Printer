@@ -73,6 +73,10 @@ export default function AdminLayout() {
       <main className="admin-main">
         <Outlet />
       </main>
+      <footer className="admin-footer">
+        Badges print on <strong>Brother DK-1234</strong> die-cut name-badge labels (60 × 86 mm).
+        That is the only media this system supports.
+      </footer>
     </div>
   )
 }

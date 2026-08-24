@@ -737,3 +737,146 @@ td.actions-cell {
 .printer-tab-panel {
   padding-top: 16px;
 }
+
+/* ---- Printers page: flat, no panels ---- */
+.printer-summary {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+  margin-bottom: 24px;
+}
+.printer-summary-name {
+  font-size: 1.15rem;
+  font-weight: 600;
+  color: var(--text-h);
+}
+.printer-summary-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+/* Badge design: preview beside its controls, stacking when narrow. */
+.badge-design {
+  display: flex;
+  gap: 28px;
+  flex-wrap: wrap;
+  align-items: flex-start;
+}
+.badge-controls {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 300px;
+  flex: 1;
+}
+.field-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.field-label {
+  width: 60px;
+  flex: 0 0 auto;
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+.field-row .grow {
+  flex: 1;
+  min-width: 140px;
+}
+
+/* The DK-1234 label is 86mm x 60mm printed landscape, so the preview keeps
+   that ratio: it is the proportions people are judging, not the pixels. */
+.badge-preview {
+  width: 320px;
+  aspect-ratio: 86 / 60;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: #fff;
+  color: #111;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6% 8%;
+  box-sizing: border-box;
+  overflow: hidden;
+}
+.badge-preview-header {
+  font-size: 0.8rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-align: center;
+  min-height: 1.2em;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.badge-preview-header img {
+  max-height: 42px;
+  max-width: 100%;
+  object-fit: contain;
+}
+.badge-preview-name {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  line-height: 1.05;
+}
+.badge-preview-name strong {
+  font-size: 2.1rem;
+  font-weight: 800;
+}
+.badge-preview-name span {
+  font-size: 1.15rem;
+}
+.badge-preview-footer {
+  font-size: 0.72rem;
+  color: #444;
+  min-height: 1em;
+}
+
+/* ---- Modal ---- */
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  z-index: 50;
+}
+.modal {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 20px;
+  width: 100%;
+  max-width: 420px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.modal h2 {
+  margin: 0;
+}
+.modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+/* Which media to buy — the one thing a new site needs to know. */
+.admin-footer {
+  padding: 18px 24px;
+  color: var(--muted);
+  font-size: 0.8rem;
+  border-top: 1px solid var(--border);
+  margin-top: 32px;
+}

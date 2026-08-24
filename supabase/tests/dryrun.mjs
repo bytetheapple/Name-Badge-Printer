@@ -18,10 +18,13 @@ const ADMIN = '22222222-2222-4222-8222-222222222222'
 const all = readdirSync(MIG).filter((f) => f.endsWith('.sql')).sort()
 // Everything up to the multi-tenant work is the schema as it was in production
 // before the refactor; the `_mt_a*` files are the phased refactor itself.
-// `_mt_*` is the refactor itself, whichever track it belongs to — matching on
-// `_mt_a` put the first Track B migration in the pre-refactor group.
-const mt = all.filter((f) => f.includes('_mt_'))
-const base = all.filter((f) => !f.includes('_mt_'))
+// Split at the first multi-tenant migration and treat everything from there on
+// as post-refactor. Filenames are timestamped, so ordering is chronological —
+// and a name-based filter kept mis-sorting new migrations into the pre-refactor
+// group, which then failed against a schema that did not have org_id yet.
+const firstMt = all.findIndex((f) => f.includes('_mt_'))
+const base = firstMt < 0 ? all : all.slice(0, firstMt)
+const mt = firstMt < 0 ? [] : all.slice(firstMt)
 const read = (f) => readFileSync(path.join(MIG, f), 'utf8')
 
 const STUB = `

@@ -35,6 +35,10 @@ with checks(phase, thing, present) as (values
    to_regprocedure('public.integration_for(uuid,text)') is not null),
   ('A5b', 'oauth_pending table',
    to_regclass('public.oauth_pending') is not null),
+  ('UI', 'printers.badge_header',
+   exists (select 1 from information_schema.columns
+           where table_schema='public' and table_name='printers'
+             and column_name='badge_header')),
   ('B2', 'discovered_printers table',
    to_regclass('public.discovered_printers') is not null),
   ('B2', 'printer_status.scan_requested_at',
@@ -57,4 +61,4 @@ select phase,
        thing,
        case when present then 'yes' else 'NO  <-- run this migration' end as applied
 from checks
-order by array_position(array['A1','A2','A3','A4','A5','A5b','B2','FIX'], phase), thing;
+order by array_position(array['A1','A2','A3','A4','A5','A5b','B2','UI','FIX'], phase), thing;

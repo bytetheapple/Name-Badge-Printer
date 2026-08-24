@@ -1,253 +1,9 @@
-import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import { useOrg } from '../../lib/org'
+import BadgeDesign from './BadgeDesign'
 import DiscoverPrinters from './DiscoverPrinters'
-import type { Printer, PrinterConfigRow } from '../../lib/types'
-import defaultHeader from '../../assets/shir-hadash-logo.png'
-
-const HEADER_BUCKET = 'badge-headers'
-const MAX_HEADER_BYTES = 2_000_000
-
-/** Content-addressed name so re-uploading the same image reuses the object and
- * the bridge's cache, and a changed image always gets a fresh URL. */
-async function hashBytes(buf: ArrayBuffer): Promise<string> {
-  const digest = await crypto.subtle.digest('SHA-256', buf)
-  return [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, '0')).join('')
-}
-
-function PrinterCard({
-  printer,
-  canDelete,
-  onChanged,
-}: {
-  printer: Printer
-  canDelete: boolean
-  onChanged: () => void
-}) {
-  const [name, setName] = useState(printer.name)
-  const [location, setLocation] = useState(printer.location ?? '')
-  const [ip, setIp] = useState(printer.printer_ip ?? '')
-  const [port, setPort] = useState(printer.port)
-  const [saved, setSaved] = useState({
-    name: printer.name,
-    location: printer.location ?? '',
-    ip: printer.printer_ip ?? '',
-    port: printer.port,
-  })
-  const [saving, setSaving] = useState(false)
-  const [deleting, setDeleting] = useState(false)
-  const [msg, setMsg] = useState<string | null>(null)
-
-  const [headerUrl, setHeaderUrl] = useState(printer.header_image_url ?? '')
-  const [headerBusy, setHeaderBusy] = useState(false)
-  const [headerMsg, setHeaderMsg] = useState<string | null>(null)
-  const fileRef = useRef<HTMLInputElement>(null)
-
-  const dirty =
-    name !== saved.name || location !== saved.location || ip !== saved.ip || port !== saved.port
-
-  async function onPickHeader(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0]
-    if (fileRef.current) fileRef.current.value = '' // allow re-selecting the same file
-    if (!file) return
-    setHeaderMsg(null)
-    if (!/^image\/(png|jpeg)$/.test(file.type)) {
-      setHeaderMsg('Please choose a PNG or JPEG image.')
-      return
-    }
-    if (file.size > MAX_HEADER_BYTES) {
-      setHeaderMsg('Image is too large (max 2 MB).')
-      return
-    }
-    setHeaderBusy(true)
-    try {
-      const buf = await file.arrayBuffer()
-      const ext = file.type === 'image/png' ? 'png' : 'jpg'
-      const path = `${await hashBytes(buf)}.${ext}`
-      const up = await supabase.storage
-        .from(HEADER_BUCKET)
-        .upload(path, buf, { contentType: file.type, upsert: true })
-      if (up.error) throw up.error
-      const url = supabase.storage.from(HEADER_BUCKET).getPublicUrl(path).data.publicUrl
-      const { error } = await supabase
-        .from('printers')
-        .update({ header_image_url: url })
-        .eq('id', printer.id)
-      if (error) throw error
-      setHeaderUrl(url)
-      setHeaderMsg('Header updated. The bridge picks it up within a few seconds.')
-      onChanged()
-    } catch (err) {
-      setHeaderMsg(`Upload failed: ${(err as Error).message}`)
-    } finally {
-      setHeaderBusy(false)
-    }
-  }
-
-  async function removeHeader() {
-    setHeaderBusy(true)
-    setHeaderMsg(null)
-    // Leave the storage object in place (it is content-addressed and may be
-    // shared); just detach it from this printer so it reverts to the default.
-    const { error } = await supabase
-      .from('printers')
-      .update({ header_image_url: null })
-      .eq('id', printer.id)
-    setHeaderBusy(false)
-    if (error) {
-      setHeaderMsg(`Error: ${error.message}`)
-      return
-    }
-    setHeaderUrl('')
-    setHeaderMsg('Reverted to the default header.')
-    onChanged()
-  }
-
-  async function save(e: FormEvent) {
-    e.preventDefault()
-    setSaving(true)
-    setMsg(null)
-    const next = { name: name.trim() || 'Unnamed', location: location.trim(), ip: ip.trim(), port }
-    const { error } = await supabase
-      .from('printers')
-      .update({
-        name: next.name,
-        location: next.location || null,
-        printer_ip: next.ip || null,
-        port: next.port,
-      })
-      .eq('id', printer.id)
-    setSaving(false)
-    if (error) {
-      setMsg(`Error: ${error.message}`)
-      return
-    }
-    // Normalize the visible values and mark the card clean (hides Save).
-    setName(next.name)
-    setLocation(next.location)
-    setIp(next.ip)
-    setSaved(next)
-    onChanged()
-  }
-
-  async function remove() {
-    if (!window.confirm(`Delete printer "${printer.name}"?`)) return
-    setDeleting(true)
-    const { error } = await supabase.from('printers').delete().eq('id', printer.id)
-    setDeleting(false)
-    if (error) setMsg(`Error: ${error.message}`)
-    else onChanged()
-  }
-
-  return (
-    <form className="card" onSubmit={save}>
-      {canDelete && (
-        <div className="printer-card-head">
-          <button type="button" className="secondary btn-sm" onClick={remove} disabled={deleting}>
-            {deleting ? 'Deleting…' : 'Delete'}
-          </button>
-        </div>
-      )}
-      <div className="grid2">
-        <label className="field">
-          Name
-          <input value={name} onChange={(e) => setName(e.target.value)} required />
-        </label>
-        <label className="field">
-          Location
-          <input
-            value={location}
-            onChange={(e) => setLocation(e.target.value)}
-            placeholder="e.g. Lobby"
-          />
-        </label>
-        <label className="field">
-          IP address
-          <input
-            value={ip}
-            onChange={(e) => setIp(e.target.value)}
-            placeholder="192.168.1.50"
-            inputMode="decimal"
-          />
-        </label>
-        <label className="field">
-          Port
-          <input
-            type="number"
-            value={port}
-            onChange={(e) => setPort(Number(e.target.value))}
-            min={1}
-            max={65535}
-          />
-        </label>
-      </div>
-
-      <div className="header-graphic">
-        <span className="field-label">Header graphic</span>
-        <div className="header-graphic-row">
-          <div className="header-preview">
-            <img
-              src={headerUrl || defaultHeader}
-              alt={headerUrl ? 'Custom header' : 'Default header'}
-            />
-          </div>
-          <div className="header-actions">
-            <span className="muted small">
-              {headerUrl ? 'Custom graphic' : 'Default (Shir Hadash logo)'}
-            </span>
-            <input
-              ref={fileRef}
-              type="file"
-              accept="image/png,image/jpeg"
-              onChange={onPickHeader}
-              disabled={headerBusy}
-              hidden
-            />
-            <div className="header-buttons">
-              <button
-                type="button"
-                className="btn-sm"
-                onClick={() => fileRef.current?.click()}
-                disabled={headerBusy}
-              >
-                {headerBusy ? 'Working…' : headerUrl ? 'Replace…' : 'Upload…'}
-              </button>
-              {headerUrl && (
-                <button
-                  type="button"
-                  className="secondary btn-sm"
-                  onClick={removeHeader}
-                  disabled={headerBusy}
-                >
-                  Remove
-                </button>
-              )}
-            </div>
-          </div>
-        </div>
-        <p className="muted small" style={{ marginTop: 6 }}>
-          Wide, landscape graphic — about 4:1, e.g. a transparent PNG ~1200&nbsp;×&nbsp;300&nbsp;px.
-          It's scaled to fit a short band across the top; a square image comes out small. The
-          printer is black &amp; white, so use <strong>solid black artwork on a transparent
-          background</strong> — light colors and grays print faint or disappear. Blank uses the
-          default logo.
-        </p>
-        {headerMsg && <p className="muted small" style={{ marginTop: 4 }}>{headerMsg}</p>}
-      </div>
-
-      {(msg || dirty) && (
-        <div className="printer-card-foot">
-          {msg && <span className="error">{msg}</span>}
-          {dirty && (
-            <button type="submit" className="btn-sm" disabled={saving}>
-              {saving ? 'Saving…' : 'Save'}
-            </button>
-          )}
-        </div>
-      )}
-    </form>
-  )
-}
+import type { Printer } from '../../lib/types'
 
 /** One printer's tab: its name, and whether the bridge can currently reach it. */
 function PrinterTab({
@@ -267,13 +23,7 @@ function PrinterTab({
       type="button"
       className={`printer-tab${active ? ' active' : ''}`}
       onClick={onSelect}
-      title={
-        state === 'unknown'
-          ? 'Reachability unknown'
-          : state === 'ok'
-            ? 'Reachable'
-            : 'Not reachable'
-      }
+      title={state === 'unknown' ? 'Not yet reported' : state === 'ok' ? 'Reachable' : 'Not reachable'}
     >
       <span className={`tab-dot ${state}`} aria-hidden="true" />
       {printer.name || 'Unnamed printer'}
@@ -281,26 +31,89 @@ function PrinterTab({
   )
 }
 
+/** Edit a printer's details. A dialog rather than fields on the page, so the
+ *  page can read as a plain summary of what is set up. */
+function EditPrinter({
+  printer,
+  onClose,
+  onSaved,
+}: {
+  printer: Printer
+  onClose: () => void
+  onSaved: () => void
+}) {
+  const [name, setName] = useState(printer.name)
+  const [location, setLocation] = useState(printer.location ?? '')
+  const [ip, setIp] = useState(printer.printer_ip ?? '')
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  async function save() {
+    setSaving(true)
+    setError(null)
+    const { error } = await supabase
+      .from('printers')
+      .update({
+        name: name.trim() || 'Unnamed printer',
+        location: location.trim() || null,
+        printer_ip: ip.trim() || null,
+      })
+      .eq('id', printer.id)
+    setSaving(false)
+    if (error) {
+      setError(error.message)
+      return
+    }
+    onSaved()
+    onClose()
+  }
+
+  return (
+    <div className="modal-backdrop" onClick={onClose}>
+      <div className="modal" role="dialog" aria-modal="true" onClick={(e) => e.stopPropagation()}>
+        <h2>Edit printer</h2>
+        {error && <div className="error">{error}</div>}
+        <label className="field">
+          Name
+          <input value={name} onChange={(e) => setName(e.target.value)} autoFocus />
+        </label>
+        <label className="field">
+          Location
+          <input
+            value={location}
+            onChange={(e) => setLocation(e.target.value)}
+            placeholder="Front desk"
+          />
+        </label>
+        <label className="field">
+          Address
+          <input value={ip} onChange={(e) => setIp(e.target.value)} placeholder="192.168.1.69" />
+          <span className="muted small">
+            Normally set by scanning. Change it if the printer has moved to a new address.
+          </span>
+        </label>
+        <div className="modal-actions">
+          <button className="secondary" onClick={onClose} disabled={saving}>
+            Cancel
+          </button>
+          <button onClick={() => void save()} disabled={saving}>
+            {saving ? 'Saving…' : 'Save'}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 export default function PrinterConfig() {
   const { orgId, isAdmin } = useOrg()
-  //: 'add' or a printer id. Kept here rather than in the URL because it is a
-  //: view preference, not a place worth linking to.
-  const [tab, setTab] = useState<string>('add')
-  const [testing, setTesting] = useState<string | null>(null)
-  const [testNotice, setTestNotice] = useState<string | null>(null)
   const [printers, setPrinters] = useState<Printer[]>([])
   const [loading, setLoading] = useState(true)
   const [adding, setAdding] = useState(false)
-
-  const [template, setTemplate] = useState<Record<string, unknown>>({})
-  const [labelMedia, setLabelMedia] = useState('62')
-  const [header, setHeader] = useState('')
-  const [subtitle, setSubtitle] = useState('')
-  const [useLogo, setUseLogo] = useState(false)
-  const [printRotation, setPrintRotation] = useState(90)
-  const [lengthMm, setLengthMm] = useState(90)
-  const [savingCfg, setSavingCfg] = useState(false)
-  const [cfgMsg, setCfgMsg] = useState<string | null>(null)
+  const [tab, setTab] = useState<string>('add')
+  const [editing, setEditing] = useState<Printer | null>(null)
+  const [busy, setBusy] = useState<string | null>(null)
+  const [notice, setNotice] = useState<string | null>(null)
 
   const loadPrinters = useCallback(async () => {
     if (!orgId) return
@@ -310,32 +123,14 @@ export default function PrinterConfig() {
       .eq('org_id', orgId)
       .order('created_at')
     setPrinters((data ?? []) as Printer[])
+    setLoading(false)
   }, [orgId])
 
   useEffect(() => {
-    if (!orgId) return
-    void (async () => {
-      await loadPrinters()
-      const { data } = await supabase
-        .from('printer_config')
-        .select('*')
-        .eq('org_id', orgId)
-        .maybeSingle()
-      if (data) {
-        const c = data as PrinterConfigRow
-        const t = c.badge_template ?? {}
-        setTemplate(t)
-        setLabelMedia(c.label_media)
-        setHeader((t.header as string) ?? 'WELCOME')
-        setSubtitle((t.subtitle as string) ?? 'Shir Hadash')
-        setUseLogo(Boolean(t.header_image))
-        setPrintRotation(Number(t.print_rotation ?? 90))
-        setLengthMm(Number(t.length_mm ?? 90))
-      }
-      setLoading(false)
-    })()
-  }, [orgId, loadPrinters])
+    void loadPrinters()
+  }, [loadPrinters])
 
+  // A deleted printer leaves its tab pointing at nothing.
   useEffect(() => {
     if (tab !== 'add' && !printers.some((p) => p.id === tab)) setTab('add')
   }, [printers, tab])
@@ -349,51 +144,39 @@ export default function PrinterConfig() {
       .maybeSingle()
     setAdding(false)
     await loadPrinters()
-    // Adding a printer means wanting to set it up, so open its tab.
-    if (data?.id) setTab(data.id as string)
+    if (data?.id) setTab(data.id as string) // adding one means wanting to set it up
   }
 
-  async function testPrint(printerId: string) {
-    setTesting(printerId)
-    setTestNotice(null)
+  async function testPrint(printer: Printer) {
+    setBusy(printer.id)
+    setNotice(null)
     const { error } = await supabase
       .from('print_jobs')
-      .insert({ org_id: orgId, type: 'test', status: 'queued', printer_id: printerId })
-    setTesting(null)
-    setTestNotice(
-      error ? `Could not queue a test print: ${error.message}` : 'Test print queued.',
-    )
+      .insert({ org_id: orgId, type: 'test', status: 'queued', printer_id: printer.id })
+    setBusy(null)
+    setNotice(error ? `Could not queue a test print: ${error.message}` : 'Test print queued.')
   }
 
-  async function saveConfig(e: FormEvent) {
-    e.preventDefault()
-    setSavingCfg(true)
-    setCfgMsg(null)
-    const badge_template = {
-      ...template,
-      header,
-      subtitle,
-      header_image: useLogo ? 'shir-hadash-logo.png' : '',
-      print_rotation: printRotation,
-      length_mm: lengthMm,
-    }
-    const { error } = await supabase
-      .from('printer_config')
-      .update({ label_media: labelMedia, badge_template })
-      .eq('org_id', orgId)
-    setSavingCfg(false)
-    setCfgMsg(error ? error.message : 'Saved. The bridge picks up changes within a few seconds.')
+  async function remove(printer: Printer) {
+    if (!window.confirm(`Delete "${printer.name}"? Its sign-in QR code will stop working.`)) return
+    setBusy(printer.id)
+    const { error } = await supabase.from('printers').delete().eq('id', printer.id)
+    setBusy(null)
+    if (error) setNotice(`Could not delete: ${error.message}`)
+    await loadPrinters()
   }
 
   if (loading) return <p className="muted">Loading…</p>
   if (!isAdmin) {
     return (
       <>
-        <h1>Printer</h1>
+        <h1>Printers</h1>
         <p className="muted">Only owners and admins can change the printer setup.</p>
       </>
     )
   }
+
+  const current = printers.find((p) => p.id === tab) ?? null
 
   return (
     <>
@@ -408,145 +191,71 @@ export default function PrinterConfig() {
           + Add a Printer
         </button>
         {printers.map((p) => (
-          <PrinterTab
-            key={p.id}
-            printer={p}
-            active={tab === p.id}
-            onSelect={() => setTab(p.id)}
-          />
+          <PrinterTab key={p.id} printer={p} active={tab === p.id} onSelect={() => setTab(p.id)} />
         ))}
       </div>
 
       <div className="printer-tab-panel">
-        {tab === 'add' ? (
+        {notice && <div className="notice">{notice}</div>}
+
+        {tab === 'add' && (
           <>
             <DiscoverPrinters printers={printers} onAdded={() => void loadPrinters()} />
-            <section className="card">
-              <h2>Add one by hand</h2>
-              <p className="muted small">
-                If a scan cannot see the printer — a different network segment, or multicast
-                blocked — add it here and set its address yourself.
-              </p>
-              <button className="secondary btn-sm" onClick={addPrinter} disabled={adding}>
-                {adding ? 'Adding…' : 'Add a printer manually'}
-              </button>
-            </section>
+            <p className="muted small" style={{ marginTop: 20 }}>
+              If a scan cannot see the printer — a different network segment, or multicast blocked
+              — add it by hand and set its address yourself.
+            </p>
+            <button className="secondary btn-sm" onClick={addPrinter} disabled={adding}>
+              {adding ? 'Adding…' : 'Add a printer by hand'}
+            </button>
           </>
-        ) : (
-          (() => {
-            const current = printers.find((p) => p.id === tab)
-            if (!current) {
-              return <p className="muted">That printer is no longer here. Pick another tab.</p>
-            }
-            return (
-              <>
-                {testNotice && <div className="notice">{testNotice}</div>}
-                <PrinterCard
-                  printer={current}
-                  canDelete={printers.length > 1}
-                  onChanged={loadPrinters}
-                />
-                <section className="card">
-                  <h2>Check it works</h2>
-                  <p className="muted small">
-                    Queues a test badge on this printer. The print server picks it up within a
-                    couple of seconds.
-                  </p>
-                  <button
-                    className="secondary btn-sm"
-                    onClick={() => void testPrint(current.id)}
-                    disabled={testing === current.id}
-                  >
-                    {testing === current.id ? 'Queuing…' : 'Test print'}
-                  </button>
-                </section>
-              </>
-            )
-          })()
+        )}
+
+        {current && (
+          <>
+            <div className="printer-summary">
+              <div>
+                <div className="printer-summary-name">{current.name}</div>
+                <div className="muted small">
+                  {[current.location, current.printer_ip ?? 'no address set']
+                    .filter(Boolean)
+                    .join(' · ')}
+                </div>
+              </div>
+              <div className="printer-summary-actions">
+                <button className="secondary btn-sm" onClick={() => setEditing(current)}>
+                  Edit
+                </button>
+                <button
+                  className="secondary btn-sm"
+                  onClick={() => void testPrint(current)}
+                  disabled={busy === current.id}
+                >
+                  {busy === current.id ? 'Queuing…' : 'Test print'}
+                </button>
+                <button
+                  className="secondary btn-sm"
+                  onClick={() => void remove(current)}
+                  disabled={busy === current.id}
+                >
+                  Delete
+                </button>
+              </div>
+            </div>
+
+            <h2>Badge</h2>
+            <BadgeDesign printer={current} onChanged={loadPrinters} />
+          </>
         )}
       </div>
 
-      <form onSubmit={saveConfig} className="config-form" style={{ marginTop: 28 }}>
-        <div className="section-head">
-          <h2>Badge settings (all printers)</h2>
-        </div>
-        {cfgMsg && <div className="notice">{cfgMsg}</div>}
-
-        <section className="card">
-          <h2>Badge text</h2>
-          <label className="check">
-            <input
-              type="checkbox"
-              checked={useLogo}
-              onChange={(e) => setUseLogo(e.target.checked)}
-            />
-            Graphic header
-          </label>
-          <div className="grid2" style={{ marginTop: 12 }}>
-            <label className="field">
-              Header (top line)
-              <input
-                value={header}
-                onChange={(e) => setHeader(e.target.value)}
-                maxLength={24}
-                disabled={useLogo}
-              />
-            </label>
-            <label className="field">
-              Subtitle (bottom line)
-              <input value={subtitle} onChange={(e) => setSubtitle(e.target.value)} maxLength={40} />
-            </label>
-          </div>
-          {useLogo && (
-            <p className="muted small" style={{ marginTop: 8 }}>
-              A graphic header replaces the top text line — the default Shir Hadash logo, or each
-              printer's own header graphic (set per printer above). Clear the Subtitle to leave the
-              footer blank.
-            </p>
-          )}
-        </section>
-
-        <section className="card">
-          <h2>Badge layout</h2>
-          <div className="grid2">
-            <label className="field">
-              Label media
-              <select value={labelMedia} onChange={(e) => setLabelMedia(e.target.value)}>
-                <option value="62">62mm continuous</option>
-                <option value="60x86">60mm × 86mm die-cut — name badge (DK-1234)</option>
-                <option value="62red">62mm continuous — black/red (DK-22251)</option>
-                <option value="29">29mm continuous</option>
-                <option value="62x100">62mm × 100mm die-cut</option>
-                <option value="62x29">62mm × 29mm die-cut</option>
-              </select>
-            </label>
-            <label className="field">
-              Print orientation
-              <select
-                value={printRotation}
-                onChange={(e) => setPrintRotation(Number(e.target.value))}
-              >
-                <option value={90}>Normal (90°)</option>
-                <option value={270}>Flipped (270°)</option>
-              </select>
-            </label>
-            <label className="field">
-              Badge length (mm)
-              <input
-                type="number"
-                value={lengthMm}
-                min={40}
-                max={200}
-                onChange={(e) => setLengthMm(Number(e.target.value))}
-              />
-            </label>
-          </div>
-        </section>
-
-        <button type="submit" disabled={savingCfg}>
-          {savingCfg ? 'Saving…' : 'Save badge settings'}
-        </button>
-      </form>
+      {editing && (
+        <EditPrinter
+          printer={editing}
+          onClose={() => setEditing(null)}
+          onSaved={loadPrinters}
+        />
+      )}
     </>
   )
 }
