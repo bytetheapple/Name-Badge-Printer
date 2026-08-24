@@ -94,7 +94,7 @@ out = buf.getvalue()
 check("completes successfully", code == 0, f"exit {code}")
 for n, title in [
     (1, "Factory-reset"), (2, "Connect it to the wired"), (3, "Log in"),
-    (4, "Configure"), (5, "Join the WiFi"), (6, "Power-cycle"),
+    (4, "Configure"), (5, "Join the WiFi"), (6, "Turn the printer off"),
     (7, "Find it on the wireless"), (8, "Hand it over"),
 ]:
     check(f"reaches step {n} ({title.lower()})", f" {n}. {title}" in out, "")
@@ -108,6 +108,9 @@ check("walks the operator through the first-run wizard",
 check("warns the wizard survives a power cycle", "off and on" in out)
 check("explains the 2017 default is expected", "2017" in out)
 check("tells the installer to unplug power and move it", "move the printer" in out)
+check("asks for the icon to go solid rather than naming a wait",
+      "SOLID" in out or "solid" in out)
+check("says how long the icon may take", "30 seconds" in out)
 
 print("— the wireless steps do the right things —")
 paths = [p for p, _ in posted]

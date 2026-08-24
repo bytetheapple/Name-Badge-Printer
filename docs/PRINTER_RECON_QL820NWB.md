@@ -383,9 +383,18 @@ Confirmed end to end on hardware:
    `B63=3`, `B64=4`, `Bf8=<passphrase>`, omitting the WEP fields.
    **Nothing observable happens.** The page stores the settings, emits no
    success marker, and the radio stays down.
-3. **Power-cycle the printer with its button.** Auto power on does not work
-   while Ethernet is connected, so pulling the cord leaves it off.
-4. Watch the **WiFi icon on the printer's screen**. ~90 seconds.
+3. **Turn the printer off and on with its button.** Auto power on does not
+   work while Ethernet is connected, so pulling the cord leaves it off.
+4. Watch the **WiFi icon on the printer's screen** and wait for it to become
+   **solid** — about 15 seconds in practice, allow 30.
+
+   > The icon is the only trustworthy signal at this point. A radio that never
+   > associates leaves every web page reporting the settings as correct, since
+   > they *are* stored — what has failed is the join. **An icon that never goes
+   > solid means the passphrase is wrong**, not that the configuration failed.
+   > The printer is still reachable over Ethernet, so re-running just the
+   > wireless step with the right passphrase is enough; there is no need to
+   > start from a reset.
 5. The printer is now on a **different IP**, because the wireless interface has
    its own MAC and its own DHCP lease. Find it by its wireless MAC:
    `discover.py --mac <wireless-mac>`, which resolves `BRW<mac>.local`.
