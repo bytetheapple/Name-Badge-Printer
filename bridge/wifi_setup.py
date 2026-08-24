@@ -10,7 +10,7 @@ printer's own words when something goes wrong.
 
     # then, for real
     PRINTER_WEB_PASSWORD=xxxx PRINTER_WIFI_PASSPHRASE=yyyy \
-        ./venv/bin/python wifi_setup.py 192.168.1.27 --ssid "201Gilbert"
+        ./venv/bin/python wifi_setup.py 192.168.1.27 --ssid "Your-WiFi"
 
 Both secrets come from the environment so they stay out of shell history, and
 neither is ever printed.
