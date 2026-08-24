@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import { useOrg } from '../../lib/org'
 import BadgeDesign from './BadgeDesign'
@@ -144,7 +144,11 @@ export default function PrinterConfig() {
   const { orgId, isAdmin } = useOrg()
   const [printers, setPrinters] = useState<Printer[]>([])
   const [loading, setLoading] = useState(true)
+  //: 'add' until the first load says whether there is a printer to show.
   const [tab, setTab] = useState<string>('add')
+  //: Whether the landing tab has been picked. Without this the twenty-second
+  //: status refresh would drag the operator back to the first printer.
+  const landed = useRef(false)
   //: null = closed, 'add' = adding by hand, otherwise the printer being edited.
   const [dialog, setDialog] = useState<'add' | Printer | null>(null)
   const [busy, setBusy] = useState<string | null>(null)
@@ -175,9 +179,19 @@ export default function PrinterConfig() {
     return () => window.clearInterval(id)
   }, [orgId, loadPrinters])
 
+  // Land on a printer, not on the form for adding one. Most customers have a
+  // single printer, and arriving at its status is what they came for.
+  useEffect(() => {
+    if (loading || landed.current) return
+    landed.current = true
+    setTab(printers[0]?.id ?? 'add')
+  }, [loading, printers])
+
   // A deleted printer leaves its tab pointing at nothing.
   useEffect(() => {
-    if (tab !== 'add' && !printers.some((p) => p.id === tab)) setTab('add')
+    if (tab !== 'add' && !printers.some((p) => p.id === tab)) {
+      setTab(printers[0]?.id ?? 'add')
+    }
   }, [printers, tab])
 
   async function testPrint(printer: Printer) {
@@ -215,7 +229,13 @@ export default function PrinterConfig() {
     <>
       <h1>Printers</h1>
 
+      {/* Printers first, in the order they were added, and the way in for a
+          new one always last — so an existing tab never moves when another
+          printer is added. */}
       <div className="printer-tabs" role="tablist">
+        {printers.map((p) => (
+          <PrinterTab key={p.id} printer={p} active={tab === p.id} onSelect={() => setTab(p.id)} />
+        ))}
         <button
           type="button"
           className={`printer-tab${tab === 'add' ? ' active' : ''}`}
@@ -223,9 +243,6 @@ export default function PrinterConfig() {
         >
           + Add a Printer
         </button>
-        {printers.map((p) => (
-          <PrinterTab key={p.id} printer={p} active={tab === p.id} onSelect={() => setTab(p.id)} />
-        ))}
       </div>
 
       <div className="printer-tab-panel">
