@@ -83,7 +83,7 @@ def install(found=(FOUND,), result=None, target=FOUND, web=FakeWeb, networks=Non
     posted.clear()
     FakeWeb.radio_on_power = "2"
     FakeWeb.raise_on_wireless = None
-    pt.discover.discover_printers = lambda subnet=None, **k: list(found)
+    pt.discover.discover_printers = lambda *a, **k: list(found)
     pt.discover.find_printer = lambda **k: target
     pt.pc.PrinterWeb = web
     pt.pc.configure_printer = lambda ip, pw, **k: (result or good_result())
@@ -104,14 +104,18 @@ check("reports what it found", r.data["candidates"] == [
 install(found=())
 r = pt.run("discover", BASE)
 check("nothing found is a failure, not an empty success", not r.ok)
-# A printer that answers a ping can still be missed: the sweep covers one /24
-# and needs port 9100 open. The message has to name what was actually looked at
-# and offer the way past it, or it reads as "it did not work".
-check("names the subnet it swept", "10.0.0" in (r.error or ""), r.error or "")
+# A printer that answers a ping can still be missed: the sweep needs port 9100
+# open, which a printer still on its first-run screens has not opened. The
+# message has to say how much was actually searched and what to do next, or it
+# reads as "it did not work".
+check("says how many networks were searched",
+      "networks searched" in (r.error or ""), r.error or "")
 check("names the first-run screens, which hold the print service down",
       "first-run" in (r.error or ""), r.error or "")
-check("offers naming the address directly",
-      "enter it directly" in (r.error or ""), r.error or "")
+check("suggests the same router as the print server",
+      "same router" in (r.error or ""), r.error or "")
+check("and offers naming the address directly",
+      "address directly" in (r.error or ""), r.error or "")
 check("does not advance the session", r.next_state == "", r.next_state)
 
 print("— a printer already in service must not be mistaken for a new one —")
