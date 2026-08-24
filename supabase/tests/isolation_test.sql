@@ -250,6 +250,111 @@ begin
 end;
 $$;
 
+-- --------------------------------- checks: issuing a print-server credential
+-- Minting is a platform-team action tied to imaging a card. An organization's
+-- own administrators must not be able to do it — not for another org, and not
+-- even for their own.
+
+reset role;
+set local request.jwt.claims = '{"sub":"aaaaaaaa-0000-4000-8000-000000000001","role":"authenticated"}';
+set local role authenticated;
+
+do $$
+declare
+  minted text;
+  n bigint;
+begin
+  -- User A is an owner of org A, and not a platform admin.
+  begin
+    minted := public.issue_bridge_token('aaaaaaaa-0000-4000-8000-00000000000a', 'Self-issued');
+    raise exception
+      'ISOLATION FAILURE: an org owner minted a print-server credential (%)', left(minted, 12);
+  exception when insufficient_privilege then null;
+  end;
+  insert into public._isolation_results (signed_in, check_name)
+  values ('org A owner', 'issue_bridge_token: refused to an org owner');
+
+  -- And the direct route is closed too, or the function would be decorative.
+  begin
+    insert into public.bridge_tokens (org_id, name, token_hash, token_prefix)
+    values ('aaaaaaaa-0000-4000-8000-00000000000a', 'Direct', 'hash-direct-00000000', 'nbk_direct');
+    raise exception 'ISOLATION FAILURE: an org owner inserted a bridge token directly';
+  exception when insufficient_privilege then null;
+  end;
+  insert into public._isolation_results (signed_in, check_name)
+  values ('org A owner', 'bridge_tokens: cannot be inserted from the browser');
+end;
+$$;
+
+-- User B is a platform admin, so for them it works — and lands in the org they
+-- named, not one of their own.
+reset role;
+set local request.jwt.claims = '{"sub":"bbbbbbbb-0000-4000-8000-000000000001","role":"authenticated"}';
+set local role authenticated;
+
+do $$
+declare
+  minted text;
+  n bigint;
+begin
+  minted := public.issue_bridge_token('aaaaaaaa-0000-4000-8000-00000000000a', 'Lobby Pi');
+  if minted is null or left(minted, 4) <> 'nbk_' or length(minted) < 40 then
+    raise exception 'TEST BROKEN: issue_bridge_token returned %', coalesce(minted, '(null)');
+  end if;
+  insert into public._isolation_results (signed_in, check_name)
+  values ('platform admin', 'issue_bridge_token: mints a credential');
+
+  -- Two calls never collide.
+  if public.issue_bridge_token('aaaaaaaa-0000-4000-8000-00000000000a')
+     = public.issue_bridge_token('aaaaaaaa-0000-4000-8000-00000000000a') then
+    raise exception 'ISOLATION FAILURE: issue_bridge_token returned the same secret twice';
+  end if;
+  insert into public._isolation_results (signed_in, check_name)
+  values ('platform admin', 'issue_bridge_token: a fresh secret each time');
+
+  -- Not even a platform admin can read a hash back: token_hash is outside the
+  -- SELECT grant entirely, so this must fail rather than return a row.
+  begin
+    select count(*) into n from public.bridge_tokens where token_hash is not null;
+    raise exception 'ISOLATION FAILURE: token_hash is readable from a signed-in session';
+  exception when insufficient_privilege then null;
+  end;
+  insert into public._isolation_results (signed_in, check_name)
+  values ('platform admin', 'bridge_tokens: token_hash is not readable at all');
+
+  -- Stash it for the server-side check below, which needs superuser to see
+  -- the column.
+  create temporary table _minted (secret text) on commit drop;
+  insert into _minted values (minted);
+end;
+$$;
+
+reset role;
+set local request.jwt.claims = '';
+
+do $$
+declare
+  minted text;
+  n bigint;
+begin
+  select secret into minted from _minted;
+
+  -- The plaintext must not be recoverable from what was stored.
+  select count(*) into n from public.bridge_tokens where token_hash = minted;
+  if n <> 0 then
+    raise exception 'ISOLATION FAILURE: the credential was stored in the clear';
+  end if;
+  select count(*) into n from public.bridge_tokens
+   where token_hash = encode(sha256(convert_to(minted, 'utf8')), 'hex')
+     and org_id = 'aaaaaaaa-0000-4000-8000-00000000000a';
+  if n <> 1 then
+    raise exception 'TEST BROKEN: the hash was not stored against the named org';
+  end if;
+  insert into public._isolation_results (signed_in, check_name)
+  values ('—', 'issue_bridge_token: stores only the hash, against the named org');
+end;
+$$;
+
 -- ------------------------------------- checks: provisioning secrets (B3)
 -- The WiFi passphrase an operator types during provisioning is the customer's,
 -- and provisioning_secret() hands back a decrypted one for whatever session id

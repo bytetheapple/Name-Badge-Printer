@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import { useOrg } from '../../lib/org'
-import BridgeTokens from './BridgeTokens'
 import type { PrinterStatusRow, PrintJob } from '../../lib/types'
 
 // The bridge heartbeats every ~15s; treat it as online if seen within 45s.
@@ -69,8 +68,6 @@ export default function StatusPanel() {
           {lastSeen ? `Last seen ${new Date(lastSeen).toLocaleTimeString()}` : 'Waiting for the print bridge'}
         </div>
       </div>
-
-      <BridgeTokens />
 
       <h2 style={{ marginTop: 20 }}>Recent print jobs</h2>
       <div className="table-wrap">

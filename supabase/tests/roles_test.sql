@@ -55,6 +55,14 @@ insert into public.printer_config (org_id) values ('0a2a0000-0000-4000-8000-0000
 insert into public.printer_status (org_id) values ('0a2a0000-0000-4000-8000-00000000000a');
 insert into public.app_settings   (org_id) values ('0a2a0000-0000-4000-8000-00000000000a');
 
+-- A print server, so the checks below count something that is actually there.
+-- Without it "staff sees 0 bridge tokens" passes against an empty table and
+-- proves nothing. Minting now goes through issue_bridge_token(), which only a
+-- platform admin may call, so the row is seeded directly here.
+insert into public.bridge_tokens (org_id, name, token_hash, token_prefix)
+values ('0a2a0000-0000-4000-8000-00000000000a', 'Lobby Pi',
+        'hash-seeded-0000000000', 'nbk_seeded');
+
 -- A setup in progress, so the staff checks below are counting something that
 -- is actually there. Seeded before any role is assumed, as the owner.
 insert into public.provisioning_sessions (id, org_id, state, printer_name, ssid)
@@ -255,13 +263,26 @@ begin
   if n <> 0 then raise exception 'ROLE FAILURE: admin renamed the organization'; end if;
   insert into public._role_results (acting_as, check_name) values ('admin', 'cannot rename the organization');
 
-  -- Manages bridge credentials …
-  insert into public.bridge_tokens (org_id, name, token_hash, token_prefix)
-  values (org, 'Lobby Pi', 'hash-admin-000000000000', 'nbk_abcd');
+  -- Sees the org's print servers, and can stop one …
   select count(*) into n from public.bridge_tokens where org_id = org;
   if n <> 1 then raise exception 'ROLE FAILURE: admin sees % bridge tokens, expected 1', n; end if;
+  update public.bridge_tokens set revoked_at = now() where org_id = org;
+  get diagnostics n = row_count;
+  if n <> 1 then raise exception 'ROLE FAILURE: admin could not revoke a bridge token'; end if;
+  update public.bridge_tokens set revoked_at = null where org_id = org;
   insert into public._role_results (acting_as, check_name)
-  values ('admin', 'creates and lists bridge tokens');
+  values ('admin', 'lists and revokes bridge tokens');
+
+  -- … but does not mint one. A print server's credential is written when the
+  -- card is imaged and replaced by the device itself; an administrator who
+  -- could mint one would only get a secret they cannot install.
+  begin
+    perform public.issue_bridge_token(org, 'Self-issued');
+    raise exception 'ROLE FAILURE: an admin minted a print-server credential';
+  exception when insufficient_privilege then null;
+  end;
+  insert into public._role_results (acting_as, check_name)
+  values ('admin', 'cannot mint a print-server credential');
 
   -- … but never gets the stored hash back out of the database.
   begin

@@ -38,11 +38,45 @@ then dies before using it, which would leave the old credential valid for ever.
 `sweep_superseded_bridge_tokens()` revokes anything superseded more than seven
 days ago; `bridge-poll` calls it.
 
+## Issuing one
+
+Minting is a platform-team action now — it belongs to imaging a card, and a
+customer who cannot install a credential has no use for one. There is no UI for
+it yet; A6's tenant-creation flow is where it resurfaces. Until then, from the
+SQL editor while signed in as a platform admin:
+
+```sql
+select public.issue_bridge_token(
+  (select id from public.organizations where slug = 'shir-hadash'),
+  'Lobby Pi');
+```
+
+It returns the credential once. Only its hash is stored, so nothing — here or
+anywhere — can produce that value again. Write it to `bridge/.env` on the card
+as `BRIDGE_TOKEN=`.
+
+Run as an org administrator rather than a platform admin, it is refused. The
+direct `insert into bridge_tokens` route is closed too, or the check would be
+decorative.
+
+## Revoking one
+
+Also a platform action now that the panel is gone:
+
+```sql
+update public.bridge_tokens set revoked_at = now() where id = '<id>';
+```
+
+The device stops on its next poll, seconds later. **A6 must carry this** — a
+customer whose print server is stolen on a Saturday should not have to wait for
+a support call on Monday.
+
 ## Apply
 
-1. **Migration** — paste into the SQL editor:
+1. **Migrations** — paste into the SQL editor, in order:
 
        supabase/migrations/20260825120000_mt_bridge_token_rotation.sql
+       supabase/migrations/20260825160000_mt_issue_bridge_token.sql
 
    The last statement returns one row. `sweep_superseded_bridge_tokens` must
    **not** list `anon` or `authenticated`: it revokes credentials and takes a
@@ -57,7 +91,9 @@ days ago; `bridge-poll` calls it.
 
        cd ~/name-badge-printer && git pull && sudo systemctl restart badge-bridge
 
-4. **The app**, from `main`.
+4. **The app**, from `main`. The Print servers panel disappears from the
+   Print Server tab; the Online/Offline card above it, which is the part a
+   customer actually watches, is unchanged.
 
 ## What to expect on the existing Pi
 
