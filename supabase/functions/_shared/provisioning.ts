@@ -111,6 +111,15 @@ export async function claimStep(
     ssid: session.ssid ?? null,
     wireless_mac: session.wireless_mac ?? null,
   };
+  if (task === "rediscover" && session.wired_ip) {
+    // Sweep the network the printer was actually on, not the one the print
+    // server happens to sit on. A site with a wired and a wireless range —
+    // or any routed subnet — leaves the two different, and the printer is
+    // then invisible to a sweep of the server's own /24 even though it is
+    // perfectly reachable.
+    const octets = String(session.wired_ip).split(".");
+    if (octets.length === 4) step.subnet = octets.slice(0, 3).join(".");
+  }
   if (task === "discover") {
     // So the sweep can tell a printer being set up from one already working,
     // and keep looking rather than stopping at the first thing that answers.
