@@ -7,9 +7,16 @@
 // Request  (POST, header `x-bridge-key`):
 //   { printers?:   [{ id, reachable, media_type, media_width, error_state }],
 //     scanned?:    true,   // a scan just ran; `discovered` is its full result
-//     discovered?: [{ ip, mac, model, node_name }] }
+//     discovered?: [{ ip, mac, model, node_name }],
+//     provision_result?: { session_id, task, ok, next_state, data, log, error } }
 // Response:
-//   { ok, config: {...}, printers: [...], job: {...} | null, scan: boolean }
+//   { ok, config: {...}, printers: [...], job: {...} | null, scan: boolean,
+//     provision: {...} | null }
+//
+// `provision` is one step of a guided printer setup, already claimed for this
+// bridge. The other half of that setup happens in the browser — the steps that
+// need someone standing at the printer — and the session row is where the two
+// take turns. See _shared/provisioning.ts.
 //
 // `scan` asks the bridge to look for printers on its LAN and report them in
 // `discovered` on a later poll. It is only ever true just after an admin asks,
@@ -26,6 +33,7 @@ import {
   REST,
   restHeaders,
 } from "../_shared/bridge-auth.ts";
+import { applyResult, claimStep } from "../_shared/provisioning.ts";
 
 const nowIso = () => new Date().toISOString();
 
@@ -123,6 +131,14 @@ Deno.serve(async (req) => {
     }
   }
 
+  // ---- a provisioning step the bridge has finished --------------------------
+  // Reported on the poll after it ran rather than through a call of its own:
+  // the bridge has one channel to us, and a step that finished is no more
+  // urgent than the next tick.
+  if (body.provision_result && typeof body.provision_result === "object") {
+    await applyResult(bridge.org_id, body.provision_result as Record<string, unknown>, now);
+  }
+
   // ---- has an admin asked for a scan? --------------------------------------
   // Clearing the request as we hand it over means one ask produces one scan,
   // even if several bridges poll for the same org.
@@ -213,5 +229,10 @@ Deno.serve(async (req) => {
     }
   }
 
-  return json({ ok: true, config, printers, job, scan });
+  // ---- and the next provisioning step, if a setup is waiting on us ---------
+  // Claimed last, so a step's own log lines are never written after the result
+  // that closed the previous one.
+  const provision = await claimStep(bridge.org_id, now);
+
+  return json({ ok: true, config, printers, job, scan, provision });
 });
