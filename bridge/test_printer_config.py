@@ -29,7 +29,7 @@ def check(label, condition, detail=""):
         print(f"  FAIL  {label}{(' — ' + detail) if detail else ''}")
 
 
-PASSWORD = "aguQreSK"
+PASSWORD = "test-printer-code"
 TOKEN = "tok-abc123\nwrapped-second-line\nwrapped-third-line"
 
 # Page shapes lifted from the real device: a pageid, a CSRF token, a

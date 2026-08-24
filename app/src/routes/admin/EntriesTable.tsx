@@ -13,6 +13,51 @@ const familyLabel = (primary: FormEntry) =>
 const personName = (e: FormEntry) =>
   `${e.first_name} ${e.last_name ?? ''}`.trim() + (e.pronouns ? ` (${e.pronouns})` : '')
 
+/**
+ * A date box that looks empty when it is empty.
+ *
+ * Safari draws today's date into an unset `type="date"` field, so both filters
+ * appear to be set to today while the list is in fact unfiltered — which reads
+ * as a broken filter rather than an empty one. Chrome shows `mm/dd/yyyy` and
+ * has no such problem.
+ *
+ * Holding it as a text box until it is touched gives the same format hint in
+ * every browser, and swapping to a real date input on focus keeps the native
+ * picker and validation.
+ */
+function DateFilter({
+  value,
+  min,
+  max,
+  onChange,
+}: {
+  value: string
+  min?: string
+  max?: string
+  onChange: (value: string) => void
+}) {
+  const [editing, setEditing] = useState(false)
+  const asDate = editing || value !== ''
+
+  return (
+    <input
+      type={asDate ? 'date' : 'text'}
+      value={value}
+      min={min}
+      max={max}
+      placeholder="mm/dd/yyyy"
+      onFocus={(e) => {
+        setEditing(true)
+        // The picker only opens on a real date input, which this becomes on
+        // the very next render — so ask for it after that has happened.
+        requestAnimationFrame(() => e.target.showPicker?.())
+      }}
+      onBlur={() => setEditing(false)}
+      onChange={(e) => onChange(e.target.value)}
+    />
+  )
+}
+
 /** Collapse family sign-ins (rows sharing a party_id) into one line, preserving
  * fetch order. Lone entries pass through as their own row. */
 function groupParties(rows: FormEntry[]): DisplayItem[] {
@@ -154,11 +199,11 @@ export default function EntriesTable() {
       <div className="toolbar">
         <label className="field">
           From
-          <input type="date" value={from} max={to || undefined} onChange={(e) => setFrom(e.target.value)} />
+          <DateFilter value={from} max={to || undefined} onChange={setFrom} />
         </label>
         <label className="field">
           To
-          <input type="date" value={to} min={from || undefined} onChange={(e) => setTo(e.target.value)} />
+          <DateFilter value={to} min={from || undefined} onChange={setTo} />
         </label>
         {(from || to) && (
           <button

@@ -223,6 +223,7 @@ function StartForm({
   const [location, setLocation] = useState('')
   const [ssid, setSsid] = useState('')
   const [passphrase, setPassphrase] = useState('')
+  const [passphrase2, setPassphrase2] = useState('')
   const [webPassword, setWebPassword] = useState('')
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -231,7 +232,8 @@ function StartForm({
     if (!name.trim()) return setError('Give the printer a name.')
     if (!ssid.trim()) return setError('Enter the name of the WiFi network it should join.')
     if (!passphrase) return setError('Enter the WiFi password.')
-    if (!webPassword.trim()) return setError("Enter the code from the back of the printer.")
+    if (passphrase !== passphrase2) return setError('The two WiFi passwords do not match.')
+    if (!webPassword.trim()) return setError('Enter the printer code.')
 
     setSaving(true)
     setError(null)
@@ -284,39 +286,46 @@ function StartForm({
 
       <label className="field">
         Name
-        <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Lobby Printer" autoFocus />
+        <input value={name} onChange={(e) => setName(e.target.value)} autoFocus />
       </label>
       <label className="field">
         Location
-        <input value={location} onChange={(e) => setLocation(e.target.value)} placeholder="Front desk" />
+        <input value={location} onChange={(e) => setLocation(e.target.value)} />
       </label>
       <label className="field">
         WiFi network
-        <input value={ssid} onChange={(e) => setSsid(e.target.value)} placeholder="Lobby-WiFi" />
-        <span className="muted small">
-          The printer can only see 2.4GHz networks. If your WiFi has a separate 5GHz name, use
-          the 2.4GHz one.
-        </span>
+        <input value={ssid} onChange={(e) => setSsid(e.target.value)} />
+        <span className="muted small">The printer can only use 2.4GHz networks.</span>
       </label>
+      {/* Typed twice rather than shown back. A wrong WiFi password is not a
+          typo that can be corrected later: the printer switches to wireless,
+          stops answering on Ethernet, and the only way back is a factory reset. */}
       <label className="field">
         WiFi password
         <input
           type="password"
           value={passphrase}
           onChange={(e) => setPassphrase(e.target.value)}
-          autoComplete="off"
+          autoComplete="new-password"
         />
-        <span className="muted small">
-          You will be shown this again to check before it is used. Held only until the printer is
-          on the network, then deleted.
-        </span>
       </label>
       <label className="field">
-        Code from the back of the printer
-        <input value={webPassword} onChange={(e) => setWebPassword(e.target.value)} placeholder="aguQreSK" />
-        <span className="muted small">
-          A short code on the printer's label — this is what it wants after a factory reset.
-        </span>
+        WiFi password again
+        <input
+          type="password"
+          value={passphrase2}
+          onChange={(e) => setPassphrase2(e.target.value)}
+          autoComplete="new-password"
+        />
+      </label>
+      <label className="field">
+        Printer Code
+        <input
+          value={webPassword}
+          onChange={(e) => setWebPassword(e.target.value)}
+          autoComplete="off"
+        />
+        <span className="muted small">Look for "Pwd: " on the back of the printer itself.</span>
       </label>
 
       <div className="modal-actions">

@@ -161,7 +161,7 @@ check("a poll with no scan says so", Stub.seen[0]["body"].get("scanned") is Fals
 print("— a provisioning step is handed over, and its result reported back —")
 STEP = {"session_id": "11111111-1111-4111-8111-111111111111", "task": "configure",
         "wired_ip": "192.168.1.27", "ssid": "Lobby-WiFi",
-        "web_password": "aguQreSK", "wifi_passphrase": "s3cr3t"}
+        "web_password": "test-printer-code", "wifi_passphrase": "s3cr3t"}
 Stub.routes = {"/functions/v1/bridge-poll": (200, {"ok": True, "config": CONFIG,
                                                    "printers": PRINTERS, "job": None,
                                                    "provision": STEP})}

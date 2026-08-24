@@ -87,7 +87,7 @@ def install(found=(FOUND,), result=None, target=FOUND, web=FakeWeb):
 
 
 BASE = {"subnet": "10.0.0", "wired_ip": "10.0.0.5", "ssid": "Lobby-WiFi",
-        "web_password": "aguQreSK", "wifi_passphrase": PASSPHRASE,
+        "web_password": "test-printer-code", "wifi_passphrase": PASSPHRASE,
         "wireless_mac": WIRELESS.mac}
 
 print("— discover —")
