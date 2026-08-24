@@ -81,7 +81,8 @@ const PLATFORM_SPECS: Spec[] = [
   {
     kind: 'google_drive',
     title: 'Google Drive (selfies)',
-    blurb: 'The service account that uploads visitor selfies. The folder is set above.',
+    blurb:
+      'The service account that uploads visitor selfies. Which folder they land in is set under Settings → Visitor selfie.',
     fields: [
       {
         key: 'sa_client_email',

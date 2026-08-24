@@ -1155,3 +1155,43 @@ td.actions-cell {
 .prose p:last-child {
   margin-bottom: 0;
 }
+
+/* Sub-tabs within a page. Same shape as the printer tabs, which are the same
+   idea one level down — kept separate so the Printers page can grow its own
+   affordances (a reachability dot) without them turning up here. */
+.subtabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin: 16px 0 0;
+  border-bottom: 1px solid var(--border);
+}
+.subtab {
+  padding: 8px 14px;
+  border: 1px solid var(--border);
+  border-bottom: none;
+  border-radius: 6px 6px 0 0;
+  background: none;
+  color: var(--muted);
+  font: inherit;
+  font-size: 0.9rem;
+  cursor: pointer;
+  /* Sit on the container's border so the active tab joins the panel. */
+  margin-bottom: -1px;
+}
+.subtab:hover {
+  color: var(--text-h);
+}
+.subtab.active {
+  color: var(--text-h);
+  font-weight: 600;
+  border-bottom: 1px solid var(--bg);
+}
+.subtab-panel {
+  padding-top: 20px;
+}
+.subtab-panel > .muted.small:first-child {
+  margin-top: 0;
+  margin-bottom: 16px;
+  max-width: 68ch;
+}

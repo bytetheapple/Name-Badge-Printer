@@ -1,4 +1,4 @@
-# Custom Integrations tab
+# Integrations tab
 
 Separates the two bespoke form syncs from the product's own settings, and puts
 them behind a grant only the platform team can give.
@@ -43,9 +43,19 @@ except this one" — so without the trigger an owner could grant themselves a
 paid capability by writing one boolean. The dry-run harness removes the trigger
 and confirms the test fails without it.
 
-In the admin, **Custom Integrations** appears in the nav for admins. Shir
-Hadash sees the Google Form and ShulCloud panels; any other org sees a short
-paragraph pointing at support.
+In the admin, **Integrations** appears in the nav for admins, with three
+sub-tabs:
+
+| Sub-tab | What | Who sees it |
+|---|---|---|
+| Google Drive | The service account that uploads visitor selfies | every org |
+| Print API | Keys for queueing a badge from another system | every org |
+| Custom Integrations | Google Form and ShulCloud | granted orgs only |
+
+The first two are product features and moved here out of Settings, which keeps
+the selfie requirement and the Drive folder id — those are about the sign-in
+form, not the credential. Shir Hadash sees all three; any other org gets a
+short paragraph pointing at support on the third.
 
 ## Enabling it for a customer
 

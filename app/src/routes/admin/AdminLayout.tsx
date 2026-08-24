@@ -57,7 +57,7 @@ export default function AdminLayout() {
           <NavLink to="/admin/status">Print Server</NavLink>
           {isAdmin && <NavLink to="/admin/config">Printers</NavLink>}
           {isAdmin && <NavLink to="/admin/settings">Settings</NavLink>}
-          {isAdmin && <NavLink to="/admin/integrations">Custom Integrations</NavLink>}
+          {isAdmin && <NavLink to="/admin/integrations">Integrations</NavLink>}
           {isAdmin && <NavLink to="/admin/members">Members</NavLink>}
         </nav>
         <div className="admin-user">

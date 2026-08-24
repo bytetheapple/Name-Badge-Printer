@@ -118,7 +118,7 @@ export default function ApiKeys() {
       {loading ? (
         <p className="muted">Loading…</p>
       ) : (
-        <table className="table" style={{ marginTop: 12 }}>
+        <table className="data" style={{ marginTop: 12 }}>
           <thead>
             <tr>
               <th>Name</th>

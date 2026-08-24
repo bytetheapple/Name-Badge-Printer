@@ -143,7 +143,7 @@ export default function Members() {
         {loading ? (
           <p className="muted">Loading…</p>
         ) : (
-          <table className="table">
+          <table className="data">
             <thead>
               <tr>
                 <th>Email</th>

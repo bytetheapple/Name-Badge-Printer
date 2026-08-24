@@ -1,8 +1,6 @@
 import { useEffect, useState, type FormEvent } from 'react'
 import { supabase } from '../../lib/supabase'
 import { useOrg } from '../../lib/org'
-import ApiKeys from './ApiKeys'
-import Integrations from './Integrations'
 
 type SelfieMode = 'off' | 'optional' | 'required'
 
@@ -109,8 +107,9 @@ export default function Settings() {
           </div>
           <p className="muted small" style={{ marginTop: 8 }}>
             Applies to visitors only. Selfies upload to this Drive folder as
-            First_Last_Date_Time. The folder must be shared with the service account, and its
-            ID is the part after <code>/folders/</code> in the folder's URL.
+            First_Last_Date_Time. Its ID is the part after <code>/folders/</code> in the
+            folder's URL, and the folder must be shared with the service account set under
+            Integrations → Google Drive.
           </p>
         </section>
 
@@ -134,9 +133,6 @@ export default function Settings() {
         </button>
       </form>
 
-      <Integrations />
-
-      <ApiKeys />
     </>
   )
 }
