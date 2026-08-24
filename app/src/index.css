@@ -897,12 +897,15 @@ td.actions-cell {
   align-items: flex-start;
 }
 .qr-canvas {
-  width: 220px;
-  height: 220px;
+  /* On-screen this is a thumbnail — confirmation that a code exists for this
+     printer. The download and the printed label come from the full 600px
+     bitmap, which this only scales down for display. */
+  width: 72px;
+  height: 72px;
   background: #fff;
   border: 1px solid var(--border);
-  border-radius: 4px;
-  padding: 6px;
+  border-radius: 3px;
+  padding: 3px;
   box-sizing: border-box;
 }
 .printer-qr-side {
