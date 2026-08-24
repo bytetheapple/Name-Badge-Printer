@@ -12,12 +12,12 @@ Two backends behind one interface:
 
 Both expose the same two calls:
 
-    poll(printer_reports, discovered) -> Poll
+    poll(printer_reports, discovered, provision_result) -> Poll
     complete(job_id, ok, error)
 
 ``poll`` also carries the heartbeat, and the job it returns is already claimed.
-It is the only channel to the server, so a request for a printer scan comes
-back on it too.
+It is the only channel to the server, so a request for a printer scan — or a
+step of a printer's guided setup — comes back on it too.
 """
 from dataclasses import dataclass, field
 
@@ -40,6 +40,9 @@ class Poll:
     #: ever set just after an admin asks, since sweeping continuously would be
     #: pointless and rude to the network.
     scan: bool = False
+    #: One step of a provisioning session for the bridge to run, already claimed
+    #: by the server: {session_id, task, …context, …the secrets that step needs}.
+    provision: dict | None = None
 
 
 class BridgeApiClient:
@@ -66,7 +69,7 @@ class BridgeApiClient:
             raise RuntimeError(body.get("error", f"{fn} failed"))
         return body
 
-    def poll(self, printer_reports=None, discovered=None):
+    def poll(self, printer_reports=None, discovered=None, provision_result=None):
         body = self._post(
             "bridge-poll",
             {
@@ -76,6 +79,8 @@ class BridgeApiClient:
                 # the admin can distinguish "found nothing" from "still going".
                 "scanned": discovered is not None,
                 "discovered": discovered or [],
+                # Present only on the poll after a provisioning step finished.
+                **({"provision_result": provision_result} if provision_result else {}),
             },
         )
         return Poll(
@@ -83,6 +88,7 @@ class BridgeApiClient:
             printers=body.get("printers") or [],
             job=body.get("job"),
             scan=bool(body.get("scan")),
+            provision=body.get("provision"),
         )
 
     def complete(self, job_id, ok, error=None):
@@ -101,9 +107,10 @@ class LegacyClient:
 
     mode = "service_role (deprecated)"
 
-    def poll(self, printer_reports=None, discovered=None):
-        # The legacy path has no channel for a scan request, and none is worth
-        # building: it exists only so an already-deployed Pi can be cut over.
+    def poll(self, printer_reports=None, discovered=None, provision_result=None):
+        # The legacy path has no channel for a scan or a provisioning step, and
+        # none is worth building: it exists only so an already-deployed Pi can
+        # be cut over.
         for report in printer_reports or []:
             printer_id = report.pop("id", None)
             if printer_id:

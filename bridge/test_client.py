@@ -158,6 +158,39 @@ Stub.seen = []
 c.poll(None)
 check("a poll with no scan says so", Stub.seen[0]["body"].get("scanned") is False)
 
+print("— a provisioning step is handed over, and its result reported back —")
+STEP = {"session_id": "11111111-1111-4111-8111-111111111111", "task": "configure",
+        "wired_ip": "192.168.1.27", "ssid": "Lobby-WiFi",
+        "web_password": "aguQreSK", "wifi_passphrase": "s3cr3t"}
+Stub.routes = {"/functions/v1/bridge-poll": (200, {"ok": True, "config": CONFIG,
+                                                   "printers": PRINTERS, "job": None,
+                                                   "provision": STEP})}
+r = c.poll(None)
+check("passes the step through", r.provision == STEP, str(r.provision))
+check("carries the secrets the step needs",
+      r.provision["wifi_passphrase"] == "s3cr3t")
+
+Stub.routes = {"/functions/v1/bridge-poll": (200, {"ok": True, "config": CONFIG,
+                                                   "printers": PRINTERS, "job": None})}
+r = c.poll(None)
+check("no step means none is claimed", r.provision is None, str(r.provision))
+
+Stub.seen = []
+c.poll(None, provision_result={"session_id": "s1", "task": "configure", "ok": True,
+                               "next_state": "wifi_confirm", "data": {"model": "QL-820NWB"},
+                               "log": ["connected"], "error": None})
+body = Stub.seen[0]["body"]
+check("reports the outcome", body["provision_result"]["ok"] is True, str(body))
+check("says where the session goes next",
+      body["provision_result"]["next_state"] == "wifi_confirm")
+
+# The field must be absent, not null: an ordinary poll happens every few
+# seconds and must not look like a step reporting in.
+Stub.seen = []
+c.poll(None)
+check("an ordinary poll carries no provisioning result",
+      "provision_result" not in Stub.seen[0]["body"], str(Stub.seen[0]["body"]))
+
 print("— a revoked or unknown token says so plainly —")
 Stub.routes = {"/functions/v1/bridge-poll": (401, {"ok": False, "error": "Unknown or revoked bridge key"})}
 try:
@@ -198,6 +231,7 @@ Stub.routes["/rest/v1/print_jobs"] = (200, [entry_job])
 r = legacy.poll(None)
 check("legacy resolves the name from the entry", r.job.get("first_name") == "Ada", repr(r.job))
 check("legacy never asks for a scan", r.scan is False)
+check("legacy never claims a provisioning step", r.provision is None)
 
 print()
 if FAILURES:

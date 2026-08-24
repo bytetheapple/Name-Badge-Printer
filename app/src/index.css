@@ -923,3 +923,178 @@ td.actions-cell {
   gap: 8px;
   flex-wrap: wrap;
 }
+
+/* ---------------------------------------------------------------------------
+   Guided printer setup (Add a Printer tab).
+
+   A long walkthrough that alternates between the operator and the print
+   server, so it needs to read as one continuous thing rather than a form: a
+   progress strip that says where you are, one step at a time, and a
+   transcript tucked away for when something goes wrong.
+   --------------------------------------------------------------------------- */
+
+.provision-intro p {
+  margin: 8px 0 0;
+  max-width: 52ch;
+}
+
+.provision {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 20px;
+  max-width: 62ch;
+}
+.provision-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+.provision .field {
+  margin-bottom: 14px;
+}
+.provision .error {
+  margin-bottom: 16px;
+}
+
+/* Where you are, and how much is left. Deliberately coarse: the four steps the
+   print server runs sit under the operator step that leads to them, because a
+   marker that advanced on its own would be noise to someone holding a cable. */
+.provision-progress {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  list-style: none;
+  margin: 0 0 20px;
+  padding: 0;
+  font-size: 12px;
+  color: var(--muted);
+}
+.provision-progress li {
+  padding: 3px 10px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+}
+.provision-progress li.past {
+  color: var(--ok-text);
+  background: var(--ok-bg);
+  border-color: var(--ok-border);
+}
+.provision-progress li.now {
+  /* Not white: --accent is a pale blue in dark mode, where white on it is
+     barely legible. The page background reads as white in light mode and as
+     near-black in dark, which is the contrast this needs in both. */
+  color: var(--bg);
+  background: var(--accent);
+  border-color: var(--accent);
+  font-weight: 500;
+}
+
+.provision-step h3 {
+  margin: 0 0 10px;
+  font-size: 16px;
+  color: var(--text-h);
+}
+.provision-step p,
+.provision-step ol,
+.provision-step ul {
+  margin: 0 0 12px;
+}
+.provision-step > button {
+  margin-top: 4px;
+}
+.provision-step .data {
+  margin: 12px 0;
+}
+
+/* The key sequence on the printer's own panel. Numbered, tight, and monospaced
+   for the button names so they are read as things to press rather than prose. */
+.provision-keys {
+  padding-left: 22px;
+  font-family: var(--mono);
+  font-size: 13px;
+  line-height: 1.7;
+}
+
+/* Not an error — something that has already gone wrong for someone. The two
+   here are the reset that must not be interrupted and the WiFi password that
+   cannot be corrected afterwards. */
+.warn {
+  border-left: 3px solid var(--err-border);
+  background: var(--err-bg);
+  color: var(--err-text);
+  padding: 8px 12px;
+  border-radius: 0 8px 8px 0;
+  font-size: 14px;
+}
+
+.provision-waiting {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-weight: 500;
+  color: var(--text-h);
+}
+/* The page spinner is a 44px block meant to hold an empty panel. Beside a line
+   of text it needs to be the size of the text. */
+.provision-waiting .spinner {
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  border-width: 2px;
+  flex: none;
+}
+
+.provision-facts {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 4px 16px;
+  margin: 0 0 14px;
+  font-size: 14px;
+}
+.provision-facts dt {
+  color: var(--muted);
+}
+.provision-facts dd {
+  margin: 0;
+}
+
+.provision-log {
+  margin-top: 20px;
+  padding-top: 14px;
+  border-top: 1px solid var(--border);
+}
+.provision-log pre {
+  margin: 10px 0 0;
+  padding: 12px;
+  background: var(--pending-bg);
+  border-radius: 8px;
+  font-size: 12px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  max-height: 320px;
+  overflow-y: auto;
+}
+
+/* Separates the guided setup from the two shortcuts below it. */
+.provision-rule {
+  border: none;
+  border-top: 1px solid var(--border);
+  margin: 32px 0;
+}
+
+/* A button that is really a link: used inside running text, where a button
+   would break the line. */
+.linkish {
+  background: none;
+  border: none;
+  padding: 0;
+  color: var(--accent);
+  text-decoration: underline;
+  cursor: pointer;
+  font: inherit;
+}
+.linkish:hover {
+  opacity: 0.8;
+}

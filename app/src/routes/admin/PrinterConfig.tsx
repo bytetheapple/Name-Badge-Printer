@@ -3,6 +3,7 @@ import { supabase } from '../../lib/supabase'
 import { useOrg } from '../../lib/org'
 import BadgeDesign from './BadgeDesign'
 import DiscoverPrinters from './DiscoverPrinters'
+import ProvisionWizard from './ProvisionWizard'
 import PrinterQr from './PrinterQr'
 import type { Printer } from '../../lib/types'
 
@@ -219,6 +220,8 @@ export default function PrinterConfig() {
 
         {tab === 'add' && (
           <>
+            <ProvisionWizard onFinished={() => void loadPrinters()} />
+            <hr className="provision-rule" />
             <DiscoverPrinters printers={printers} onAdded={() => void loadPrinters()} />
             <div className="add-by-hand">
               <button className="secondary btn-sm" onClick={() => setDialog('add')}>

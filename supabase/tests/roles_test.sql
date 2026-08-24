@@ -55,6 +55,12 @@ insert into public.printer_config (org_id) values ('0a2a0000-0000-4000-8000-0000
 insert into public.printer_status (org_id) values ('0a2a0000-0000-4000-8000-00000000000a');
 insert into public.app_settings   (org_id) values ('0a2a0000-0000-4000-8000-00000000000a');
 
+-- A setup in progress, so the staff checks below are counting something that
+-- is actually there. Seeded before any role is assumed, as the owner.
+insert into public.provisioning_sessions (id, org_id, state, printer_name, ssid)
+values ('0a2a0000-0000-4000-8000-0000000000e1', '0a2a0000-0000-4000-8000-00000000000a',
+        'cable', 'Role test printer', 'Role-WiFi');
+
 -- ------------------------------------------------------------ acting as STAFF
 
 set local request.jwt.claims = '{"sub":"0a2a0000-0000-4000-8000-000000000003","role":"authenticated"}';
@@ -120,6 +126,34 @@ begin
   end;
   insert into public._role_results (acting_as, check_name)
   values ('staff', 'cannot see or create bridge tokens');
+
+  -- Provisioning carries the site's WiFi credentials and reconfigures hardware,
+  -- so it is out of scope for staff entirely — they cannot see one, start one,
+  -- or push one along.
+  select count(*) into n from public.provisioning_sessions where org_id = org;
+  if n <> 0 then
+    raise exception 'ROLE FAILURE: staff can see % provisioning session(s)', n;
+  end if;
+  begin
+    insert into public.provisioning_sessions (org_id, state, printer_name)
+    values (org, 'reset', 'Staff printer');
+    raise exception 'ROLE FAILURE: staff started a provisioning session';
+  exception when insufficient_privilege then null;
+  end;
+  update public.provisioning_sessions set state = 'discover'
+   where id = '0a2a0000-0000-4000-8000-0000000000e1';
+  get diagnostics n = row_count;
+  if n <> 0 then
+    raise exception 'ROLE FAILURE: staff advanced a provisioning session';
+  end if;
+  begin
+    perform public.set_provisioning_secret(
+      '0a2a0000-0000-4000-8000-0000000000e1', 'wifi_passphrase', 'staff-should-not-set-this');
+    raise exception 'ROLE FAILURE: staff set a provisioning secret';
+  exception when insufficient_privilege then null;
+  end;
+  insert into public._role_results (acting_as, check_name)
+  values ('staff', 'cannot see, start, or advance a printer setup');
 
   -- Integration settings are an admin concern, not a staff one.
   select count(*) into n from public.integrations where org_id = org;
