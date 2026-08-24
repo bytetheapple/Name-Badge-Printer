@@ -56,7 +56,6 @@ export default function AdminLayout() {
           <NavLink to="/admin/entries">Entries</NavLink>
           <NavLink to="/admin/status">Print Server</NavLink>
           {isAdmin && <NavLink to="/admin/config">Printers</NavLink>}
-          <NavLink to="/admin/qr">QR Code</NavLink>
           {isAdmin && <NavLink to="/admin/settings">Settings</NavLink>}
           {isAdmin && <NavLink to="/admin/members">Members</NavLink>}
         </nav>

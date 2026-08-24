@@ -3,6 +3,7 @@ import { supabase } from '../../lib/supabase'
 import { useOrg } from '../../lib/org'
 import BadgeDesign from './BadgeDesign'
 import DiscoverPrinters from './DiscoverPrinters'
+import PrinterQr from './PrinterQr'
 import type { Printer } from '../../lib/types'
 
 /** One printer's tab: its name, and whether the bridge can currently reach it. */
@@ -261,6 +262,9 @@ export default function PrinterConfig() {
 
             <h2>Badge</h2>
             <BadgeDesign printer={current} onChanged={loadPrinters} />
+
+            <h2>Sign-in QR code</h2>
+            <PrinterQr printer={current} onChanged={loadPrinters} />
           </>
         )}
       </div>

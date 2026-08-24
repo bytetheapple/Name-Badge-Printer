@@ -888,3 +888,33 @@ td.actions-cell {
   padding-top: 16px;
   border-top: 1px solid var(--border);
 }
+
+/* A printer's QR code beside what you can do with it. */
+.printer-qr {
+  display: flex;
+  gap: 28px;
+  flex-wrap: wrap;
+  align-items: flex-start;
+}
+.qr-canvas {
+  width: 220px;
+  height: 220px;
+  background: #fff;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 6px;
+  box-sizing: border-box;
+}
+.printer-qr-side {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  max-width: 420px;
+  flex: 1;
+  min-width: 280px;
+}
+.printer-qr-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}

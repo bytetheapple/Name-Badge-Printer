@@ -12,7 +12,6 @@ import AdminLayout from './routes/admin/AdminLayout'
 import EntriesTable from './routes/admin/EntriesTable'
 import StatusPanel from './routes/admin/StatusPanel'
 import PrinterConfig from './routes/admin/PrinterConfig'
-import QrCode from './routes/admin/QrCode'
 import Settings from './routes/admin/Settings'
 import Members from './routes/admin/Members'
 
@@ -34,7 +33,6 @@ const router = createBrowserRouter([
       { path: 'entries', element: <EntriesTable /> },
       { path: 'status', element: <StatusPanel /> },
       { path: 'config', element: <PrinterConfig /> },
-      { path: 'qr', element: <QrCode /> },
       { path: 'settings', element: <Settings /> },
       { path: 'members', element: <Members /> },
     ],
