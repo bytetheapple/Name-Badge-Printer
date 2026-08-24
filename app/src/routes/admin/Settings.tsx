@@ -7,20 +7,23 @@ type SelfieMode = 'off' | 'optional' | 'required'
 export default function Settings() {
   const { orgId, isAdmin } = useOrg()
   const [selfieMode, setSelfieMode] = useState<SelfieMode>('off')
+  //: Not editable here — it is set beside the Drive credential, under
+  //: Integrations. Read only to know whether selfies are possible at all.
   const [folderId, setFolderId] = useState('')
   const [pronounsEnabled, setPronounsEnabled] = useState(false)
   // Snapshot of the last-saved values, so the Save button can grey out until
   // something actually changes.
-  const [saved, setSaved] = useState({ selfieMode: 'off' as SelfieMode, folderId: '', pronounsEnabled: false })
+  const [saved, setSaved] = useState({ selfieMode: 'off' as SelfieMode, pronounsEnabled: false })
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [msg, setMsg] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
 
-  const dirty =
-    selfieMode !== saved.selfieMode ||
-    folderId.trim() !== saved.folderId ||
-    pronounsEnabled !== saved.pronounsEnabled
+  const dirty = selfieMode !== saved.selfieMode || pronounsEnabled !== saved.pronounsEnabled
+
+  // No folder means nowhere to put a selfie, so asking for one could only fail
+  // at upload time. Better to say so here than to let it be chosen.
+  const hasFolder = folderId.trim() !== ''
 
   useEffect(() => {
     if (!orgId) return
@@ -41,7 +44,7 @@ export default function Settings() {
       setSelfieMode(mode)
       setFolderId(folder)
       setPronounsEnabled(pronouns)
-      setSaved({ selfieMode: mode, folderId: folder.trim(), pronounsEnabled: pronouns })
+      setSaved({ selfieMode: mode, pronounsEnabled: pronouns })
       setLoading(false)
     })()
   }, [orgId])
@@ -53,17 +56,13 @@ export default function Settings() {
     setError(null)
     const { error } = await supabase
       .from('app_settings')
-      .update({
-        selfie_mode: selfieMode,
-        selfie_drive_folder_id: folderId.trim() || null,
-        pronouns_enabled: pronounsEnabled,
-      })
+      .update({ selfie_mode: selfieMode, pronouns_enabled: pronounsEnabled })
       .eq('org_id', orgId)
     setSaving(false)
     if (error) {
       setError(error.message)
     } else {
-      setSaved({ selfieMode, folderId: folderId.trim(), pronounsEnabled })
+      setSaved({ selfieMode, pronounsEnabled })
       setMsg('Saved.')
     }
   }
@@ -87,30 +86,41 @@ export default function Settings() {
       <form onSubmit={save} className="config-form">
         <section className="card">
           <h2>Visitor selfie</h2>
-          <div className="grid2">
-            <label className="field">
-              Selfie requirement
-              <select value={selfieMode} onChange={(e) => setSelfieMode(e.target.value as SelfieMode)}>
-                <option value="off">No selfie</option>
-                <option value="optional">Optional selfie</option>
-                <option value="required">Required selfie</option>
-              </select>
-            </label>
-            <label className="field">
-              Google Drive folder ID
-              <input
-                value={folderId}
-                onChange={(e) => setFolderId(e.target.value)}
-                placeholder="folder id from the Drive URL"
-              />
-            </label>
-          </div>
-          <p className="muted small" style={{ marginTop: 8 }}>
-            Applies to visitors only. Selfies upload to this Drive folder as
-            First_Last_Date_Time. Its ID is the part after <code>/folders/</code> in the
-            folder's URL, and the folder must be shared with the service account set under
-            Integrations → Google Drive.
-          </p>
+          <label className="field">
+            Selfie requirement
+            <select
+              value={selfieMode}
+              onChange={(e) => setSelfieMode(e.target.value as SelfieMode)}
+            >
+              <option value="off">No selfie</option>
+              <option value="optional" disabled={!hasFolder}>
+                Optional selfie
+              </option>
+              <option value="required" disabled={!hasFolder}>
+                Required selfie
+              </option>
+            </select>
+          </label>
+          {/* One message, not two. Without a folder there are two different
+              situations — nothing is being asked for, or something is and is
+              failing — and only the second is urgent. */}
+          {hasFolder ? (
+            <p className="muted small" style={{ marginTop: 8 }}>
+              Applies to visitors only. Selfies upload as First_Last_Date_Time to the folder set
+              under Integrations → Google Drive.
+            </p>
+          ) : selfieMode === 'off' ? (
+            <p className="muted small" style={{ marginTop: 8 }}>
+              Selfies need somewhere to go. Set a Google Drive folder under Integrations →
+              Google Drive, and these options become available.
+            </p>
+          ) : (
+            <p className="warn" style={{ marginTop: 8 }}>
+              Selfies are set to {selfieMode === 'required' ? 'required' : 'optional'}, but no
+              Drive folder is configured, so every upload is failing. Set one under Integrations
+              → Google Drive, or change this to no selfie.
+            </p>
+          )}
         </section>
 
         <section className="card">
