@@ -224,8 +224,20 @@ def _configure(ctx, say) -> TaskResult:
         # Best-effort. An empty list means "no opinion", and the operator names
         # the network themselves, which is what they would have done anyway.
         "visible_networks": _survey(ip, password, say),
+        # Fleet-wide record of what this firmware actually does, kept because
+        # FIRMWARE_VERIFIED alone cannot tell a version that works from one
+        # nobody has tried. Only outcomes the configuration is responsible for
+        # are reported: see below for the ones that are not.
+        "firmware_outcome": {
+            "ok": result.ok,
+            "failed_steps": [st.name for st in result.steps if not st.ok],
+        },
     }
     if result.refused:
+        # Not a firmware fault: the printer stopped accepting the session, which
+        # is a password problem. Recording it would attribute an operator's typo
+        # to a firmware version and make the fleet record worse than none.
+        data.pop("firmware_outcome", None)
         # The likeliest cause by far, and the one the operator can fix. Said
         # plainly, because the transcript leads with a firmware warning that
         # has nothing to do with it.
