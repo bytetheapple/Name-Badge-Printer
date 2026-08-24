@@ -12,12 +12,12 @@ Two backends behind one interface:
 
 Both expose the same two calls:
 
-    poll(printer_reports, discovered, provision_result) -> Poll
+    poll(printer_reports, provision_result) -> Poll
     complete(job_id, ok, error)
 
 ``poll`` also carries the heartbeat, and the job it returns is already claimed.
-It is the only channel to the server, so a request for a printer scan — or a
-step of a printer's guided setup — comes back on it too.
+It is the only channel to the server, so a step of a printer's guided setup
+comes back on it too.
 """
 from dataclasses import dataclass, field
 
@@ -37,10 +37,6 @@ class Poll:
     config: dict = field(default_factory=dict)
     printers: list = field(default_factory=list)
     job: dict | None = None
-    #: The server is asking this bridge to look for printers on its LAN. Only
-    #: ever set just after an admin asks, since sweeping continuously would be
-    #: pointless and rude to the network.
-    scan: bool = False
     #: One step of a provisioning session for the bridge to run, already claimed
     #: by the server: {session_id, task, …context, …the secrets that step needs}.
     provision: dict | None = None
@@ -89,16 +85,11 @@ class BridgeApiClient:
             raise RuntimeError(body.get("error", f"{fn} failed"))
         return body
 
-    def poll(self, printer_reports=None, discovered=None, provision_result=None):
+    def poll(self, printer_reports=None, provision_result=None):
         body = self._post(
             "bridge-poll",
             {
                 "printers": printer_reports or [],
-                # `discovered` is None when no scan ran, and a list — possibly
-                # empty — when one did. The server needs to tell those apart so
-                # the admin can distinguish "found nothing" from "still going".
-                "scanned": discovered is not None,
-                "discovered": discovered or [],
                 **({"rotation_error": self._rotation_error} if self._rotation_error else {}),
                 # Present only on the poll after a provisioning step finished.
                 **({"provision_result": provision_result} if provision_result else {}),
@@ -124,7 +115,6 @@ class BridgeApiClient:
             config=body.get("config") or {},
             printers=body.get("printers") or [],
             job=body.get("job"),
-            scan=bool(body.get("scan")),
             provision=body.get("provision"),
             # Whether the credential actually changed, not whether one was
             # offered — a device that could not store it has not rotated, and
@@ -148,10 +138,10 @@ class LegacyClient:
 
     mode = "service_role (deprecated)"
 
-    def poll(self, printer_reports=None, discovered=None, provision_result=None):
-        # The legacy path has no channel for a scan or a provisioning step, and
-        # none is worth building: it exists only so an already-deployed Pi can
-        # be cut over.
+    def poll(self, printer_reports=None, provision_result=None):
+        # The legacy path has no channel for a provisioning step, and none is
+        # worth building: it exists only so an already-deployed Pi can be cut
+        # over.
         for report in printer_reports or []:
             printer_id = report.pop("id", None)
             if printer_id:

@@ -367,7 +367,7 @@ const orphan = await q(`select count(*) as n from vault.secrets where secret = '
 if (Number(orphan.n) === 0) ok('deleting an org takes its credentials with it')
 else bad(`a deleted org left ${orphan.n} credential(s) behind in the vault`)
 
-console.log('— scan and add printer (B2) —')
+console.log('— discovered_printers, retained but no longer written (B2) —')
 const scanOrg = (await q(`select id from public.organizations order by created_at limit 1`)).id
 
 // An admin asks for a scan; the bridge reports back what it saw.
