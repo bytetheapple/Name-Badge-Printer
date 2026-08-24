@@ -686,3 +686,54 @@ td.actions-cell {
   color: var(--muted);
   cursor: default;
 }
+
+/* Printers page: one tab per printer, coloured by reachability. */
+.printer-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin: 16px 0 0;
+  border-bottom: 1px solid var(--border);
+}
+.printer-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 8px 14px;
+  border: 1px solid var(--border);
+  border-bottom: none;
+  border-radius: 6px 6px 0 0;
+  background: none;
+  color: var(--muted);
+  font: inherit;
+  font-size: 0.9rem;
+  cursor: pointer;
+  /* Sit on the container's border so the active tab joins the panel. */
+  margin-bottom: -1px;
+}
+.printer-tab:hover {
+  color: var(--text-h);
+}
+.printer-tab.active {
+  color: var(--text-h);
+  font-weight: 600;
+  /* Page-coloured bottom border, so the active tab covers the strip's line and
+     reads as joined to the panel below it. */
+  border-bottom: 1px solid var(--bg);
+}
+.tab-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex: 0 0 auto;
+  background: var(--muted);
+}
+.tab-dot.ok {
+  background: var(--ok-text);
+}
+.tab-dot.bad {
+  background: var(--err-text);
+}
+.printer-tab-panel {
+  padding-top: 16px;
+}

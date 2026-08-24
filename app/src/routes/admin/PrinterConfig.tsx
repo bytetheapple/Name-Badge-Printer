@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react'
 import { supabase } from '../../lib/supabase'
 import { useOrg } from '../../lib/org'
-import BridgeTokens from './BridgeTokens'
 import DiscoverPrinters from './DiscoverPrinters'
 import type { Printer, PrinterConfigRow } from '../../lib/types'
 import defaultHeader from '../../assets/shir-hadash-logo.png'
@@ -250,8 +249,45 @@ function PrinterCard({
   )
 }
 
+/** One printer's tab: its name, and whether the bridge can currently reach it. */
+function PrinterTab({
+  printer,
+  active,
+  onSelect,
+}: {
+  printer: Printer
+  active: boolean
+  onSelect: () => void
+}) {
+  // null means the bridge has not reported on it yet — grey rather than red,
+  // since "unknown" and "unreachable" are different things to an operator.
+  const state = printer.reachable == null ? 'unknown' : printer.reachable ? 'ok' : 'bad'
+  return (
+    <button
+      type="button"
+      className={`printer-tab${active ? ' active' : ''}`}
+      onClick={onSelect}
+      title={
+        state === 'unknown'
+          ? 'Reachability unknown'
+          : state === 'ok'
+            ? 'Reachable'
+            : 'Not reachable'
+      }
+    >
+      <span className={`tab-dot ${state}`} aria-hidden="true" />
+      {printer.name || 'Unnamed printer'}
+    </button>
+  )
+}
+
 export default function PrinterConfig() {
   const { orgId, isAdmin } = useOrg()
+  //: 'add' or a printer id. Kept here rather than in the URL because it is a
+  //: view preference, not a place worth linking to.
+  const [tab, setTab] = useState<string>('add')
+  const [testing, setTesting] = useState<string | null>(null)
+  const [testNotice, setTestNotice] = useState<string | null>(null)
   const [printers, setPrinters] = useState<Printer[]>([])
   const [loading, setLoading] = useState(true)
   const [adding, setAdding] = useState(false)
@@ -300,11 +336,33 @@ export default function PrinterConfig() {
     })()
   }, [orgId, loadPrinters])
 
+  useEffect(() => {
+    if (tab !== 'add' && !printers.some((p) => p.id === tab)) setTab('add')
+  }, [printers, tab])
+
   async function addPrinter() {
     setAdding(true)
-    await supabase.from('printers').insert({ org_id: orgId, name: 'New Printer', port: 9100 })
+    const { data } = await supabase
+      .from('printers')
+      .insert({ org_id: orgId, name: 'New Printer', port: 9100 })
+      .select('id')
+      .maybeSingle()
     setAdding(false)
     await loadPrinters()
+    // Adding a printer means wanting to set it up, so open its tab.
+    if (data?.id) setTab(data.id as string)
+  }
+
+  async function testPrint(printerId: string) {
+    setTesting(printerId)
+    setTestNotice(null)
+    const { error } = await supabase
+      .from('print_jobs')
+      .insert({ org_id: orgId, type: 'test', status: 'queued', printer_id: printerId })
+    setTesting(null)
+    setTestNotice(
+      error ? `Could not queue a test print: ${error.message}` : 'Test print queued.',
+    )
   }
 
   async function saveConfig(e: FormEvent) {
@@ -339,26 +397,73 @@ export default function PrinterConfig() {
 
   return (
     <>
-      <h1>Printer</h1>
-      <BridgeTokens />
-      <DiscoverPrinters printers={printers} onAdded={() => void loadPrinters()} />
+      <h1>Printers</h1>
 
-      <div className="section-head">
-        <h2>Printers</h2>
-        <button className="btn-sm" onClick={addPrinter} disabled={adding}>
-          {adding ? 'Adding…' : '+ Add printer'}
+      <div className="printer-tabs" role="tablist">
+        <button
+          type="button"
+          className={`printer-tab${tab === 'add' ? ' active' : ''}`}
+          onClick={() => setTab('add')}
+        >
+          + Add a Printer
         </button>
-      </div>
-      {printers.length === 0 && <p className="muted">No printers yet. Add one to start.</p>}
-      <div className="config-form">
         {printers.map((p) => (
-          <PrinterCard
+          <PrinterTab
             key={p.id}
             printer={p}
-            canDelete={printers.length > 1}
-            onChanged={loadPrinters}
+            active={tab === p.id}
+            onSelect={() => setTab(p.id)}
           />
         ))}
+      </div>
+
+      <div className="printer-tab-panel">
+        {tab === 'add' ? (
+          <>
+            <DiscoverPrinters printers={printers} onAdded={() => void loadPrinters()} />
+            <section className="card">
+              <h2>Add one by hand</h2>
+              <p className="muted small">
+                If a scan cannot see the printer — a different network segment, or multicast
+                blocked — add it here and set its address yourself.
+              </p>
+              <button className="secondary btn-sm" onClick={addPrinter} disabled={adding}>
+                {adding ? 'Adding…' : 'Add a printer manually'}
+              </button>
+            </section>
+          </>
+        ) : (
+          (() => {
+            const current = printers.find((p) => p.id === tab)
+            if (!current) {
+              return <p className="muted">That printer is no longer here. Pick another tab.</p>
+            }
+            return (
+              <>
+                {testNotice && <div className="notice">{testNotice}</div>}
+                <PrinterCard
+                  printer={current}
+                  canDelete={printers.length > 1}
+                  onChanged={loadPrinters}
+                />
+                <section className="card">
+                  <h2>Check it works</h2>
+                  <p className="muted small">
+                    Queues a test badge on this printer. The print server picks it up within a
+                    couple of seconds.
+                  </p>
+                  <button
+                    className="secondary btn-sm"
+                    onClick={() => void testPrint(current.id)}
+                    disabled={testing === current.id}
+                  >
+                    {testing === current.id ? 'Queuing…' : 'Test print'}
+                  </button>
+                </section>
+              </>
+            )
+          })()
+        )}
       </div>
 
       <form onSubmit={saveConfig} className="config-form" style={{ marginTop: 28 }}>
