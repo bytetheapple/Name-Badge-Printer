@@ -107,17 +107,18 @@ check("uses the bridge API, not service_role", isinstance(c, client.BridgeApiCli
 print("— poll —")
 Stub.routes = {"/functions/v1/bridge-poll": (200, {"ok": True, "config": CONFIG, "printers": PRINTERS, "job": JOB})}
 Stub.seen = []
-cfg, printers, job = c.poll([{"id": PRINTERS[0]["id"], "reachable": True}])
-check("returns the org's config", cfg == CONFIG, repr(cfg))
-check("returns the org's printers", printers == PRINTERS)
-check("returns the claimed job with its name resolved", job and job["first_name"] == "Ada")
+r = c.poll([{"id": PRINTERS[0]["id"], "reachable": True}])
+check("returns the org's config", r.config == CONFIG, repr(r.config))
+check("returns the org's printers", r.printers == PRINTERS)
+check("returns the claimed job with its name resolved", r.job and r.job["first_name"] == "Ada")
+check("no scan asked for by default", r.scan is False)
 check("sends the bridge key as a header", Stub.seen[0]["bridge_key"] == "nbk_test_token")
 check("forwards the printer status report", Stub.seen[0]["body"]["printers"][0]["reachable"] is True)
 
 print("— an empty queue is not an error —")
 Stub.routes = {"/functions/v1/bridge-poll": (200, {"ok": True, "config": CONFIG, "printers": PRINTERS, "job": None})}
-cfg, printers, job = c.poll(None)
-check("no job means no job", job is None)
+r = c.poll(None)
+check("no job means no job", r.job is None)
 
 print("— completing a job —")
 Stub.routes = {"/functions/v1/bridge-complete": (200, {"ok": True})}
@@ -128,6 +129,22 @@ Stub.seen = []
 c.complete(JOB["id"], False, RuntimeError("printer offline"))
 check("reports failure as 'failed'", Stub.seen[0]["body"]["status"] == "failed")
 check("passes the error text along", "printer offline" in Stub.seen[0]["body"]["error"])
+
+print("— scanning is asked for by the server, and reported back —")
+Stub.routes = {"/functions/v1/bridge-poll": (200, {"ok": True, "config": CONFIG,
+                                                   "printers": PRINTERS, "job": None,
+                                                   "scan": True})}
+r = c.poll(None)
+check("passes the scan request through", r.scan is True)
+
+Stub.routes = {"/functions/v1/bridge-poll": (200, {"ok": True, "config": CONFIG,
+                                                   "printers": PRINTERS, "job": None})}
+Stub.seen = []
+c.poll(None, discovered=[{"ip": "192.168.1.69", "mac": "44:f7:9f:bc:ab:e8",
+                          "model": "Brother QL-820NWB", "node_name": "BRW44F79FBCABE8"}])
+sent = Stub.seen[0]["body"]["discovered"]
+check("reports what it found", sent and sent[0]["ip"] == "192.168.1.69", str(sent))
+check("includes the MAC, which is what identifies it", sent[0]["mac"] == "44:f7:9f:bc:ab:e8")
 
 print("— a revoked or unknown token says so plainly —")
 Stub.routes = {"/functions/v1/bridge-poll": (401, {"ok": False, "error": "Unknown or revoked bridge key"})}
@@ -158,15 +175,17 @@ Stub.routes = {
     "/rest/v1/form_entries": (200, [{"first_name": "Ada", "last_name": "Lovelace", "pronouns": None}]),
 }
 Stub.seen = []
-cfg, printers, job = legacy.poll([{"id": PRINTERS[0]["id"], "reachable": True}])
-check("legacy poll returns the same shape", cfg == CONFIG and printers == PRINTERS and job["id"] == JOB["id"])
+r = legacy.poll([{"id": PRINTERS[0]["id"], "reachable": True}])
+check("legacy poll returns the same shape",
+      r.config == CONFIG and r.printers == PRINTERS and r.job["id"] == JOB["id"])
 check("legacy poll writes the heartbeat", any(s["path"] == "/rest/v1/printer_status" for s in Stub.seen))
 
 print("— name resolution is identical on both backends —")
 entry_job = {"id": JOB["id"], "type": "badge", "entry_id": "33333333-3333-4333-8333-333333333333", "attempts": 0}
 Stub.routes["/rest/v1/print_jobs"] = (200, [entry_job])
-cfg, printers, job = legacy.poll(None)
-check("legacy resolves the name from the entry", job.get("first_name") == "Ada", repr(job))
+r = legacy.poll(None)
+check("legacy resolves the name from the entry", r.job.get("first_name") == "Ada", repr(r.job))
+check("legacy never asks for a scan", r.scan is False)
 
 print()
 if FAILURES:

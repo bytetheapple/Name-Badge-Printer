@@ -12,17 +12,34 @@ Two backends behind one interface:
 
 Both expose the same two calls:
 
-    poll(printer_reports) -> (config, printers, job|None)
+    poll(printer_reports, discovered) -> Poll
     complete(job_id, ok, error)
 
 ``poll`` also carries the heartbeat, and the job it returns is already claimed.
+It is the only channel to the server, so a request for a printer scan comes
+back on it too.
 """
+from dataclasses import dataclass, field
+
 import requests
 
 import config
 import db
 
 _TIMEOUT = 15
+
+
+@dataclass
+class Poll:
+    """One round trip with the server."""
+
+    config: dict = field(default_factory=dict)
+    printers: list = field(default_factory=list)
+    job: dict | None = None
+    #: The server is asking this bridge to look for printers on its LAN. Only
+    #: ever set just after an admin asks, since sweeping continuously would be
+    #: pointless and rude to the network.
+    scan: bool = False
 
 
 class BridgeApiClient:
@@ -49,9 +66,17 @@ class BridgeApiClient:
             raise RuntimeError(body.get("error", f"{fn} failed"))
         return body
 
-    def poll(self, printer_reports=None):
-        body = self._post("bridge-poll", {"printers": printer_reports or []})
-        return body.get("config") or {}, body.get("printers") or [], body.get("job")
+    def poll(self, printer_reports=None, discovered=None):
+        body = self._post(
+            "bridge-poll",
+            {"printers": printer_reports or [], "discovered": discovered or []},
+        )
+        return Poll(
+            config=body.get("config") or {},
+            printers=body.get("printers") or [],
+            job=body.get("job"),
+            scan=bool(body.get("scan")),
+        )
 
     def complete(self, job_id, ok, error=None):
         self._post(
@@ -69,7 +94,9 @@ class LegacyClient:
 
     mode = "service_role (deprecated)"
 
-    def poll(self, printer_reports=None):
+    def poll(self, printer_reports=None, discovered=None):
+        # The legacy path has no channel for a scan request, and none is worth
+        # building: it exists only so an already-deployed Pi can be cut over.
         for report in printer_reports or []:
             printer_id = report.pop("id", None)
             if printer_id:
@@ -94,7 +121,7 @@ class LegacyClient:
                     "last_name": entry.get("last_name"),
                     "pronouns": job.get("pronouns") or entry.get("pronouns"),
                 }
-        return cfg, printers, job
+        return Poll(config=cfg, printers=printers, job=job)
 
     def complete(self, job_id, ok, error=None):
         if ok:

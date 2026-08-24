@@ -53,6 +53,19 @@ export interface Integration {
   created_at: string
 }
 
+/** A printer the bridge saw on the local network. A cache of a scan, not a
+ *  record — safe to discard, and it reappears on the next scan. */
+export interface DiscoveredPrinter {
+  id: string
+  org_id: string
+  ip: string
+  mac: string | null
+  model: string | null
+  node_name: string | null
+  first_seen: string
+  last_seen: string
+}
+
 /** A member of an organization, as returned by the org_members() function. */
 export interface OrgMember {
   user_id: string

@@ -18,8 +18,10 @@ const ADMIN = '22222222-2222-4222-8222-222222222222'
 const all = readdirSync(MIG).filter((f) => f.endsWith('.sql')).sort()
 // Everything up to the multi-tenant work is the schema as it was in production
 // before the refactor; the `_mt_a*` files are the phased refactor itself.
-const mt = all.filter((f) => f.includes('_mt_a'))
-const base = all.filter((f) => !f.includes('_mt_a'))
+// `_mt_*` is the refactor itself, whichever track it belongs to — matching on
+// `_mt_a` put the first Track B migration in the pre-refactor group.
+const mt = all.filter((f) => f.includes('_mt_'))
+const base = all.filter((f) => !f.includes('_mt_'))
 const read = (f) => readFileSync(path.join(MIG, f), 'utf8')
 
 const STUB = `
@@ -353,6 +355,48 @@ await db.exec(`delete from public.organizations where slug = 'temp-org'`)
 const orphan = await q(`select count(*) as n from vault.secrets where secret = 'temp-key'`)
 if (Number(orphan.n) === 0) ok('deleting an org takes its credentials with it')
 else bad(`a deleted org left ${orphan.n} credential(s) behind in the vault`)
+
+console.log('— scan and add printer (B2) —')
+const scanOrg = (await q(`select id from public.organizations order by created_at limit 1`)).id
+
+// An admin asks for a scan; the bridge reports back what it saw.
+await db.exec(asUser(ADMIN, `
+  update public.printer_status set scan_requested_at = now() where org_id = '${scanOrg}';`))
+const asked = await q(`
+  select scan_requested_at is not null as asked from public.printer_status
+  where org_id = '${scanOrg}'`)
+if (asked.asked) ok('an admin can request a scan')
+else bad('the scan request did not stick')
+
+await db.exec(`
+  insert into public.discovered_printers (org_id, ip, mac, model)
+  values ('${scanOrg}', '192.168.1.69', '44:f7:9f:bc:ab:e8', 'Brother QL-820NWB')`)
+
+// Reporting the same address again updates it rather than duplicating, and
+// keeps first_seen — "seen since", not "found again just now".
+await db.exec(`
+  insert into public.discovered_printers (org_id, ip, mac, model, last_seen)
+  values ('${scanOrg}', '192.168.1.69', '44:f7:9f:bc:ab:e8', 'Brother QL-820NWB', now())
+  on conflict (org_id, ip) do update set last_seen = excluded.last_seen`)
+const dedup = await q(`
+  select count(*) as n, min(first_seen) = max(first_seen) as kept_first
+  from public.discovered_printers where org_id = '${scanOrg}'`)
+if (Number(dedup.n) === 1 && dedup.kept_first) ok('re-reporting an address updates rather than duplicates')
+else bad(`discovered_printers deduplication: ${JSON.stringify(dedup)}`)
+
+// A second org must not see it.
+await db.exec(`
+  insert into public.organizations (id, slug, name)
+  values ('dddddddd-0000-4000-8000-00000000000d', 'scan-other', 'Scan Other')
+  on conflict (slug) do nothing`)
+const otherSees = await q(`
+  select count(*) as n from public.discovered_printers
+  where org_id = 'dddddddd-0000-4000-8000-00000000000d'`)
+if (Number(otherSees.n) === 0) ok('another org sees nothing of it')
+else bad('discovered printers leaked across orgs')
+
+// Deleting the org takes the scan cache with it.
+await db.exec(`delete from public.organizations where slug = 'scan-other'`)
 
 console.log('— negative control: a leaky policy must FAIL the test —')
 const leaky = await build((sql, f) =>
