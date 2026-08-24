@@ -63,24 +63,42 @@ def _found_json(f) -> dict:
     return {"ip": f.ip, "mac": f.mac, "model": f.model, "via": f.via}
 
 
-def _wait_for_printers(subnet, timeout, say) -> list:
-    """Scan until something answers, rather than sleeping and hoping.
+def _wait_for_printers(subnet, timeout, say, known=()) -> list:
+    """Scan until a printer we do not already know answers.
 
     How long a reset printer takes to reach the network varies with the switch
     and the DHCP server, so a fixed wait is either unreliable or slower than it
     needs to be.
+
+    `known` is the addresses already in service. Stopping at the first printer
+    to answer sounds right and is wrong: a printer that has been running for
+    weeks replies instantly, while the one actually being set up is still
+    working through a factory reset — so the sweep would return the wrong
+    printer, every time, and never even look for the right one.
+
+    Everything found is returned, including the known ones, because the
+    operator may still need to see them to understand what is on the network.
     """
+    known = {str(ip).strip() for ip in known if ip}
     deadline = time.monotonic() + timeout
     attempt = 0
+    seen: list = []
     while True:
         attempt += 1
         found = discover.discover_printers(subnet=subnet)
         if found:
-            return found
+            seen = found
+            fresh = [f for f in found if f.ip.strip() not in known]
+            if fresh:
+                return found
         remaining = deadline - time.monotonic()
         if remaining <= 0:
-            return []
-        say(f"nothing yet (attempt {attempt}, {int(remaining)}s left)")
+            return seen
+        if seen:
+            say(f"only printers already in service so far "
+                f"(attempt {attempt}, {int(remaining)}s left)")
+        else:
+            say(f"nothing yet (attempt {attempt}, {int(remaining)}s left)")
         time.sleep(min(_POLL_INTERVAL, remaining))
 
 
@@ -89,8 +107,11 @@ def _wait_for_printers(subnet, timeout, say) -> list:
 
 def _discover(ctx, say) -> TaskResult:
     subnet = ctx.get("subnet")
+    known = ctx.get("known_ips") or []
     say("looking for printers on the wired network")
-    found = _wait_for_printers(subnet, DISCOVER_TIMEOUT, say)
+    if known:
+        say(f"({len(known)} printer(s) already in service will be marked as such)")
+    found = _wait_for_printers(subnet, DISCOVER_TIMEOUT, say, known)
     if not found:
         return TaskResult(
             ok=False,
@@ -101,9 +122,25 @@ def _discover(ctx, say) -> TaskResult:
                 "reset finished — it takes a while and must not be interrupted."
             ),
         )
-    say(f"found {len(found)} printer(s)")
+
+    known_set = {str(ip).strip() for ip in known if ip}
+    fresh = [f for f in found if f.ip.strip() not in known_set]
+    say(f"found {len(found)} printer(s), {len(fresh)} of them new")
     for f in found:
-        say(f"  {f.ip}  {f.mac or '?'}  {f.model or '?'}")
+        mark = "" if f.ip.strip() not in known_set else "  (already in service)"
+        say(f"  {f.ip}  {f.mac or '?'}  {f.model or '?'}{mark}")
+    if not fresh:
+        return TaskResult(
+            ok=False,
+            data={"candidates": [_found_json(f) for f in found]},
+            log=say.lines,
+            error=(
+                "Only printers already in service answered. The printer being "
+                "set up has not reached the network: check the Ethernet cable "
+                "and that the factory reset finished — from a reset it takes "
+                "around 90 seconds."
+            ),
+        )
     return TaskResult(
         ok=True,
         next_state="select",
