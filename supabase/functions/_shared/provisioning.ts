@@ -38,7 +38,7 @@ const MAX_LOG_LINES = 400;
 
 const SESSION_COLUMNS =
   "id,org_id,state,printer_name,location,ssid,wired_ip,model,serial,firmware," +
-  "wireless_mac,wireless_ip,printer_id,task_started_at,log";
+  "wireless_mac,wireless_ip,printer_id,task_started_at,log,visible_networks";
 
 type Session = Record<string, unknown>;
 
@@ -144,6 +144,7 @@ const WRITABLE = new Set([
   "firmware",
   "wireless_mac",
   "wireless_ip",
+  "visible_networks",
 ]);
 
 /**

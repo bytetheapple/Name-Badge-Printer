@@ -327,6 +327,39 @@ print("— the safe-to-unplug signal —")
 check("reads the wireless interface state", pc.wireless_active(IP) is False)
 check("returns None when unreachable", pc.wireless_active("127.0.0.1:1") is None)
 
+print("— the wireless scan table —")
+# NOTE: the QL-820NWB's real scan markup has never been captured. These are
+# constructed from the shapes such a table plausibly takes, so this proves the
+# parser is sane, NOT that it matches the printer. Capture a real page with
+#   curl -s 'http://<ip>/net/wireless/wireless.html?wlan=3'
+# and add it here before trusting the picker.
+SCAN = (
+    "<table>"
+    "<tr><th>SSID</th><th>Channel</th><th>Mode</th><th>Signal</th></tr>"
+    "<tr><td>Guest-2G</td><td>6</td><td>802.11b/g/n</td><td>-52</td></tr>"
+    "<tr><td>Lobby&#32;WiFi</td><td>11</td><td>802.11n</td><td>-61</td></tr>"
+    "<tr><td>Guest-2G</td><td>6</td><td>802.11b/g/n</td><td>-52</td></tr>"
+    "</table>"
+)
+found = pc.parse_scan(SCAN)
+check("reads the names", found == ["Guest-2G", "Lobby WiFi"], str(found))
+check("skips the header row", "SSID" not in found)
+check("decodes entities in a name", "Lobby WiFi" in found)
+check("lists each network once", len(found) == 2, str(found))
+
+check("no table at all yields nothing", pc.parse_scan("<html><body>none</body></html>") == [])
+check("malformed markup does not raise", pc.parse_scan("<table><tr><td>x") == [])
+
+# A row of unrelated numbers must not be mistaken for a network. Channels are
+# 1..14, which is the only thing separating a scan row from any other table.
+other = pc.parse_scan(
+    "<table><tr><td>Total pages</td><td>4211</td><td>since reset</td></tr></table>")
+check("an unrelated table is not read as networks", other == [], str(other))
+
+nested = pc.parse_scan(
+    "<table><tr><td><b>Sanctuary</b></td><td>1</td><td>IEEE 802.11g</td><td>-70</td></tr></table>")
+check("markup inside a name is handled", nested == ["Sanctuary"], str(nested))
+
 print()
 if FAILURES:
     print(f"RESULT: {len(FAILURES)} failure(s): {', '.join(FAILURES)}")

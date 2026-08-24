@@ -9,11 +9,15 @@ keeps printing throughout.
 
 ---
 
-## 1. Apply the migration
+## 1. Apply the migrations
 
-Paste into the Supabase SQL editor:
+Paste into the Supabase SQL editor, in order:
 
     supabase/migrations/20260824120000_mt_b3_provisioning.sql
+    supabase/migrations/20260824160000_mt_b3a_visible_networks.sql
+
+The second one adds a single column and returns nothing; it is safe to run on
+its own if the first is already applied.
 
 It is additive and idempotent. It creates `provisioning_sessions`, three Vault
 helper functions, and their grants.
@@ -78,8 +82,8 @@ nothing — it writes a row and deletes it again.
 | 3 | operator | Plug in Ethernet |
 | 4 | **bridge** | Find it on the wired network |
 | — | operator | Pick it, if more than one answered |
-| 5 | **bridge** | Log in, identify it, apply the kiosk settings |
-| — | operator | Check the WiFi password |
+| 5 | **bridge** | Log in, identify it, apply the kiosk settings, survey the WiFi |
+| — | operator | Choose the network and give its password |
 | 6 | **bridge** | Write the wireless settings |
 | 7 | operator | Power cycle, wait for a solid WiFi icon |
 | 8 | **bridge** | Find it again on WiFi, and add it as a printer |
@@ -87,11 +91,44 @@ nothing — it writes a row and deletes it again.
 The session row is the only memory between steps, so the operator can close the
 tab during the reset — several minutes of standing about — and come back to it.
 
+## Choosing the network
+
+The network is not asked for up front. It is chosen at step 5, from a list the
+**printer itself** produced — its wireless page has a scan behind the Browse
+button, and it answers over Ethernet before any wireless is configured.
+
+That source is deliberate. This model is 2.4GHz only, so a list it made itself
+cannot contain a network it is unable to join. A list from a phone or from the
+Pi can, and picking a 5GHz network fails exactly like a wrong password does:
+the printer switches to wireless, stops answering, and needs another factory
+reset.
+
+Naming a network that is not in the list stays available, because a printer is
+often set up at a desk and installed somewhere else.
+
+> **Not yet proven against hardware.** The scan page's markup has never been
+> captured — the recon only established that the Browse button exists. The
+> parser is written to the shape such a table plausibly takes and is tested
+> against constructed fixtures, so the picker may come up empty on the first
+> real run. That degrades to typing the network name, which is what the
+> previous version did anyway, so it costs nothing but the convenience.
+>
+> To pin it down, capture a real page while a printer is on Ethernet:
+>
+> ```
+> curl -s 'http://<printer-ip>/net/wireless/wireless.html?wlan=3' > scan.html
+> ```
+>
+> That needs a logged-in session, so easiest is to open the wireless page in a
+> browser, press **Browse**, and save the resulting HTML. With that in hand the
+> parser can be fixed against reality and the fixture added to
+> `bridge/test_printer_config.py`.
+
 ## The secrets
 
-Two are needed: the code on the back of the printer, and the site's WiFi
-password. Both go into Vault when the setup starts and are deleted when it
-finishes or is cancelled — including if the row is deleted directly, which a
+Two are needed: the printer code (the `Pwd:` on its label) and the site's WiFi
+password. The first goes into Vault when the setup starts and the second when
+the network is chosen; both are deleted when the setup finishes or is cancelled — including if the row is deleted directly, which a
 trigger covers. Neither is ever stored in a column, and only the Edge Functions
 can read one back.
 

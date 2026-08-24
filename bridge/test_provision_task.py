@@ -76,7 +76,10 @@ class FakeWeb:
         return True, changes, ""
 
 
-def install(found=(FOUND,), result=None, target=FOUND, web=FakeWeb):
+SEEN = ["Guest-2G", "Lobby WiFi"]
+
+
+def install(found=(FOUND,), result=None, target=FOUND, web=FakeWeb, networks=None):
     posted.clear()
     FakeWeb.radio_on_power = "2"
     FakeWeb.raise_on_wireless = None
@@ -84,6 +87,7 @@ def install(found=(FOUND,), result=None, target=FOUND, web=FakeWeb):
     pt.discover.find_printer = lambda **k: target
     pt.pc.PrinterWeb = web
     pt.pc.configure_printer = lambda ip, pw, **k: (result or good_result())
+    pt.pc.visible_networks = lambda w: list(SEEN if networks is None else networks)
 
 
 BASE = {"subnet": "10.0.0", "wired_ip": "10.0.0.5", "ssid": "Lobby-WiFi",
@@ -111,6 +115,20 @@ check("succeeds and moves to the passphrase check",
 check("records the wireless MAC for the cutover",
       r.data["wireless_mac"] == WIRELESS.mac, str(r.data))
 check("keeps the transcript", any("set the clock" in ln for ln in r.log))
+check("asks the printer which networks it can see",
+      r.data["visible_networks"] == SEEN, str(r.data.get("visible_networks")))
+
+# The survey is a convenience. Losing it must cost the operator a picker, not
+# the whole setup — they can still name the network themselves.
+install()
+pt.pc.visible_networks = lambda w: (_ for _ in ()).throw(RuntimeError("scan page missing"))
+r = pt.run("configure", BASE)
+check("a failed scan does not fail the step", r.ok and r.next_state == "wifi_confirm",
+      f"{r.ok} {r.error}")
+check("and reports an empty list rather than nothing",
+      r.data["visible_networks"] == [], str(r.data.get("visible_networks")))
+check("and says so in the transcript",
+      any("named by hand" in ln for ln in r.log), str(r.log))
 
 install(result=good_result(ok=False))
 r = pt.run("configure", BASE)

@@ -5,7 +5,8 @@ import type { ProvisioningCandidate, ProvisioningSession } from '../../lib/types
 
 const COLUMNS =
   'id, org_id, state, printer_name, location, ssid, candidates, wired_ip, model, ' +
-  'serial, firmware, wireless_mac, wireless_ip, printer_id, task_started_at, log, ' +
+  'serial, firmware, visible_networks, wireless_mac, wireless_ip, printer_id, ' +
+  'task_started_at, log, ' +
   'error, created_at, updated_at'
 
 /** States where we are waiting on the print server rather than on the operator. */
@@ -221,18 +222,12 @@ function StartForm({
 }) {
   const [name, setName] = useState('')
   const [location, setLocation] = useState('')
-  const [ssid, setSsid] = useState('')
-  const [passphrase, setPassphrase] = useState('')
-  const [passphrase2, setPassphrase2] = useState('')
   const [webPassword, setWebPassword] = useState('')
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   async function start() {
     if (!name.trim()) return setError('Give the printer a name.')
-    if (!ssid.trim()) return setError('Enter the name of the WiFi network it should join.')
-    if (!passphrase) return setError('Enter the WiFi password.')
-    if (passphrase !== passphrase2) return setError('The two WiFi passwords do not match.')
     if (!webPassword.trim()) return setError('Enter the printer code.')
 
     setSaving(true)
@@ -244,7 +239,6 @@ function StartForm({
         state: 'reset',
         printer_name: name.trim(),
         location: location.trim() || null,
-        ssid: ssid.trim(),
       })
       .select('id')
       .maybeSingle()
@@ -254,24 +248,19 @@ function StartForm({
       return
     }
 
-    // Straight into the vault, never into a column. They are deleted again as
-    // soon as the printer is on the network.
-    for (const [kind, secret] of [
-      ['web_password', webPassword],
-      ['wifi_passphrase', passphrase],
-    ]) {
-      const { error: secretError } = await supabase.rpc('set_provisioning_secret', {
-        p_session: data.id,
-        p_kind: kind,
-        p_secret: secret,
-      })
-      if (secretError) {
-        // Do not leave a half-built session lying about with one secret in it.
-        await supabase.from('provisioning_sessions').delete().eq('id', data.id)
-        setSaving(false)
-        setError(secretError.message)
-        return
-      }
+    // Straight into the vault, never into a column, and deleted again as soon
+    // as the printer is on the network. The WiFi password is not asked for
+    // until step 5, once the printer can tell us which networks it can see.
+    const { error: secretError } = await supabase.rpc('set_provisioning_secret', {
+      p_session: data.id,
+      p_kind: 'web_password',
+      p_secret: webPassword,
+    })
+    if (secretError) {
+      await supabase.from('provisioning_sessions').delete().eq('id', data.id)
+      setSaving(false)
+      setError(secretError.message)
+      return
     }
     setSaving(false)
     onStarted()
@@ -291,32 +280,6 @@ function StartForm({
       <label className="field">
         Location
         <input value={location} onChange={(e) => setLocation(e.target.value)} />
-      </label>
-      <label className="field">
-        WiFi network
-        <input value={ssid} onChange={(e) => setSsid(e.target.value)} />
-        <span className="muted small">The printer can only use 2.4GHz networks.</span>
-      </label>
-      {/* Typed twice rather than shown back. A wrong WiFi password is not a
-          typo that can be corrected later: the printer switches to wireless,
-          stops answering on Ethernet, and the only way back is a factory reset. */}
-      <label className="field">
-        WiFi password
-        <input
-          type="password"
-          value={passphrase}
-          onChange={(e) => setPassphrase(e.target.value)}
-          autoComplete="new-password"
-        />
-      </label>
-      <label className="field">
-        WiFi password again
-        <input
-          type="password"
-          value={passphrase2}
-          onChange={(e) => setPassphrase2(e.target.value)}
-          autoComplete="new-password"
-        />
       </label>
       <label className="field">
         Printer Code
@@ -578,6 +541,19 @@ function Step({
   }
 }
 
+/**
+ * Choose the network and give its password — the point of no return.
+ *
+ * The list comes from the printer's own site survey, taken while it was being
+ * configured. That matters more than convenience: this model is 2.4GHz only,
+ * so a list from a phone or from the print server can offer a 5GHz network it
+ * is physically unable to join, and there is no way back from that but a
+ * factory reset.
+ *
+ * A survey is not the last word, though. Printers are often set up at a desk
+ * and installed somewhere else, so naming a network that is not in the list
+ * has to stay just as easy.
+ */
 function WifiConfirm({
   session,
   busy,
@@ -587,63 +563,118 @@ function WifiConfirm({
   busy: boolean
   advance: (state: string, extra?: Record<string, unknown>) => Promise<void>
 }) {
+  const seen = (session.visible_networks ?? []).filter(Boolean)
+  const [choice, setChoice] = useState(session.ssid ?? '')
+  const [manual, setManual] = useState(seen.length === 0)
+  const [typed, setTyped] = useState(session.ssid ?? '')
   const [passphrase, setPassphrase] = useState('')
-  const [changing, setChanging] = useState(false)
+  const [passphrase2, setPassphrase2] = useState('')
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
+  const ssid = manual ? typed.trim() : choice
+
   async function apply() {
-    if (changing) {
-      if (!passphrase) return setError('Enter the WiFi password.')
-      setSaving(true)
-      const { error } = await supabase.rpc('set_provisioning_secret', {
-        p_session: session.id,
-        p_kind: 'wifi_passphrase',
-        p_secret: passphrase,
-      })
-      setSaving(false)
-      if (error) return setError(error.message)
-    }
-    await advance('wifi')
+    if (!ssid) return setError('Choose the network the printer should join.')
+    if (!passphrase) return setError('Enter the WiFi password.')
+    if (passphrase !== passphrase2) return setError('The two WiFi passwords do not match.')
+
+    setSaving(true)
+    const { error } = await supabase.rpc('set_provisioning_secret', {
+      p_session: session.id,
+      p_kind: 'wifi_passphrase',
+      p_secret: passphrase,
+    })
+    setSaving(false)
+    if (error) return setError(error.message)
+    await advance('wifi', { ssid })
   }
 
   return (
     <div className="provision-step">
       <h3>5. Join the WiFi network</h3>
       <p>
-        The printer is configured. The last thing to do over the cable is give it the wireless
-        network — <strong>{session.ssid}</strong>.
+        The printer is configured. The last thing to do over the cable is tell it which wireless
+        network to join once the cable comes out.
       </p>
 
       <p className="warn">
-        Check the WiFi password before applying it. Once the printer switches to wireless it stops
-        answering on Ethernet and does not fall back on its own, so if the password is wrong the
+        Check the network and password before applying them. Once the printer switches to wireless
+        it stops answering on Ethernet and does not fall back on its own, so if either is wrong the
         printer becomes unreachable and the only way forward is a factory reset and starting this
         walkthrough again.
       </p>
 
       {error && <div className="error">{error}</div>}
 
-      {changing ? (
+      <fieldset className="subform">
+        <legend>WiFi credentials for the printer to use</legend>
+
+        {seen.length > 0 && (
+          <>
+            <p className="muted small" style={{ marginTop: 0 }}>
+              Networks the printer itself can see from where it is now.
+            </p>
+            <ul className="network-list">
+              {seen.map((network) => (
+                <li key={network}>
+                  <label>
+                    <input
+                      type="radio"
+                      name="ssid"
+                      checked={!manual && choice === network}
+                      onChange={() => {
+                        setManual(false)
+                        setChoice(network)
+                      }}
+                    />
+                    {network}
+                  </label>
+                </li>
+              ))}
+              <li>
+                <label>
+                  <input type="radio" name="ssid" checked={manual} onChange={() => setManual(true)} />
+                  Another network, not listed here
+                </label>
+              </li>
+            </ul>
+          </>
+        )}
+
+        {manual && (
+          <label className="field">
+            WiFi network
+            <input value={typed} onChange={(e) => setTyped(e.target.value)} autoFocus={seen.length > 0} />
+            <span className="muted small">
+              {seen.length > 0
+                ? 'Use this for the network where the printer will actually live, if it is out of range from here.'
+                : 'The printer reported no networks it can see, so this one has to be typed. It can only use 2.4GHz networks.'}
+            </span>
+          </label>
+        )}
+
+        {/* Typed twice rather than shown back: there is no way to check a WiFi
+            password after it has been used, only to discover it was wrong. */}
         <label className="field">
           WiFi password
           <input
-            type="text"
+            type="password"
             value={passphrase}
             onChange={(e) => setPassphrase(e.target.value)}
-            autoComplete="off"
-            autoFocus
+            autoComplete="new-password"
           />
-          <span className="muted small">Shown as you type, so you can check it.</span>
         </label>
-      ) : (
-        <p className="muted small">
-          Using the password you entered at the start.{' '}
-          <button className="linkish btn-sm" onClick={() => setChanging(true)}>
-            Re-enter it
-          </button>
-        </p>
-      )}
+        <label className="field">
+          WiFi password again
+          <input
+            type="password"
+            value={passphrase2}
+            onChange={(e) => setPassphrase2(e.target.value)}
+            autoComplete="new-password"
+          />
+        </label>
+      </fieldset>
 
       <button onClick={() => void apply()} disabled={busy || saving}>
         {saving ? 'Saving…' : 'Apply the wireless settings'}

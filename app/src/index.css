@@ -1077,6 +1077,26 @@ td.actions-cell {
   overflow-y: auto;
 }
 
+/* A group of fields that needs a heading to be read correctly, rather than
+   just to look tidy. The browser default fieldset border is heavy enough to
+   fight the panel it sits inside, so it is toned down to match .provision. */
+.subform {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 14px 16px 4px;
+  margin: 0 0 14px;
+  min-width: 0;
+}
+.subform legend {
+  padding: 0 6px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-h);
+}
+.subform .field:last-of-type {
+  margin-bottom: 10px;
+}
+
 /* Separates the guided setup from the two shortcuts below it. */
 .provision-rule {
   border: none;
@@ -1097,4 +1117,30 @@ td.actions-cell {
 }
 .linkish:hover {
   opacity: 0.8;
+}
+
+/* The scan results, as things to choose between rather than a list to read. */
+.network-list {
+  list-style: none;
+  margin: 0 0 14px;
+  padding: 0;
+  font-size: 14px;
+}
+.network-list li + li {
+  margin-top: 2px;
+}
+.network-list label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  border-radius: 6px;
+  cursor: pointer;
+}
+.network-list label:hover {
+  background: var(--pending-bg);
+}
+.network-list input {
+  margin: 0;
+  flex: none;
 }

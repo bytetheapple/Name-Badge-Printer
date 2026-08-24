@@ -46,6 +46,9 @@ PAGE_COMMS = "/printer/communication_settings.html"
 PAGE_WIRELESS = "/net/wireless/wireless.html"
 PAGE_DATE = "/general/date.html"
 PAGE_NETSTATUS = "/net/net/net.html"
+#: What the wireless page's "Browse" button calls. Answers over Ethernet with
+#: the radio still unconfigured, which is what makes it usable during setup.
+PAGE_WIRELESS_SCAN = "/net/wireless/wireless.html?wlan=3"
 
 F_PASSWORD = "B128"          # login
 F_AUTO_POWER_ON = "B1c"      # 0 disable, 1 enable
@@ -486,6 +489,107 @@ def configure_printer(
         say("  the printer is moving to WiFi; it will take a new IP address")
 
     return result
+
+
+def page_text(html: str) -> str:
+    """Readable text from a page, for reading tables the printer renders.
+
+    Consecutive separators are collapsed: every tag becomes a pipe, so nested
+    markup would otherwise leave runs of them between adjacent cells.
+    """
+    t = re.sub(r"<[^>]+>", " | ", unescape(html))
+    t = re.sub(r"\s+", " ", t)
+    return re.sub(r"(?:\|\s*)+", "| ", t).strip()
+
+
+class _TableParser(HTMLParser):
+    """Rows of cell text from every table on a page."""
+
+    def __init__(self):
+        super().__init__(convert_charrefs=True)
+        self.rows: list[list[str]] = []
+        self._row: list[str] | None = None
+        self._cell: list[str] | None = None
+
+    def handle_starttag(self, tag, attrs):
+        if tag == "tr":
+            self._row = []
+        elif tag in ("td", "th") and self._row is not None:
+            self._cell = []
+
+    def handle_data(self, data):
+        if self._cell is not None:
+            self._cell.append(data)
+
+    def handle_endtag(self, tag):
+        if tag in ("td", "th") and self._cell is not None and self._row is not None:
+            self._row.append(re.sub(r"\s+", " ", "".join(self._cell)).strip())
+            self._cell = None
+        elif tag == "tr" and self._row is not None:
+            if self._row:
+                self.rows.append(self._row)
+            self._row = None
+
+
+#: 2.4GHz has 14 channels worldwide. A cell outside this is not a channel, and
+#: keying on the range is what separates a scan row from a signal strength or a
+#: row number.
+_CHANNELS = range(1, 15)
+
+
+def parse_scan(html: str) -> list[str]:
+    """SSIDs out of the wireless page's scan table.
+
+    Structural rather than a regex over flattened text: the printer's exact
+    markup for this table has never been captured, so matching on the *shape*
+    of a scan row — a name, a channel in 1..14, and a cell naming 802.11 — is
+    far likelier to survive contact with it than matching on punctuation.
+
+    Returns [] if nothing looks like a scan row, which callers must read as
+    "no opinion" rather than "no networks".
+    """
+    parser = _TableParser()
+    try:
+        parser.feed(html)
+    except Exception:  # noqa: BLE001 — malformed markup is not worth a crash
+        return []
+
+    seen: set[str] = set()
+    out: list[str] = []
+    for row in parser.rows:
+        if len(row) < 3:
+            continue
+        channel = any(c.isdigit() and int(c) in _CHANNELS for c in row[1:])
+        mode = any("802.11" in c or re.search(r"\b\.?11[abgn]", c) for c in row)
+        if not (channel and mode):
+            continue
+        name = next((c for c in row if c), "")
+        # A header row can otherwise satisfy the shape test on a page that puts
+        # an example in its heading.
+        if not name or name.lower() in ("ssid", "name", "network"):
+            continue
+        if name not in seen:
+            seen.add(name)
+            out.append(name)
+    return out
+
+
+def visible_networks(web: PrinterWeb) -> list[str]:
+    """SSIDs the printer can currently see, in the order it lists them.
+
+    This is the only trustworthy source for a network picker. The printer is
+    2.4GHz (802.11b/g/n), so a 5GHz network never appears here — which means a
+    list taken from a phone or a Pi can offer a choice the printer is unable to
+    join, and joining is the step that cannot be undone without a factory reset.
+
+    Returns an empty list if the scan cannot be read. Callers must treat that
+    as "no opinion" rather than "nothing there": the operator may well be
+    setting the printer up somewhere other than where it will live.
+    """
+    try:
+        return parse_scan(web.get(PAGE_WIRELESS_SCAN))
+    except requests.RequestException:
+        return []
 
 
 def wireless_active(ip: str, timeout: float = 5.0) -> bool | None:

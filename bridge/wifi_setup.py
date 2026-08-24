@@ -25,6 +25,7 @@ from html import unescape
 
 import requests
 
+import printer_config as pc
 from printer_config import (
     F_INTERFACE,
     F_PASSPHRASE,
@@ -41,7 +42,10 @@ from printer_config import (
 )
 
 PAGE_WIRELESS_TCPIP = "/net/wireless/tcpip.html"
-PAGE_WIRELESS_SCAN = "/net/wireless/wireless.html?wlan=3"
+#: Kept as a re-export: these moved to printer_config, which is where the rest
+#: of the printer's web UI lives, but this module's callers still name them.
+PAGE_WIRELESS_SCAN = pc.PAGE_WIRELESS_SCAN
+visible_networks = pc.visible_networks
 
 
 def _text(html: str) -> str:
@@ -140,21 +144,6 @@ def survey(web: PrinterWeb) -> dict:
         _report("scripts this page loads", "\n".join(scripts))
 
     return {"wired": wired, "wireless": wireless, "comms": comms, "tcpip": tcpip, "wl": wl}
-
-
-def visible_networks(web: PrinterWeb) -> list[str]:
-    """SSIDs the printer can currently see.
-
-    Worth checking before blaming the credentials: the printer's radio and your
-    phone's are not in the same place, and a 5GHz-only network will not appear
-    here at all — this model is 2.4GHz (802.11b/g/n).
-    """
-    try:
-        text = _text(web.get(PAGE_WIRELESS_SCAN))
-    except requests.RequestException:
-        return []
-    # The scan table lists: name, channel, mode, signal.
-    return re.findall(r"\|\s*([^|]{2,32}?)\s*\|\s*\d{1,2}\s*\|\s*\.11", text)
 
 
 def main() -> int:

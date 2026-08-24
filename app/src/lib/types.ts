@@ -101,6 +101,8 @@ export interface ProvisioningSession {
   model: string | null
   serial: string | null
   firmware: string | null
+  /** SSIDs the printer itself reported seeing, for the network picker. */
+  visible_networks: string[]
   wireless_mac: string | null
   wireless_ip: string | null
   printer_id: string | null

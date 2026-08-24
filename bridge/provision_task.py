@@ -112,6 +112,23 @@ def _discover(ctx, say) -> TaskResult:
     )
 
 
+def _survey(ip: str, password: str, say) -> list[str]:
+    """Networks the printer can see. Never raises: this is a convenience."""
+    try:
+        web = pc.PrinterWeb(ip, password)
+        web.login()
+        found = pc.visible_networks(web)
+    except Exception as e:  # noqa: BLE001 — a failed survey must not fail setup
+        say(f"could not read the network scan ({type(e).__name__}); "
+            "the network will have to be named by hand")
+        return []
+    if found:
+        say(f"the printer can see {len(found)} network(s): {', '.join(found)}")
+    else:
+        say("the printer reported no networks it can see")
+    return found
+
+
 def _configure(ctx, say) -> TaskResult:
     ip = ctx.get("wired_ip")
     password = ctx.get("web_password") or ""
@@ -144,6 +161,15 @@ def _configure(ctx, say) -> TaskResult:
         "serial": result.serial,
         "firmware": result.firmware,
         "wireless_mac": result.wireless.mac,
+        # Ask the printer which networks it can see, so the operator picks from
+        # a list instead of typing one. It has to be the printer's own survey:
+        # this model is 2.4GHz only, so a list from anything else can offer a
+        # network it is unable to join — and joining is the step that cannot be
+        # undone without another factory reset.
+        #
+        # Best-effort. An empty list means "no opinion", and the operator names
+        # the network themselves, which is what they would have done anyway.
+        "visible_networks": _survey(ip, password, say),
     }
     if not result.ok:
         return TaskResult(
