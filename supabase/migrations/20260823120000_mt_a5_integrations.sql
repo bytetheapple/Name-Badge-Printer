@@ -300,5 +300,9 @@ as $$
   where i.org_id = p_org and i.kind = p_kind
 $$;
 
-revoke all on function public.integration_for(uuid, text) from public;
+-- Revoking from PUBLIC is not enough on its own: this project grants the Data
+-- API roles EXECUTE on newly created functions, and a direct grant to a role
+-- survives a revoke from PUBLIC. They have to be named.
+revoke all on function public.integration_for(uuid, text)
+  from public, anon, authenticated;
 grant execute on function public.integration_for(uuid, text) to service_role;

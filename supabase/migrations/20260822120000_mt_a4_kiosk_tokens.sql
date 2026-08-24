@@ -165,7 +165,10 @@ $$;
 -- Only the Edge Functions may call it. Postgres grants EXECUTE to PUBLIC by
 -- default, so revoking from anon/authenticated alone would leave that in place —
 -- it has to come off PUBLIC and be granted back explicitly.
+-- Revoking from PUBLIC is not enough on its own: this project grants the Data
+-- API roles EXECUTE on newly created functions, and a direct grant to a role
+-- survives a revoke from PUBLIC. They have to be named.
 revoke all on function public.check_submit_allowed(uuid, uuid, text, int, int, int, int, interval)
-  from public;
+  from public, anon, authenticated;
 grant execute on function public.check_submit_allowed(uuid, uuid, text, int, int, int, int, interval)
   to service_role;

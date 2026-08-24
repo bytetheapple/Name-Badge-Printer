@@ -102,11 +102,19 @@ begin
         'grant select, insert, update, delete on %s to anon, authenticated, service_role',
         obj.object_identity);
     end if;
+    -- …and on newly created functions, which is easy to miss: revoking such a
+    -- grant needs the roles named, because taking EXECUTE off PUBLIC leaves a
+    -- direct grant to a role untouched.
+    if obj.command_tag = 'CREATE FUNCTION' and obj.schema_name = 'public' then
+      execute format('grant execute on function %s to anon, authenticated, service_role',
+                     obj.object_identity);
+    end if;
   end loop;
 end
 $fn$;
 create event trigger rls_on_new_tables on ddl_command_end
-  when tag in ('CREATE TABLE') execute function public._rls_on_new_tables();
+  when tag in ('CREATE TABLE', 'CREATE FUNCTION')
+  execute function public._rls_on_new_tables();
 `
 
 // Tables are granted at creation by the event trigger above, exactly as the
