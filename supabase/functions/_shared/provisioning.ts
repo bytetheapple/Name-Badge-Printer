@@ -142,7 +142,7 @@ export async function claimStep(
  */
 const RECOVER_AT: Record<BridgeTask, string> = {
   discover: "cable",           // check the cable, the switch, the reset
-  configure: "select",         // pick the printer again, or re-enter the password
+  configure: "password",       // by far the likeliest cause: the wrong code
   wifi: "wifi_confirm",        // check the network name and passphrase
   rediscover: "power_cycle",   // turn it off and on again, watch the icon
 };
@@ -202,7 +202,10 @@ export async function applyResult(
 
   if (!ok) {
     patch.error = String(result.error ?? "That step did not finish.").slice(0, 1000);
-    patch.state = RECOVER_AT[task as BridgeTask];
+    // A step may say where its failure belongs — it knows what went wrong, and
+    // "wrong password" and "setting rejected" are recovered from differently.
+    const named = String(result.next_state ?? "");
+    patch.state = named && named !== task ? named : RECOVER_AT[task as BridgeTask];
     await patchSession(sessionId, orgId, task, patch);
     return;
   }

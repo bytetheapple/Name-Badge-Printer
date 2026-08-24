@@ -224,6 +224,16 @@ class Result:
     def ok(self) -> bool:
         return all(s.ok for s in self.steps)
 
+    @property
+    def refused(self) -> bool:
+        """Did the printer stop accepting the session part way through?
+
+        Which in practice means the password was wrong. Worth separating from
+        an ordinary failed setting, because the operator can do something about
+        it and the remedy is not the same.
+        """
+        return any(not s.ok and "login page" in s.detail for s in self.steps)
+
     def transcript(self) -> str:
         """A human-readable account, safe to paste into a support ticket."""
         lines = [
@@ -292,8 +302,19 @@ class PrinterWeb:
             timeout=self.timeout,
         )
         r.raise_for_status()
-        # A still-present password box means the credential was refused.
-        if f'name="{F_PASSWORD}"' in r.text and "Logout" not in r.text:
+        # Verify against a freshly fetched settings page rather than the login
+        # response.
+        #
+        # The old check read the response body for a password box and treated
+        # the word "Logout" anywhere as proof of success. It let a wrong
+        # password through on a real printer: login appeared to work, and every
+        # subsequent write came back as the login page. The operator was then
+        # shown a firmware warning, because that is what the transcript led
+        # with, and no mention of the password at all.
+        #
+        # A page that still offers somewhere to type a password is a page we
+        # are not authenticated on. That holds whatever else the markup says.
+        if f'name="{F_PASSWORD}"' in self.get(PAGE_COMMS):
             raise RuntimeError("the printer rejected the web-UI password")
 
     def submit(
@@ -434,6 +455,11 @@ def configure_printer(
         )
 
     def step(name: str, path: str, changes: dict[str, str]) -> None:
+        # Once the printer has started answering with the login page, every
+        # further write will too. Carrying on produces a transcript of four
+        # identical failures and buries the one fact that matters.
+        if result.refused:
+            return
         say(f"  {name} …")
         try:
             ok, sent, body = web.submit(path, changes)
@@ -441,6 +467,8 @@ def configure_printer(
             result.steps.append(Step(name, False, str(e)[:200], changes))
             return
         result.steps.append(Step(name, ok, "" if ok else _explain(body), sent))
+        if not ok and "login page" in result.steps[-1].detail:
+            say("  the printer stopped accepting the session — stopping here")
 
     # ---- conveniences first, while the link is definitely up -----------------
     if set_clock:

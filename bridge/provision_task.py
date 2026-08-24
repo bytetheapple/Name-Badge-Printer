@@ -178,10 +178,12 @@ def _configure(ctx, say) -> TaskResult:
         return TaskResult(
             ok=False,
             log=say.lines,
+            next_state="password",
             error=(
-                "The printer refused that password. After a factory reset it is "
-                "the code printed on the back of the printer — if that is what "
-                "you entered, the reset probably did not finish."
+                f"The printer at {ip} refused that password. It is the code on "
+                "that printer's own label — each printer has a different one — "
+                "and after a factory reset that is what it expects. If the code "
+                "is right, the reset probably did not finish."
             ),
         )
     except requests.RequestException as e:
@@ -208,6 +210,22 @@ def _configure(ctx, say) -> TaskResult:
         # the network themselves, which is what they would have done anyway.
         "visible_networks": _survey(ip, password, say),
     }
+    if result.refused:
+        # The likeliest cause by far, and the one the operator can fix. Said
+        # plainly, because the transcript leads with a firmware warning that
+        # has nothing to do with it.
+        return TaskResult(
+            ok=False,
+            data=data,
+            log=say.lines,
+            next_state="password",
+            error=(
+                f"The printer at {ip} stopped accepting the password part way "
+                "through, so its settings were not applied. Check the code on "
+                "that printer's own label — each printer has a different one — "
+                "and try again."
+            ),
+        )
     if not result.ok:
         return TaskResult(
             ok=False,

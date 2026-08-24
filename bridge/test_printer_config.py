@@ -141,11 +141,19 @@ class Stub(BaseHTTPRequestHandler):
                                   f'value="{v}"', f'value="{v}" selected="selected"', 1)
                               + m.group(3), page, flags=re.S)
 
-        header = (
-            f'<form method="post" action="/general/status.html">'
-            f'<input type="hidden" name="CSRFToken" value="stale-header-token"/>'
-            f'Logout<input type="hidden" name="B129"/></form>'
-        ) if Stub.logged_in else ""
+        if Stub.logged_in:
+            header = (
+                f'<form method="post" action="/general/status.html">'
+                f'<input type="hidden" name="CSRFToken" value="stale-header-token"/>'
+                f'Logout<input type="hidden" name="B129"/></form>'
+            )
+        else:
+            # A real printer offers the login form on *every* page until it is
+            # signed in, not only on the status page. Modelling that is what
+            # makes "is there still somewhere to type a password" a usable
+            # test for whether we are authenticated — and it is what this stub
+            # got wrong, which let a broken login check pass for weeks.
+            header = f'<form><input type="password" name="{pc.F_PASSWORD}"/></form>'
         self._send(f"<html><body>{header}{page}</body></html>")
 
     def do_POST(self):
@@ -397,6 +405,68 @@ check("the manual-entry form below the results is not read as networks",
           '<tr><td><select><option>Infrastructure</option></select></td>'
           '<td><select><option>1 </option><option>2 </option></select></td>'
           '<td><input name="add_ssid"/></td></tr></table>') == [], "read the form as a network")
+
+print("— a wrong password must be caught at login, not four writes later —")
+# The check used to read the login *response* for a password box and treat the
+# word "Logout" anywhere as proof of success. On a real printer a wrong password
+# got through it: login looked fine, the first write landed, and the rest came
+# back as the login page. Verification now uses a freshly fetched settings page,
+# because a page still offering somewhere to type a password is a page we are
+# not authenticated on.
+class _Session:
+    """Enough of requests.Session for PrinterWeb, with scripted pages."""
+
+    def __init__(self, after_login):
+        self.after_login = after_login
+        self.headers = {}
+
+    def get(self, url, **k):
+        return _Resp(self.after_login)
+
+    def post(self, url, **k):
+        # A response that would have satisfied the old check: no password box,
+        # and the header's logout form present.
+        return _Resp('<form id="logout">Logout</form>')
+
+
+class _Resp:
+    def __init__(self, text):
+        self.text = text
+        self.status_code = 200
+
+    def raise_for_status(self):
+        pass
+
+
+def _web(after_login):
+    w = pc.PrinterWeb("10.0.0.1", "wrong")
+    w.session = _Session(after_login)
+    return w
+
+
+LOGIN_PAGE = '<form><input type="password" name="%s"/></form>' % pc.F_PASSWORD
+SETTINGS_PAGE = '<form><input name="B32" value="0"/>Logout</form>'
+
+try:
+    _web(LOGIN_PAGE).login()
+    check("a wrong password raises at login", False, "login() returned normally")
+except RuntimeError as e:
+    check("a wrong password raises at login", True)
+    check("and says so plainly", "rejected" in str(e), str(e))
+
+try:
+    _web(SETTINGS_PAGE).login()
+    check("a good password does not raise", True)
+except RuntimeError as e:
+    check("a good password does not raise", False, str(e))
+
+print("— and the transcript says which kind of failure it was —")
+r = pc.Result()
+r.steps = [pc.Step("a", True), pc.Step("b", False, pc._explain("<p>Login</p>"))]
+check("a refused session is recognised", r.refused is True, r.steps[1].detail)
+r2 = pc.Result()
+r2.steps = [pc.Step("a", False, "the printer said: value out of range")]
+check("an ordinary rejection is not", r2.refused is False, r2.steps[0].detail)
 
 print()
 if FAILURES:
