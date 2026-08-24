@@ -284,6 +284,103 @@ function StartForm({
 
 /* ------------------------------------------------------------------- steps */
 
+/**
+ * Name the printer's wireless address, when the sweep cannot reach it.
+ *
+ * Wireless clients often land on a different subnet from the wired side, and
+ * neither a /24 sweep nor mDNS crosses one — so a printer that joined the
+ * network perfectly well can still be invisible from the print server. The
+ * address is on the printer's own screen, which is faster than debugging it.
+ *
+ * Skips straight to done: reaching this step means the WiFi settings applied,
+ * and the address given is the proof the operator has.
+ */
+function ManualWireless({
+  session,
+  busy,
+  advance,
+}: {
+  session: ProvisioningSession
+  busy: boolean
+  advance: (state: string, extra?: Record<string, unknown>) => Promise<void>
+}) {
+  const { orgId } = useOrg()
+  const [open, setOpen] = useState(false)
+  const [ip, setIp] = useState('')
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  // The printer row is normally created server-side when the bridge reports
+  // the last step done. This path never reaches the bridge, so it has to do
+  // the same work — otherwise the wizard finishes and adds no printer.
+  async function finishHere(address: string) {
+    if (!orgId) return
+    setSaving(true)
+    const { data, error } = await supabase
+      .from('printers')
+      .insert({
+        org_id: orgId,
+        name: session.printer_name?.trim() || 'New Printer',
+        location: session.location ?? null,
+        printer_ip: address,
+        port: 9100,
+      })
+      .select('id')
+      .maybeSingle()
+    setSaving(false)
+    if (error) {
+      setError(error.message)
+      return
+    }
+    await advance('done', { wireless_ip: address, printer_id: data?.id ?? null })
+  }
+
+  if (!open) {
+    return (
+      <p className="muted small" style={{ marginTop: 16 }}>
+        Print server on a different network from the printer?{' '}
+        <button className="linkish btn-sm" onClick={() => setOpen(true)}>
+          Enter the wireless address yourself
+        </button>
+      </p>
+    )
+  }
+
+  return (
+    <div className="manual-address">
+      {error && <div className="error">{error}</div>}
+      <label className="field">
+        Wireless address
+        <input
+          value={ip}
+          onChange={(e) => setIp(e.target.value)}
+          placeholder="192.168.1.127"
+          autoFocus
+        />
+        <span className="muted small">
+          On the printer: Menu → Information → WLAN. This is the address it took on the wireless
+          network, which is not the one it had on the cable.
+        </span>
+      </label>
+      <div className="modal-actions">
+        <button className="secondary" onClick={() => setOpen(false)} disabled={busy}>
+          Cancel
+        </button>
+        <button
+          onClick={() => {
+            const value = ip.trim()
+            if (!value || /\s/.test(value)) return setError('That does not look like an address.')
+            void finishHere(value)
+          }}
+          disabled={busy || saving}
+        >
+          {saving ? 'Adding…' : 'Use this address'}
+        </button>
+      </div>
+    </div>
+  )
+}
+
 /** The way in when a scan cannot see the printer. Tucked away, since it is the
  *  exception — but on every screen where someone might need it. */
 function Manual({
@@ -520,6 +617,7 @@ function Step({
           <button onClick={() => void advance('rediscover')} disabled={busy}>
             The WiFi icon is solid
           </button>
+          <ManualWireless session={session} busy={busy} advance={advance} />
         </div>
       )
 

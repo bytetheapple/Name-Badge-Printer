@@ -299,8 +299,10 @@ def _wifi(ctx, say) -> TaskResult:
 
 def _rediscover(ctx, say) -> TaskResult:
     mac = ctx.get("wireless_mac")
-    subnet = ctx.get("subnet")
+    subnet = ctx.get("subnet") or discover.local_subnet()
     say(f"looking for the printer on the wireless network ({mac or 'no MAC recorded'})")
+    say(f"trying {discover.node_name_for(mac)}.local, then sweeping {subnet}.0/24"
+        if mac else f"sweeping {subnet}.0/24")
 
     deadline = time.monotonic() + REDISCOVER_TIMEOUT
     attempt = 0
@@ -321,10 +323,14 @@ def _rediscover(ctx, say) -> TaskResult:
             ok=False,
             log=say.lines,
             error=(
-                "The printer did not appear on the wireless network. If the WiFi "
-                "icon on its screen never became solid, the settings did land and "
-                "the network passphrase is almost certainly wrong. Also worth "
-                "checking: this model cannot see 5GHz networks at all."
+                f"The printer did not appear on {subnet}.0/24. If the WiFi icon "
+                "on its screen never became solid, the settings did land and the "
+                "network passphrase is almost certainly wrong — this model also "
+                "cannot see 5GHz networks at all. If the icon is solid, the "
+                "printer is on the network but somewhere this sweep does not "
+                "reach: wireless clients often land on a different subnet from "
+                "the wired side, and mDNS does not cross one. Read the address "
+                "off the printer (Menu -> Information) and enter it directly."
             ),
         )
     say(f"found at {target.ip} (via {target.via})")
