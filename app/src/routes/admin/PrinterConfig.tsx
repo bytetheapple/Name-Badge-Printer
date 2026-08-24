@@ -109,7 +109,6 @@ export default function PrinterConfig() {
   const { orgId, isAdmin } = useOrg()
   const [printers, setPrinters] = useState<Printer[]>([])
   const [loading, setLoading] = useState(true)
-  const [adding, setAdding] = useState(false)
   const [tab, setTab] = useState<string>('add')
   const [editing, setEditing] = useState<Printer | null>(null)
   const [busy, setBusy] = useState<string | null>(null)
@@ -134,18 +133,6 @@ export default function PrinterConfig() {
   useEffect(() => {
     if (tab !== 'add' && !printers.some((p) => p.id === tab)) setTab('add')
   }, [printers, tab])
-
-  async function addPrinter() {
-    setAdding(true)
-    const { data } = await supabase
-      .from('printers')
-      .insert({ org_id: orgId, name: 'New Printer', port: 9100 })
-      .select('id')
-      .maybeSingle()
-    setAdding(false)
-    await loadPrinters()
-    if (data?.id) setTab(data.id as string) // adding one means wanting to set it up
-  }
 
   async function testPrint(printer: Printer) {
     setBusy(printer.id)
@@ -199,16 +186,7 @@ export default function PrinterConfig() {
         {notice && <div className="notice">{notice}</div>}
 
         {tab === 'add' && (
-          <>
-            <DiscoverPrinters printers={printers} onAdded={() => void loadPrinters()} />
-            <p className="muted small" style={{ marginTop: 20 }}>
-              If a scan cannot see the printer — a different network segment, or multicast blocked
-              — add it by hand and set its address yourself.
-            </p>
-            <button className="secondary btn-sm" onClick={addPrinter} disabled={adding}>
-              {adding ? 'Adding…' : 'Add a printer by hand'}
-            </button>
-          </>
+          <DiscoverPrinters printers={printers} onAdded={() => void loadPrinters()} />
         )}
 
         {current && (

@@ -8,28 +8,36 @@ const POLL_MS = 2000
 const GIVE_UP_MS = 90_000
 
 /**
- * Find printers on the site's network and add one.
+ * Scan the site's network for label printers and add one.
  *
  * The admin cannot look for printers itself — they are on the customer's LAN,
- * which this page (HTTPS, and blocked by the absence of CORS on the printer)
- * cannot reach. So it asks the bridge, which is on that network, and waits for
- * what it reports back.
+ * which this page cannot reach. It asks the print server, which can, and waits
+ * for what it reports back.
+ *
+ * Nothing is shown until a scan has run. A previous scan's results say nothing
+ * about what is on the network now — a printer found last week may be long
+ * gone — so showing them would invite adding something that no longer exists.
  */
 export default function DiscoverPrinters({
   printers,
   onAdded,
 }: {
-  /** Already configured, so a scan can say which of its results are old news. */
+  /** Already configured, so the scan can leave them out. */
   printers: Printer[]
   onAdded: () => void
 }) {
   const { orgId, isAdmin } = useOrg()
   const [found, setFound] = useState<DiscoveredPrinter[]>([])
+  const [scanned, setScanned] = useState(false)
   const [scanning, setScanning] = useState(false)
   const [adding, setAdding] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
-  const [notice, setNotice] = useState<string | null>(null)
   const timers = useRef<number[]>([])
+
+  useEffect(() => {
+    const pending = timers.current
+    return () => pending.forEach((t) => window.clearTimeout(t))
+  }, [])
 
   const load = useCallback(async () => {
     if (!orgId) return [] as DiscoveredPrinter[]
@@ -37,7 +45,7 @@ export default function DiscoverPrinters({
       .from('discovered_printers')
       .select(COLUMNS)
       .eq('org_id', orgId)
-      .order('last_seen', { ascending: false })
+      .order('ip')
     if (error) {
       setError(error.message)
       return []
@@ -47,25 +55,15 @@ export default function DiscoverPrinters({
     return rows
   }, [orgId])
 
-  useEffect(() => {
-    void load()
-    // Capture the array now: cleanup runs after unmount, when reading
-    // `timers.current` would be reaching for a ref that may have moved on.
-    const pending = timers.current
-    return () => pending.forEach((t) => window.clearTimeout(t))
-  }, [load])
-
   async function scan() {
     if (!orgId) return
     setScanning(true)
+    setScanned(false)
     setError(null)
-    setNotice(null)
-
-    // Clear the previous results first. What a scan found weeks ago says
-    // nothing about what is on the network now, and leaving it on screen makes
-    // it impossible to tell whether this scan has finished or those are simply
-    // the old rows.
     setFound([])
+
+    // Clear the last scan's results: this scan's answer is the only one worth
+    // showing, and a stale row is worse than none.
     await supabase.from('discovered_printers').delete().eq('org_id', orgId)
 
     const requestedAt = new Date().toISOString()
@@ -81,29 +79,22 @@ export default function DiscoverPrinters({
 
     const started = Date.now()
     const tick = async () => {
-      // The print server records when it finished, so an empty result is a
-      // real answer rather than something to wait out.
+      // The print server records when it finished, so "found nothing" is a real
+      // answer rather than something to wait out.
       const { data } = await supabase
         .from('printer_status')
         .select('scan_completed_at')
         .eq('org_id', orgId)
         .maybeSingle()
-      const done =
-        data?.scan_completed_at && new Date(data.scan_completed_at) > new Date(requestedAt)
-
-      if (done) {
-        const rows = await load()
+      if (data?.scan_completed_at && new Date(data.scan_completed_at) > new Date(requestedAt)) {
+        await load()
         setScanning(false)
-        setNotice(
-          rows.length
-            ? `Found ${rows.length} printer${rows.length === 1 ? '' : 's'}.`
-            : 'No label printers found on the network.',
-        )
+        setScanned(true)
         return
       }
       if (Date.now() - started > GIVE_UP_MS) {
         setScanning(false)
-        setNotice(
+        setError(
           'The print server did not answer. Is it running, and on the same network as the printer?',
         )
         return
@@ -123,86 +114,68 @@ export default function DiscoverPrinters({
       printer_ip: p.ip,
       port: 9100,
     })
+    setAdding(null)
     if (error) {
       setError(error.message)
-      setAdding(null)
       return
     }
-    // The row stays: it is a record of what is on the network, and an added
-    // printer still is. It flips to "already active" immediately, which is
-    // clearer feedback than the row disappearing.
-    setAdding(null)
-    setNotice(`Added ${p.ip}. Give it a name and check the layout below.`)
-    await load()
-    onAdded()
+    onAdded() // the row drops out of the list, since it is configured now
   }
-
-  /** The configured printer at this address, if there is one. */
-  const alreadyAdded = (p: DiscoveredPrinter) =>
-    printers.find((existing) => (existing.printer_ip ?? '').trim() === p.ip.trim())
 
   if (!isAdmin) return null
 
-  return (
-    <section className="card">
-      <h2>Find a printer</h2>
-      <p className="muted small">
-        Asks the print server to look for label printers on the network it is connected to. Only it
-        can see them — this page cannot reach the local network directly. Other devices that answer
-        on the network, such as office printers, are left out.
-      </p>
-      {error && <div className="error">{error}</div>}
-      {notice && <div className="notice">{notice}</div>}
+  // Only what is not already set up: this is a list of printers to add.
+  const configured = new Set(printers.map((p) => (p.printer_ip ?? '').trim()))
+  const newPrinters = found.filter((p) => !configured.has(p.ip.trim()))
 
+  return (
+    <div className="scan-block">
       <button type="button" onClick={() => void scan()} disabled={scanning}>
-        {scanning ? 'Scanning…' : 'Scan for printers'}
+        {scanning ? 'Scanning…' : 'Scan for New Printers'}
       </button>
-      {scanning && (
-        <p className="muted small" style={{ marginTop: 8 }}>
-          Asking the print server to look. This takes a few seconds — longer if it is busy
-          printing.
+
+      {error && <div className="error" style={{ marginTop: 12 }}>{error}</div>}
+
+      {scanned && newPrinters.length === 0 && !error && (
+        <p className="muted" style={{ marginTop: 16 }}>
+          No new printers found.
         </p>
       )}
 
-      {!scanning && found.length > 0 && (
-        <table className="table" style={{ marginTop: 12 }}>
+      {newPrinters.length > 0 && (
+        <table className="table" style={{ marginTop: 16 }}>
           <thead>
             <tr>
-              <th>Address</th>
+              <th>IP Address</th>
+              <th>MAC Address</th>
               <th>Model</th>
-              <th>Seen</th>
               <th />
             </tr>
           </thead>
           <tbody>
-            {found.map((p) => (
+            {newPrinters.map((p) => (
               <tr key={p.id}>
                 <td>
                   <code>{p.ip}</code>
-                  {p.mac && <div className="muted small">{p.mac}</div>}
+                </td>
+                <td>
+                  <code>{p.mac ?? '—'}</code>
                 </td>
                 <td>{p.model ?? 'unknown'}</td>
-                <td className="muted small">{new Date(p.last_seen).toLocaleTimeString()}</td>
                 <td>
-                  {alreadyAdded(p) ? (
-                    <span className="muted small">
-                      Already active as <strong>{alreadyAdded(p)!.name}</strong>
-                    </span>
-                  ) : (
-                    <button
-                      className="secondary btn-sm"
-                      disabled={adding === p.id}
-                      onClick={() => void add(p)}
-                    >
-                      {adding === p.id ? 'Adding…' : 'Add'}
-                    </button>
-                  )}
+                  <button
+                    className="secondary btn-sm"
+                    disabled={adding === p.id}
+                    onClick={() => void add(p)}
+                  >
+                    {adding === p.id ? 'Adding…' : 'Add printer'}
+                  </button>
                 </td>
               </tr>
             ))}
           </tbody>
         </table>
       )}
-    </section>
+    </div>
   )
 }
