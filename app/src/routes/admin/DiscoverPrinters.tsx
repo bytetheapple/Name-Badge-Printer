@@ -4,7 +4,7 @@ import { useOrg } from '../../lib/org'
 import type { DiscoveredPrinter, Printer } from '../../lib/types'
 
 const COLUMNS = 'id, org_id, ip, mac, model, node_name, first_seen, last_seen'
-const POLL_MS = 3000
+const POLL_MS = 2000
 const GIVE_UP_MS = 90_000
 
 /**
@@ -61,10 +61,17 @@ export default function DiscoverPrinters({
     setError(null)
     setNotice(null)
 
-    // The bridge picks this up on its next poll, within a couple of seconds.
+    // Clear the previous results first. What a scan found weeks ago says
+    // nothing about what is on the network now, and leaving it on screen makes
+    // it impossible to tell whether this scan has finished or those are simply
+    // the old rows.
+    setFound([])
+    await supabase.from('discovered_printers').delete().eq('org_id', orgId)
+
+    const requestedAt = new Date().toISOString()
     const { error } = await supabase
       .from('printer_status')
-      .update({ scan_requested_at: new Date().toISOString() })
+      .update({ scan_requested_at: requestedAt })
       .eq('org_id', orgId)
     if (error) {
       setScanning(false)
@@ -73,20 +80,31 @@ export default function DiscoverPrinters({
     }
 
     const started = Date.now()
-    const before = found.length
     const tick = async () => {
-      const rows = await load()
-      if (rows.length > before) {
+      // The print server records when it finished, so an empty result is a
+      // real answer rather than something to wait out.
+      const { data } = await supabase
+        .from('printer_status')
+        .select('scan_completed_at')
+        .eq('org_id', orgId)
+        .maybeSingle()
+      const done =
+        data?.scan_completed_at && new Date(data.scan_completed_at) > new Date(requestedAt)
+
+      if (done) {
+        const rows = await load()
         setScanning(false)
-        setNotice(`Found ${rows.length} printer${rows.length === 1 ? '' : 's'}.`)
+        setNotice(
+          rows.length
+            ? `Found ${rows.length} printer${rows.length === 1 ? '' : 's'}.`
+            : 'No label printers found on the network.',
+        )
         return
       }
       if (Date.now() - started > GIVE_UP_MS) {
         setScanning(false)
         setNotice(
-          rows.length
-            ? 'No new printers this time.'
-            : 'Nothing found. Is the print server running, and on the same network as the printer?',
+          'The print server did not answer. Is it running, and on the same network as the printer?',
         )
         return
       }
@@ -121,7 +139,7 @@ export default function DiscoverPrinters({
 
   /** The configured printer at this address, if there is one. */
   const alreadyAdded = (p: DiscoveredPrinter) =>
-    printers.find((existing) => existing.printer_ip === p.ip)
+    printers.find((existing) => (existing.printer_ip ?? '').trim() === p.ip.trim())
 
   if (!isAdmin) return null
 
@@ -141,12 +159,12 @@ export default function DiscoverPrinters({
       </button>
       {scanning && (
         <p className="muted small" style={{ marginTop: 8 }}>
-          Waiting for the print server to report back. This takes a few seconds — longer if it is
-          busy printing.
+          Asking the print server to look. This takes a few seconds — longer if it is busy
+          printing.
         </p>
       )}
 
-      {found.length > 0 && (
+      {!scanning && found.length > 0 && (
         <table className="table" style={{ marginTop: 12 }}>
           <thead>
             <tr>

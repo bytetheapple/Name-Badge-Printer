@@ -41,6 +41,10 @@ with checks(phase, thing, present) as (values
    exists (select 1 from information_schema.columns
            where table_schema='public' and table_name='printer_status'
              and column_name='scan_requested_at')),
+  ('B2', 'printer_status.scan_completed_at',
+   exists (select 1 from information_schema.columns
+           where table_schema='public' and table_name='printer_status'
+             and column_name='scan_completed_at')),
   ('FIX', 'integration_for() not callable by authenticated',
    to_regprocedure('public.integration_for(uuid,text)') is null
    or not has_function_privilege('authenticated', 'public.integration_for(uuid,text)', 'execute')),

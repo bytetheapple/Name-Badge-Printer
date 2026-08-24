@@ -69,7 +69,14 @@ class BridgeApiClient:
     def poll(self, printer_reports=None, discovered=None):
         body = self._post(
             "bridge-poll",
-            {"printers": printer_reports or [], "discovered": discovered or []},
+            {
+                "printers": printer_reports or [],
+                # `discovered` is None when no scan ran, and a list — possibly
+                # empty — when one did. The server needs to tell those apart so
+                # the admin can distinguish "found nothing" from "still going".
+                "scanned": discovered is not None,
+                "discovered": discovered or [],
+            },
         )
         return Poll(
             config=body.get("config") or {},

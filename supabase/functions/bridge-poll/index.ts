@@ -6,6 +6,7 @@
 //
 // Request  (POST, header `x-bridge-key`):
 //   { printers?:   [{ id, reachable, media_type, media_width, error_state }],
+//     scanned?:    true,   // a scan just ran; `discovered` is its full result
 //     discovered?: [{ ip, mac, model, node_name }] }
 // Response:
 //   { ok, config: {...}, printers: [...], job: {...} | null, scan: boolean }
@@ -88,7 +89,17 @@ Deno.serve(async (req) => {
   }
 
   // ---- scan results the bridge is reporting back ---------------------------
+  // `scanned` is sent even when nothing was found, so the admin can tell an
+  // empty result from a scan still in progress.
+  const scanned = body.scanned === true;
   const discovered = Array.isArray(body.discovered) ? body.discovered : [];
+  if (scanned) {
+    await fetch(`${REST}/printer_status?org_id=eq.${bridge.org_id}`, {
+      method: "PATCH",
+      headers: restHeaders,
+      body: JSON.stringify({ scan_completed_at: now }),
+    });
+  }
   if (discovered.length) {
     const rows = discovered
       .map((d) => d as Record<string, unknown>)

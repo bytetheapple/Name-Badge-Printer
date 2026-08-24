@@ -142,9 +142,21 @@ Stub.routes = {"/functions/v1/bridge-poll": (200, {"ok": True, "config": CONFIG,
 Stub.seen = []
 c.poll(None, discovered=[{"ip": "192.168.1.69", "mac": "44:f7:9f:bc:ab:e8",
                           "model": "Brother QL-820NWB", "node_name": "BRW44F79FBCABE8"}])
-sent = Stub.seen[0]["body"]["discovered"]
+body = Stub.seen[0]["body"]
+sent = body["discovered"]
 check("reports what it found", sent and sent[0]["ip"] == "192.168.1.69", str(sent))
+check("marks that a scan ran", body.get("scanned") is True, str(body))
 check("includes the MAC, which is what identifies it", sent[0]["mac"] == "44:f7:9f:bc:ab:e8")
+
+# A scan that finds nothing must still be reported, or the admin cannot tell it
+# apart from a scan still running.
+Stub.seen = []
+c.poll(None, discovered=[])
+empty = Stub.seen[0]["body"]
+check("an empty result still counts as a scan", empty.get("scanned") is True, str(empty))
+Stub.seen = []
+c.poll(None)
+check("a poll with no scan says so", Stub.seen[0]["body"].get("scanned") is False)
 
 print("— a revoked or unknown token says so plainly —")
 Stub.routes = {"/functions/v1/bridge-poll": (401, {"ok": False, "error": "Unknown or revoked bridge key"})}
