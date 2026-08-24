@@ -441,6 +441,25 @@ try {
   else bad(`role negative control failed for the wrong reason: ${msg}`)
 }
 
+console.log('— negative control: dropping either half of the B3 revoke must FAIL —')
+// A new function is EXECUTE-to-PUBLIC by default *and* this project grants the
+// Data API roles EXECUTE by name. Removing either revoke leaves the WiFi
+// passphrase readable from the browser, so both must be shown to bite.
+for (const [label, from, to] of [
+  ['the PUBLIC half', 'from public, anon, authenticated;', 'from anon, authenticated;'],
+  ['the named-role half', 'from public, anon, authenticated;', 'from public;'],
+]) {
+  const weak = await build((sql, f) => (f.includes('_mt_b3_') ? sql.replace(from, to) : sql))
+  try {
+    await weak.exec(TEST)
+    bad(`negative control: dropping ${label} of the revoke still PASSED — the test is not checking`)
+  } catch (e) {
+    const msg = String(e.message).split('\n')[0]
+    if (msg.includes("decrypted another org's WiFi passphrase")) ok(`dropping ${label} is caught`)
+    else bad(`negative control (${label}) failed for the wrong reason: ${msg}`)
+  }
+}
+
 console.log('— the migrations are idempotent (safe to paste twice) —')
 try { for (const f of mt) await db.exec(read(f)); ok(`re-applying all ${mt.length} multi-tenant migrations is a no-op`) }
 catch (e) { bad('re-applying the multi-tenant migrations', e) }

@@ -87,6 +87,10 @@ insert into public.discovered_printers (org_id, ip, model) values
   ('aaaaaaaa-0000-4000-8000-00000000000a', '10.0.0.1', 'Brother QL-820NWB'),
   ('bbbbbbbb-0000-4000-8000-00000000000b', '10.0.0.2', 'Brother QL-820NWB');
 
+insert into public.provisioning_sessions (id, org_id, state, ssid, printer_name) values
+  ('aaaaaaaa-0000-4000-8000-0000000000e1', 'aaaaaaaa-0000-4000-8000-00000000000a', 'cable', 'A-WiFi', 'A new printer'),
+  ('bbbbbbbb-0000-4000-8000-0000000000e1', 'bbbbbbbb-0000-4000-8000-00000000000b', 'cable', 'B-WiFi', 'B new printer');
+
 insert into public.bridge_tokens (org_id, name, token_hash, token_prefix) values
   ('aaaaaaaa-0000-4000-8000-00000000000a', 'A bridge', 'hash-a-0000000000000000', 'nbk_aaaa'),
   ('bbbbbbbb-0000-4000-8000-00000000000b', 'B bridge', 'hash-b-0000000000000000', 'nbk_bbbb');
@@ -114,7 +118,7 @@ begin
   foreach tbl in array array[
     'form_entries', 'print_jobs', 'printers',
     'printer_config', 'printer_status', 'app_settings', 'bridge_tokens',
-    'integrations', 'discovered_printers'
+    'integrations', 'discovered_printers', 'provisioning_sessions'
   ] loop
     execute format('select count(*) from public.%I where org_id <> $1', tbl)
       into n using mine;
@@ -246,6 +250,113 @@ begin
 end;
 $$;
 
+-- ------------------------------------- checks: provisioning secrets (B3)
+-- The WiFi passphrase an operator types during provisioning is the customer's,
+-- and provisioning_secret() hands back a decrypted one for whatever session id
+-- it is given. If a signed-in user can call it, every organization's WiFi
+-- password is one function call away.
+
+-- Stash a passphrase on each org's session, the way the admin UI does — as
+-- that org's own administrator, which is the only way it can be done.
+set local request.jwt.claims = '{"sub":"aaaaaaaa-0000-4000-8000-000000000001","role":"authenticated"}';
+set local role authenticated;
+select public.set_provisioning_secret(
+  'aaaaaaaa-0000-4000-8000-0000000000e1', 'wifi_passphrase', 'a-secret-passphrase');
+
+reset role;
+set local request.jwt.claims = '{"sub":"bbbbbbbb-0000-4000-8000-000000000001","role":"authenticated"}';
+set local role authenticated;
+select public.set_provisioning_secret(
+  'bbbbbbbb-0000-4000-8000-0000000000e1', 'wifi_passphrase', 'b-secret-passphrase');
+
+reset role;
+set local request.jwt.claims = '';
+
+do $$
+begin
+  -- The server path still works, or the bridge could never provision anything.
+  if public.provisioning_secret(
+       'aaaaaaaa-0000-4000-8000-0000000000e1', 'wifi_passphrase')
+     <> 'a-secret-passphrase' then
+    raise exception 'TEST BROKEN: the server cannot read a provisioning secret';
+  end if;
+  insert into public._isolation_results (signed_in, check_name)
+  values ('service_role', 'provisioning_secret: the bridge path still works');
+end;
+$$;
+
+set local request.jwt.claims = '{"sub":"aaaaaaaa-0000-4000-8000-000000000001","role":"authenticated"}';
+set local role authenticated;
+
+do $$
+declare
+  leaked text;
+begin
+  -- Not their own, and not anyone else's.
+  begin
+    leaked := public.provisioning_secret(
+      'bbbbbbbb-0000-4000-8000-0000000000e1', 'wifi_passphrase');
+    raise exception
+      'ISOLATION FAILURE: a signed-in user decrypted another org''s WiFi passphrase (%)',
+      leaked;
+  exception
+    when insufficient_privilege then null;  -- no EXECUTE: correct
+  end;
+
+  insert into public._isolation_results (signed_in, check_name)
+  values ('org A owner', 'provisioning_secret: not callable from the browser');
+
+  -- Cross-org read of the session row itself.
+  if exists (select 1 from public.provisioning_sessions
+              where org_id = 'bbbbbbbb-0000-4000-8000-00000000000b') then
+    raise exception 'ISOLATION FAILURE: org A can see org B''s provisioning session';
+  end if;
+  insert into public._isolation_results (signed_in, check_name)
+  values ('org A owner', 'provisioning_sessions: another org''s session is invisible');
+
+  -- Setting a secret on someone else's session is refused too.
+  begin
+    perform public.set_provisioning_secret(
+      'bbbbbbbb-0000-4000-8000-0000000000e1', 'wifi_passphrase', 'hijacked');
+    raise exception
+      'ISOLATION FAILURE: org A wrote a secret onto org B''s provisioning session';
+  exception
+    when insufficient_privilege then null;
+  end;
+  insert into public._isolation_results (signed_in, check_name)
+  values ('org A owner', 'set_provisioning_secret: refused for another org');
+end;
+$$;
+
+reset role;
+
+-- Deleting a session must take its Vault entries with it, or an abandoned
+-- setup would leave the customer's WiFi password behind indefinitely.
+do $$
+declare
+  v_id uuid;
+  n    bigint;
+begin
+  select nullif(secrets ->> 'wifi_passphrase', '')::uuid into v_id
+    from public.provisioning_sessions
+   where id = 'aaaaaaaa-0000-4000-8000-0000000000e1';
+  if v_id is null then
+    raise exception 'TEST BROKEN: no vault id recorded on the session';
+  end if;
+
+  delete from public.provisioning_sessions
+   where id = 'aaaaaaaa-0000-4000-8000-0000000000e1';
+
+  select count(*) into n from vault.secrets where id = v_id;
+  if n <> 0 then
+    raise exception
+      'ISOLATION FAILURE: a deleted provisioning session left its passphrase in Vault';
+  end if;
+  insert into public._isolation_results (signed_in, check_name)
+  values ('—', 'provisioning secrets: deleted with the session');
+end;
+$$;
+
 -- --------------------------------------------------------- checks: as anon
 -- The public sign-in form uses the anon key; it must reach nothing directly.
 
@@ -261,7 +372,8 @@ begin
   foreach tbl in array array[
     'form_entries', 'print_jobs', 'printers', 'printer_config',
     'printer_status', 'app_settings', 'organizations', 'memberships',
-    'platform_admins', 'bridge_tokens', 'integrations', 'discovered_printers'
+    'platform_admins', 'bridge_tokens', 'integrations', 'discovered_printers',
+    'provisioning_sessions'
   ] loop
     begin
       execute format('select count(*) from public.%I', tbl) into n;
