@@ -42,7 +42,10 @@ export default function DiscoverPrinters({ onAdded }: { onAdded: () => void }) {
 
   useEffect(() => {
     void load()
-    return () => timers.current.forEach((t) => window.clearTimeout(t))
+    // Capture the array now: cleanup runs after unmount, when reading
+    // `timers.current` would be reaching for a ref that may have moved on.
+    const pending = timers.current
+    return () => pending.forEach((t) => window.clearTimeout(t))
   }, [load])
 
   async function scan() {
