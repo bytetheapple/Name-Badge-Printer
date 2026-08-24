@@ -211,7 +211,6 @@ def main():
 
     last_probe = 0.0
     printers = []
-    discovered = None
     provision_result = None
 
     while True:
@@ -224,24 +223,12 @@ def main():
                 reports = probe_printers(printers)
                 last_probe = now
 
-            result = client.poll(reports, discovered, provision_result)
-            discovered = None
+            result = client.poll(reports, provision_result)
             provision_result = None
             cfg, printers = result.config, result.printers
 
             if result.rotated:
                 _log("credential renewed and stored")
-
-            if result.scan:
-                # Only ever asked for just after an admin presses "scan", so the
-                # cost of a sweep is paid deliberately rather than every tick.
-                _log("scan requested; looking for printers on the local network")
-                found = discover.discover_printers()
-                discovered = [
-                    {"ip": f.ip, "mac": f.mac, "model": f.model, "node_name": f.node_name}
-                    for f in found
-                ]
-                _log(f"found {len(discovered)} printer(s); reporting on the next poll")
 
             if result.provision:
                 # One step of a guided printer setup, claimed for us by the

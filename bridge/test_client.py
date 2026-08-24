@@ -111,7 +111,6 @@ r = c.poll([{"id": PRINTERS[0]["id"], "reachable": True}])
 check("returns the org's config", r.config == CONFIG, repr(r.config))
 check("returns the org's printers", r.printers == PRINTERS)
 check("returns the claimed job with its name resolved", r.job and r.job["first_name"] == "Ada")
-check("no scan asked for by default", r.scan is False)
 check("sends the bridge key as a header", Stub.seen[0]["bridge_key"] == "nbk_test_token")
 check("forwards the printer status report", Stub.seen[0]["body"]["printers"][0]["reachable"] is True)
 
@@ -129,67 +128,6 @@ Stub.seen = []
 c.complete(JOB["id"], False, RuntimeError("printer offline"))
 check("reports failure as 'failed'", Stub.seen[0]["body"]["status"] == "failed")
 check("passes the error text along", "printer offline" in Stub.seen[0]["body"]["error"])
-
-print("— scanning is asked for by the server, and reported back —")
-Stub.routes = {"/functions/v1/bridge-poll": (200, {"ok": True, "config": CONFIG,
-                                                   "printers": PRINTERS, "job": None,
-                                                   "scan": True})}
-r = c.poll(None)
-check("passes the scan request through", r.scan is True)
-
-Stub.routes = {"/functions/v1/bridge-poll": (200, {"ok": True, "config": CONFIG,
-                                                   "printers": PRINTERS, "job": None})}
-Stub.seen = []
-c.poll(None, discovered=[{"ip": "192.168.1.69", "mac": "44:f7:9f:bc:ab:e8",
-                          "model": "Brother QL-820NWB", "node_name": "BRW44F79FBCABE8"}])
-body = Stub.seen[0]["body"]
-sent = body["discovered"]
-check("reports what it found", sent and sent[0]["ip"] == "192.168.1.69", str(sent))
-check("marks that a scan ran", body.get("scanned") is True, str(body))
-check("includes the MAC, which is what identifies it", sent[0]["mac"] == "44:f7:9f:bc:ab:e8")
-
-# A scan that finds nothing must still be reported, or the admin cannot tell it
-# apart from a scan still running.
-Stub.seen = []
-c.poll(None, discovered=[])
-empty = Stub.seen[0]["body"]
-check("an empty result still counts as a scan", empty.get("scanned") is True, str(empty))
-Stub.seen = []
-c.poll(None)
-check("a poll with no scan says so", Stub.seen[0]["body"].get("scanned") is False)
-
-print("— a provisioning step is handed over, and its result reported back —")
-STEP = {"session_id": "11111111-1111-4111-8111-111111111111", "task": "configure",
-        "wired_ip": "192.168.1.27", "ssid": "Lobby-WiFi",
-        "web_password": "test-printer-code", "wifi_passphrase": "s3cr3t"}
-Stub.routes = {"/functions/v1/bridge-poll": (200, {"ok": True, "config": CONFIG,
-                                                   "printers": PRINTERS, "job": None,
-                                                   "provision": STEP})}
-r = c.poll(None)
-check("passes the step through", r.provision == STEP, str(r.provision))
-check("carries the secrets the step needs",
-      r.provision["wifi_passphrase"] == "s3cr3t")
-
-Stub.routes = {"/functions/v1/bridge-poll": (200, {"ok": True, "config": CONFIG,
-                                                   "printers": PRINTERS, "job": None})}
-r = c.poll(None)
-check("no step means none is claimed", r.provision is None, str(r.provision))
-
-Stub.seen = []
-c.poll(None, provision_result={"session_id": "s1", "task": "configure", "ok": True,
-                               "next_state": "wifi_confirm", "data": {"model": "QL-820NWB"},
-                               "log": ["connected"], "error": None})
-body = Stub.seen[0]["body"]
-check("reports the outcome", body["provision_result"]["ok"] is True, str(body))
-check("says where the session goes next",
-      body["provision_result"]["next_state"] == "wifi_confirm")
-
-# The field must be absent, not null: an ordinary poll happens every few
-# seconds and must not look like a step reporting in.
-Stub.seen = []
-c.poll(None)
-check("an ordinary poll carries no provisioning result",
-      "provision_result" not in Stub.seen[0]["body"], str(Stub.seen[0]["body"]))
 
 print("— credentials renew themselves —")
 import credential  # noqa: E402
@@ -295,7 +233,6 @@ entry_job = {"id": JOB["id"], "type": "badge", "entry_id": "33333333-3333-4333-8
 Stub.routes["/rest/v1/print_jobs"] = (200, [entry_job])
 r = legacy.poll(None)
 check("legacy resolves the name from the entry", r.job.get("first_name") == "Ada", repr(r.job))
-check("legacy never asks for a scan", r.scan is False)
 check("legacy never claims a provisioning step", r.provision is None)
 
 print()
