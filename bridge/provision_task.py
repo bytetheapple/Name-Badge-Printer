@@ -106,9 +106,9 @@ def _wait_for_printers(subnet, timeout, say, known=()) -> list:
 
 
 def _discover(ctx, say) -> TaskResult:
-    subnet = ctx.get("subnet")
+    subnet = ctx.get("subnet") or discover.local_subnet()
     known = ctx.get("known_ips") or []
-    say("looking for printers on the wired network")
+    say(f"sweeping {subnet or 'the local network'}.0/24 for printers on port 9100")
     if known:
         say(f"({len(known)} printer(s) already in service will be marked as such)")
     found = _wait_for_printers(subnet, DISCOVER_TIMEOUT, say, known)
@@ -117,9 +117,14 @@ def _discover(ctx, say) -> TaskResult:
             ok=False,
             log=say.lines,
             error=(
-                "No printer answered. Check the Ethernet cable and the switch "
-                "port, that the printer is switched on, and that the factory "
-                "reset finished — it takes a while and must not be interrupted."
+                f"No printer answered on {subnet or 'the local network'}.0/24. "
+                "Three things account for almost all of these: the printer is "
+                "on a different subnet from the print server, which this sweep "
+                "does not cross; the printer has not finished its first-run "
+                "language and date screens, so its print service is not "
+                "listening yet; or the cable or switch port is at fault. "
+                "A printer that answers a ping can still fail all three. "
+                "If you know its address, enter it directly instead."
             ),
         )
 
@@ -135,10 +140,13 @@ def _discover(ctx, say) -> TaskResult:
             data={"candidates": [_found_json(f) for f in found]},
             log=say.lines,
             error=(
-                "Only printers already in service answered. The printer being "
-                "set up has not reached the network: check the Ethernet cable "
-                "and that the factory reset finished — from a reset it takes "
-                "around 90 seconds."
+                f"Only printers already in service answered on "
+                f"{subnet or 'the local network'}.0/24. The printer being set "
+                "up has not reached the network, or is on a different subnet "
+                "from the print server. From a factory reset it takes around 90 "
+                "seconds, and it must finish its first-run language and date "
+                "screens before its print service starts listening. "
+                "If you know its address, enter it directly instead."
             ),
         )
     return TaskResult(

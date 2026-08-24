@@ -1195,3 +1195,15 @@ td.actions-cell {
   margin-bottom: 16px;
   max-width: 68ch;
 }
+
+/* Naming a printer's address by hand — the way past a scan that cannot see it. */
+.manual-address {
+  margin-top: 16px;
+  padding: 14px 16px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  max-width: 46ch;
+}
+.manual-address .field {
+  margin-bottom: 12px;
+}

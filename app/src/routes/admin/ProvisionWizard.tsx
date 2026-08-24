@@ -284,6 +284,29 @@ function StartForm({
 
 /* ------------------------------------------------------------------- steps */
 
+/** The way in when a scan cannot see the printer. Tucked away, since it is the
+ *  exception — but on every screen where someone might need it. */
+function Manual({
+  busy,
+  advance,
+}: {
+  busy: boolean
+  advance: (state: string, extra?: Record<string, unknown>) => Promise<void>
+}) {
+  const [open, setOpen] = useState(false)
+  if (!open) {
+    return (
+      <p className="muted small" style={{ marginTop: 16 }}>
+        Printer not showing up?{' '}
+        <button className="linkish btn-sm" onClick={() => setOpen(true)}>
+          Enter its address yourself
+        </button>
+      </p>
+    )
+  }
+  return <ManualAddress busy={busy} advance={advance} onCancel={() => setOpen(false)} />
+}
+
 const ORDER = [
   { key: 'reset', label: 'Reset' },
   { key: 'first_run', label: 'Setup screens' },
@@ -394,6 +417,7 @@ function Step({
           <button onClick={() => void advance('discover')} disabled={busy}>
             The cable is in and the printer is on
           </button>
+          <Manual busy={busy} advance={advance} />
         </div>
       )
 
@@ -409,6 +433,7 @@ function Step({
               <button onClick={() => void advance('discover')} disabled={busy}>
                 Look again
               </button>
+              <Manual busy={busy} advance={advance} />
             </>
           ) : (
             <>
@@ -463,6 +488,7 @@ function Step({
               <button className="secondary btn-sm" onClick={() => void advance('discover')} disabled={busy}>
                 Look again
               </button>
+              <Manual busy={busy} advance={advance} />
             </>
           )}
         </div>
@@ -547,6 +573,66 @@ function Step({
  * and installed somewhere else, so naming a network that is not in the list
  * has to stay just as easy.
  */
+/**
+ * Name the printer's address directly.
+ *
+ * Discovery sweeps the print server's own /24 for port 9100, which misses a
+ * printer on another subnet, and skips one whose print service has not started
+ * — a freshly reset printer answers a ping long before it answers anything
+ * else. Neither is worth debugging with a printer in your hands and an address
+ * you can read off its own screen.
+ */
+function ManualAddress({
+  busy,
+  advance,
+  onCancel,
+}: {
+  busy: boolean
+  advance: (state: string, extra?: Record<string, unknown>) => Promise<void>
+  onCancel?: () => void
+}) {
+  const [ip, setIp] = useState('')
+  const [error, setError] = useState<string | null>(null)
+
+  function go() {
+    const value = ip.trim()
+    // Deliberately loose: a hostname is a legitimate answer too, and the next
+    // step fails clearly enough if nothing is there.
+    if (!value) return setError("Enter the printer's address.")
+    if (/\s/.test(value)) return setError('That does not look like an address.')
+    void advance('password', { wired_ip: value, model: null })
+  }
+
+  return (
+    <div className="manual-address">
+      {error && <div className="error">{error}</div>}
+      <label className="field">
+        Printer address
+        <input
+          value={ip}
+          onChange={(e) => setIp(e.target.value)}
+          placeholder="192.168.1.50"
+          autoFocus
+        />
+        <span className="muted small">
+          On the printer: Menu → Information → check the wired address. Its print service must be
+          running, which means the first-run language and date screens are finished.
+        </span>
+      </label>
+      <div className="modal-actions">
+        {onCancel && (
+          <button className="secondary" onClick={onCancel} disabled={busy}>
+            Cancel
+          </button>
+        )}
+        <button onClick={go} disabled={busy}>
+          Use this address
+        </button>
+      </div>
+    </div>
+  )
+}
+
 /**
  * The code on the chosen printer's own label.
  *
