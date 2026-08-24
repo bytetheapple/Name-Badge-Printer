@@ -95,7 +95,7 @@ check("completes successfully", code == 0, f"exit {code}")
 for n, title in [
     (1, "Factory-reset"), (2, "Connect it to the wired"), (3, "Log in"),
     (4, "Configure"), (5, "Join the WiFi"), (6, "Power-cycle"),
-    (7, "Find it on the wireless"), (8, "Remove the Ethernet"),
+    (7, "Find it on the wireless"), (8, "Hand it over"),
 ]:
     check(f"reaches step {n} ({title.lower()})", f" {n}. {title}" in out, "")
 
@@ -103,7 +103,11 @@ print("— the reset instructions are actually shown —")
 for key in ["Menu", "Administration", "Reset", "Factory Reset",
             "DO NOT POWER THE PRINTER DOWN"]:
     check(f"tells the operator about {key!r}", key in out)
-check("says the reset comes before Ethernet", "UNPLUGGED" in out)
+check("walks the operator through the first-run wizard",
+      "first-run setup" in out and "language" in out)
+check("warns the wizard survives a power cycle", "off and on" in out)
+check("explains the 2017 default is expected", "2017" in out)
+check("tells the installer to unplug power and move it", "move the printer" in out)
 
 print("— the wireless steps do the right things —")
 paths = [p for p, _ in posted]

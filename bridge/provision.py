@@ -78,6 +78,22 @@ FACTORY_RESET_STEPS = """
 
       *** DO NOT POWER THE PRINTER DOWN WHILE IT IS RESETTING. ***
 """
+
+FIRST_RUN_STEPS = """
+      The printer then comes up in its first-run setup, asking for a
+      language and then a date and time. Work all the way through it:
+
+        - choose the language
+        - press OK through the date and time, leaving the defaults
+          (they will show 2017 — that is fine, we set the clock later)
+
+      *** This must be finished before the printer is usable. ***
+
+      It will not go away on its own: switching the printer off and on
+      returns to the same screen, and until it is done the printer is
+      stuck there. Finishing it also overwrites the clock, which is why
+      it has to happen now rather than after we configure anything.
+"""
 def main() -> int:
     import argparse
 
@@ -107,7 +123,10 @@ def main() -> int:
     print("  previous owner changed the web password, it is also the only way")
     print("  back in, since the reset restores the code printed on the back.")
     print(FACTORY_RESET_STEPS)
-    ask("Factory-reset the printer now, with the Ethernet cable UNPLUGGED.")
+    ask("Factory-reset the printer now.")
+
+    print(FIRST_RUN_STEPS)
+    ask("Work through the language and date/time screens.")
 
     # -------------------------------------------------------------- 2. connect
     step(2, "Connect it to the wired network")
@@ -115,6 +134,7 @@ def main() -> int:
     print("  address from Ethernet and become visible here.")
     ask("Plug in the Ethernet cable and make sure the printer is on.")
     print("\n  watching for it (this stops as soon as it appears)…")
+    print("  from a factory reset this usually takes around 90 seconds.")
 
     found = ([discover.Found(ip=args.ip)] if args.ip
              else wait_for_printers(args.subnet))
@@ -233,23 +253,24 @@ def main() -> int:
         return 1
     print(f"\n  Found at {target.ip} (via {target.via})")
 
-    # ---------------------------------------------------------- 8. unplug
-    step(8, "Remove the Ethernet cable")
-    print("  The printer is either wired or wireless, never both, so the cable")
-    print("  has to come out for it to stay on WiFi.")
-    ask("Unplug the Ethernet cable.")
-
-    still = discover.find_printer(mac=wireless.mac, subnet=args.subnet)
-    if not still:
-        print("\n  It is no longer answering. Give it a moment and re-check with:")
-        print(f"    ./venv/bin/python discover.py --mac {wireless.mac}")
-        return 1
+    # ------------------------------------------------------------- 8. hand over
+    step(8, "Hand it over")
+    print("  The printer is on the wireless network and answering there with")
+    print("  the Ethernet cable still connected, so there is nothing further")
+    print("  to check before it comes out.")
+    print()
+    print("  Tell whoever is installing it:")
+    print("    - unplug the Ethernet cable")
+    print("    - unplug the power")
+    print("    - move the printer to where it will live and plug the power in")
+    print()
+    print("  It rejoins the wireless network on its own when it powers up.")
 
     print(f"\n{'=' * 70}")
     print(" Done.")
     print(f"{'=' * 70}")
     print(f"  {model} serial {serial}")
-    print(f"  address        {still.ip}")
+    print(f"  address        {target.ip}")
     print(f"  wireless MAC   {wireless.mac}")
     print(f"  find it again  ./venv/bin/python discover.py --mac {wireless.mac}")
     print()

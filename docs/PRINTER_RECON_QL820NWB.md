@@ -347,8 +347,31 @@ On the printer's own screen:
 
 > **Do not power the printer down while it is resetting.**
 
-A reset printer has no network settings, so it takes an address from Ethernet
-and becomes discoverable. Allow ~90 seconds.
+### The first-run wizard, which must be finished before anything else
+
+A reset printer comes up in a setup wizard asking for a **language**, then a
+**date and time**. It has to be worked through on the panel:
+
+- choose the language
+- press OK through the date and time, leaving the defaults (they read 2017)
+
+> **It does not go away on its own.** Switching the printer off and on returns
+> to the same screen, and until it is complete the printer never reaches its
+> home screen.
+>
+> **Finishing it overwrites the clock**, so it must be done *before* anything
+> configures the printer — otherwise the date this tooling sets is silently
+> replaced by the wizard's default. Observed: the clock was configured over the
+> network while the printer sat in the wizard, and completing the wizard
+> afterwards undid it. Every other setting survived.
+
+The printer's web UI answers *during* the wizard, so its reachability is not a
+signal that the wizard is done. There is no way to detect this over the
+network — it has to be an instruction.
+
+Once the wizard is finished, the printer takes an address from Ethernet and
+becomes discoverable. **Measured: about 90 seconds** from confirming the
+factory reset to the printer answering on the wired network.
 
 ## The WiFi cutover, as it actually works
 
@@ -452,8 +475,16 @@ the new one from the wireless TCP/IP page before the cable comes out.
 
 ### Ordering constraint for `configure_printer()`
 
-The printer is **either wired or wireless, not both**. When the automation is
-running over Ethernet, applying WiFi settings cuts the link it is using — so:
+The printer is documented as **either wired or wireless, not both** — but that
+is looser in practice than it sounds. Observed after a cutover: the WiFi icon
+lit on the panel, the printer answered at its **wireless** address, and the
+**Ethernet cable was still connected**. So the wireless side comes up without
+waiting for the cable to be removed, and there is no need to unplug anything
+before confirming the move worked.
+
+That simplifies the handover: verify over the network, *then* tell the
+installer to unplug Ethernet and power and move the printer to where it will
+live. Applying the WiFi settings may still drop the wired link mid-request, so:
 
 1. Command Mode → Raster
 2. Language, date, time
