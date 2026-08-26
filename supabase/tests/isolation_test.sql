@@ -450,6 +450,120 @@ $$;
 reset role;
 set local request.jwt.claims = '';
 
+-- ------------------------------- checks: building a print server (registry)
+
+reset role;
+set local request.jwt.claims = '{"sub":"bbbbbbbb-0000-4000-8000-000000000001","role":"authenticated"}';
+set local role authenticated;
+
+do $$
+declare
+  a jsonb;
+  b jsonb;
+  n bigint;
+begin
+  a := public.allocate_pi_device('aaaaaaaa-0000-4000-8000-00000000000a', 'Org A', 'first');
+  b := public.allocate_pi_device('aaaaaaaa-0000-4000-8000-00000000000a', 'Org A', 'second');
+
+  -- Serials are allocated, never typed, so they must not collide or skip.
+  if (a ->> 'serial') = (b ->> 'serial') then
+    raise exception 'ISOLATION FAILURE: two devices got the serial %', a ->> 'serial';
+  end if;
+  if (a ->> 'serial') !~ '^GuestBadgesServer[0-9]{4}$' then
+    raise exception 'TEST BROKEN: serial looks like %', a ->> 'serial';
+  end if;
+  insert into public._isolation_results (signed_in, check_name)
+  values ('platform admin', 'allocate_pi_device: serials are unique and well formed');
+
+  -- The code is returned once and only its hash is kept.
+  select count(*) into n from public.pi_devices where claim_hash = (a ->> 'claim_code');
+  if n <> 0 then
+    raise exception 'ISOLATION FAILURE: the claim code was stored in the clear';
+  end if;
+  insert into public._isolation_results (signed_in, check_name)
+  values ('platform admin', 'allocate_pi_device: stores only the hash');
+
+  create temporary table _claims (which text, code text) on commit drop;
+  insert into _claims values ('a', a ->> 'claim_code'), ('b', b ->> 'claim_code');
+end;
+$$;
+
+reset role;
+set local request.jwt.claims = '';
+
+do $$
+declare
+  code text := (select code from _claims where which = 'a');
+  r1 jsonb;
+  r2 jsonb;
+  n  bigint;
+begin
+  r1 := public.claim_pi_device(code);
+  if not (r1 ->> 'ok')::boolean then
+    raise exception 'TEST BROKEN: a good claim was refused: %', r1 ->> 'error';
+  end if;
+  if (r1 ->> 'bridge_token') !~ '^nbk_' then
+    raise exception 'TEST BROKEN: claim returned %', r1 ->> 'bridge_token';
+  end if;
+
+  -- The credential is real, and named after the device so a token in the
+  -- console can be traced back to a serial.
+  select count(*) into n from public.bridge_tokens
+   where token_hash = encode(sha256(convert_to(r1 ->> 'bridge_token', 'utf8')), 'hex')
+     and name = (r1 ->> 'serial');
+  if n <> 1 then
+    raise exception 'ISOLATION FAILURE: the claim did not produce a usable credential';
+  end if;
+  insert into public._isolation_results (signed_in, check_name)
+  values ('service_role', 'claim_pi_device: mints a credential named for the device');
+
+  -- Single use. A second device presenting the same code is a copied card.
+  r2 := public.claim_pi_device(code);
+  if (r2 ->> 'ok')::boolean then
+    raise exception 'ISOLATION FAILURE: a claim code was redeemed twice';
+  end if;
+  insert into public._isolation_results (signed_in, check_name)
+  values ('service_role', 'claim_pi_device: a spent code is refused');
+
+  -- And nonsense gets nothing.
+  if (public.claim_pi_device('gbc_not_a_real_code') ->> 'ok')::boolean then
+    raise exception 'ISOLATION FAILURE: an unknown claim code was accepted';
+  end if;
+  insert into public._isolation_results (signed_in, check_name)
+  values ('service_role', 'claim_pi_device: an unknown code is refused');
+end;
+$$;
+
+-- A tenant may neither build devices nor redeem codes.
+set local request.jwt.claims = '{"sub":"aaaaaaaa-0000-4000-8000-000000000001","role":"authenticated"}';
+set local role authenticated;
+
+do $$
+declare
+  n bigint;
+begin
+  select count(*) into n from public.pi_devices;
+  if n <> 0 then
+    raise exception 'ISOLATION FAILURE: an org owner can see % device(s)', n;
+  end if;
+  begin
+    perform public.allocate_pi_device('aaaaaaaa-0000-4000-8000-00000000000a', 'Self', null);
+    raise exception 'ISOLATION FAILURE: an org owner allocated a print server';
+  exception when insufficient_privilege then null;
+  end;
+  begin
+    perform public.claim_pi_device((select code from _claims where which = 'b'));
+    raise exception 'ISOLATION FAILURE: claim_pi_device is callable from the browser';
+  exception when insufficient_privilege then null;
+  end;
+  insert into public._isolation_results (signed_in, check_name)
+  values ('org A owner', 'pi_devices: invisible, unallocatable, unclaimable');
+end;
+$$;
+
+reset role;
+set local request.jwt.claims = '';
+
 -- ------------------------------------- checks: the fleet firmware record
 -- Cross-tenant by design: a firmware version belongs to the hardware, not to
 -- the congregation. That makes who can read and write it worth pinning down.
