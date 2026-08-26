@@ -54,40 +54,66 @@ export default function BuildServer({
         <h3>{built.serial}</h3>
         <p className="muted small">
           Allocated and recorded. Work through these at the bench — the claim code is shown only
-          once, so finish before you close this.
+          once, so do not close this until step 3 is done.
         </p>
 
         <ol className="build-steps">
           <li>
-            <strong>Get a Raspberry Pi Connect auth key.</strong> At{' '}
-            <a href="https://connect.raspberrypi.com" target="_blank" rel="noreferrer">
-              connect.raspberrypi.com
-            </a>
-            , create a device auth key. It is single-use and{' '}
-            <strong>expires in six hours</strong>, so do this now rather than in advance.
-          </li>
-          <li>
-            <strong>Burn the card</strong> with Raspberry Pi Imager — <em>Raspberry Pi OS Lite
-            (64-bit)</em>. In its customisation settings:
+            <strong>Burn the card</strong> with Raspberry Pi Imager, choosing{' '}
+            <em>Raspberry Pi OS Lite (64-bit)</em>. Open its OS customisation settings before
+            writing, and work down them:
             <ul>
               <li>
-                Hostname: <code>{built.serial}</code>
+                <strong>Hostname</strong> — <code>{built.serial}</code>. This is how the device
+                identifies itself on a network and in Connect, and it matches its row here.
               </li>
-              <li>Enable SSH, with your public key — not a password</li>
               <li>
-                <strong>Leave WiFi blank.</strong> It ships on Ethernet, and the customer's
-                wireless is configured at their site.
+                <strong>Locale settings</strong> — set the time zone to{' '}
+                <strong>where the printer will live</strong>, not where you are building it. The
+                Pi sets the printer's own clock from its local time, so a device built in one
+                zone for a congregation in another gets it wrong, and nobody notices until a
+                badge is timestamped.
               </li>
-              <li>Set your username, and paste the Connect auth key</li>
+              <li>
+                <strong>Username and password</strong> — use the same username on every device
+                so support is predictable; something like <code>gbadmin</code>. The password is
+                not for logging in — you will use your SSH key for that — but{' '}
+                <strong>sudo asks for it</strong>, including in step 3 below and any time you
+                need it later.
+                <br />
+                <strong>Record it.</strong> Put the password in your own password manager against
+                this serial. It is deliberately not stored here: a fleet of sudo passwords in a
+                database would make this app a skeleton key for every customer's network.
+              </li>
+              <li>
+                <strong>Wireless LAN</strong> — leave it blank. The device ships on Ethernet, and
+                the customer's wireless is a separate decision made at their site.
+              </li>
+              <li>
+                <strong>Enable SSH</strong> — "Allow public-key authentication only", and paste
+                your public key.
+              </li>
+              <li>
+                <strong>Enable Raspberry Pi Connect</strong> — click{' '}
+                <em>Launch Raspberry Pi Connect</em>, sign in, and the auth token fills itself in
+                after a moment. It is single-use and short-lived, which is why it is generated
+                here rather than in advance.
+              </li>
             </ul>
+            Then write the image.
           </li>
           <li>
-            <strong>Boot it on your Ethernet</strong> and wait for it to appear at
-            connect.raspberrypi.com. From a factory image this takes a minute or two.
+            <strong>Eject the card, put it in the Pi, and boot it on your Ethernet.</strong> It
+            appears at{' '}
+            <a href="https://connect.raspberrypi.com" target="_blank" rel="noreferrer">
+              connect.raspberrypi.com
+            </a>{' '}
+            after a minute or two — the first boot resizes the filesystem and reboots itself, so
+            give it longer than you expect.
           </li>
           <li>
-            <strong>Open a shell on it</strong> through Connect, and run this. It installs the
-            bridge, claims this device's own credential, and starts the service.
+            <strong>Open a shell on it</strong> from Connect, and run this. It claims this
+            device's credential, installs the bridge, and starts it.
             <pre className="token-secret">
               curl -sSL https://guestbadges.com/pi.sh | sudo bash -s -- {built.claim_code}
             </pre>
@@ -101,11 +127,15 @@ export default function BuildServer({
             >
               Copy the command
             </button>
+            <br />
+            <span className="muted small">
+              sudo will ask for the password you set in step 1.
+            </span>
           </li>
           <li>
-            <strong>Confirm it.</strong> The script waits for the service to report in and says so.
-            This device will then show in the Platform list as online with no printers, which is
-            the state to ship in.
+            <strong>Confirm it.</strong> The script waits for the service to report in and says
+            so. The device then shows in the list above as online with no printers, which is the
+            state to ship in.
           </li>
         </ol>
 

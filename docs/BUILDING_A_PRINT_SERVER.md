@@ -36,10 +36,33 @@ Everything is in the wizard, but the shape of it:
 | Step | Where |
 |---|---|
 | Allocate a serial and claim code | the app |
-| Get a Raspberry Pi Connect auth key | connect.raspberrypi.com |
-| Burn the card | Raspberry Pi Imager |
+| Burn the card, including the Connect token | Raspberry Pi Imager |
 | Boot on Ethernet | your bench |
 | Run one command | a Connect shell on the Pi |
+
+The Connect auth token is generated **inside Imager** — "Enable Raspberry Pi
+Connect" launches it and the token fills itself in — so there is no separate
+visit to connect.raspberrypi.com beforehand.
+
+### Two settings in Imager that are easy to get wrong
+
+**The time zone must be the customer's, not yours.** The Pi writes the
+*printer's* clock from its own local time (`printer_config.configure_printer`
+uses `time.localtime()`), so a device built in one zone for a congregation in
+another sets every printer's clock wrong — and nothing surfaces it until
+someone reads a timestamp.
+
+**The password matters even though login is by key.** SSH uses your public key,
+but `sudo` still asks for the account password, both for the install command
+and for any later support. Set one, and record it in your own password manager
+against the serial.
+
+It is deliberately not stored in this app. A table of sudo passwords for every
+Pi in the field would make the database a skeleton key for every customer's
+network — the same reason there is no shared admin credential.
+
+Use the **same username** across the fleet (`gbadmin` or similar) so support is
+predictable. The username is not a secret; the password is.
 
 The command is:
 
