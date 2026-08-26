@@ -4,7 +4,7 @@ import { useOrg } from '../../lib/org'
 
 export default function AdminLayout() {
   const { session, signOut } = useAuth()
-  const { orgs, org, orgId, role, isAdmin, loading, error, switchOrg } = useOrg()
+  const { orgs, org, orgId, role, isAdmin, isPlatformAdmin, loading, error, switchOrg } = useOrg()
 
   if (loading) {
     return (
@@ -59,6 +59,9 @@ export default function AdminLayout() {
           {isAdmin && <NavLink to="/admin/settings">Settings</NavLink>}
           {isAdmin && <NavLink to="/admin/integrations">Integrations</NavLink>}
           {isAdmin && <NavLink to="/admin/members">Members</NavLink>}
+          {/* The database returns nothing to anyone else, so this is
+              presentation rather than the access control. */}
+          {isPlatformAdmin && <NavLink to="/admin/platform">Platform</NavLink>}
         </nav>
         <div className="admin-user">
           <span className="muted">

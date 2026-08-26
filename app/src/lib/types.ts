@@ -127,6 +127,23 @@ export interface ProvisioningSession {
   updated_at: string
 }
 
+/** One tenant as the platform team sees it, from platform_overview(). */
+export interface PlatformOrg {
+  org_id: string
+  slug: string
+  name: string
+  status: 'active' | 'suspended'
+  custom_integrations: boolean
+  created_at: string
+  members: number
+  printers: number
+  entries_30d: number
+  bridge_last_seen: string | null
+  live_bridges: number
+  /** A platform admin is still a member — an onboarding not yet handed over. */
+  operator_attached: boolean
+}
+
 /** A member of an organization, as returned by the org_members() function. */
 export interface OrgMember {
   user_id: string

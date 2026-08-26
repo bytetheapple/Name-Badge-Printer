@@ -163,6 +163,18 @@ begin
   insert into public._role_results (acting_as, check_name)
   values ('staff', 'cannot see, start, or advance a printer setup');
 
+  -- Suspension is the platform's lever, so an org must not be able to lift it.
+  -- Same shape of hole as custom_integrations: A2's update policy is
+  -- column-blind, and one boolean would put a suspended customer back in
+  -- service.
+  update public.organizations set status = 'active' where id = org;
+  get diagnostics n = row_count;
+  if n <> 0 then
+    raise exception 'ROLE FAILURE: staff changed the organization status';
+  end if;
+  insert into public._role_results (acting_as, check_name)
+  values ('staff', 'cannot change the organization status');
+
   -- Custom integrations are sold and switched on by us. An org must not be
   -- able to grant itself a paid capability, and A2 gave owners a column-blind
   -- update on their own organizations row — so this is worth pinning down.
@@ -367,6 +379,25 @@ begin
   end;
   insert into public._role_results (acting_as, check_name)
   values ('owner', 'cannot enable custom integrations');
+
+  -- The one that has teeth: an owner who could clear their own suspension
+  -- could ignore it entirely.
+  begin
+    update public.organizations set status = 'suspended' where id = org;
+    raise exception 'ROLE FAILURE: an owner changed their own organization status';
+  exception when insufficient_privilege then null;
+  end;
+  insert into public._role_results (acting_as, check_name)
+  values ('owner', 'cannot change the organization status');
+
+  -- And creating a tenant is not theirs either.
+  begin
+    perform public.create_organization('owner-made-this', 'Owner Made This');
+    raise exception 'ROLE FAILURE: an owner created an organization';
+  exception when insufficient_privilege then null;
+  end;
+  insert into public._role_results (acting_as, check_name)
+  values ('owner', 'cannot create an organization');
 
   -- Writing the same value is not a change and must not be refused, or an
   -- ordinary rename would fail whenever the client sends the whole row back.

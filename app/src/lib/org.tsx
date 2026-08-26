@@ -15,6 +15,13 @@ interface OrgState {
   /** Owner or admin — the line most of the UI actually cares about. */
   isAdmin: boolean
   isOwner: boolean
+  /**
+   * The operator, not a tenant role at all.
+   *
+   * Presentation only: every platform-only function checks this itself in the
+   * database, so a wrong answer here shows or hides a link and leaks nothing.
+   */
+  isPlatformAdmin: boolean
   loading: boolean
   error: string | null
   switchOrg: (orgId: string) => void
@@ -36,6 +43,7 @@ export function OrgProvider({ children }: { children: ReactNode }) {
   const userId = session?.user.id ?? null
 
   const [orgs, setOrgs] = useState<OrgMembership[]>([])
+  const [isPlatformAdmin, setIsPlatformAdmin] = useState(false)
   const [orgId, setOrgId] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -65,6 +73,11 @@ export function OrgProvider({ children }: { children: ReactNode }) {
       setLoading(false)
       return
     }
+    // RLS lets a user see only their own row here, so "a row came back" is the
+    // whole check — there is nothing to compare against.
+    const { data: pa } = await supabase.from('platform_admins').select('user_id').limit(1)
+    setIsPlatformAdmin(Boolean(pa?.length))
+
     const ids = (rows ?? []).map((r) => r.org_id as string)
     const { data: orgRows, error: orgError } = ids.length
       ? await supabase
@@ -119,12 +132,13 @@ export function OrgProvider({ children }: { children: ReactNode }) {
       role,
       isAdmin: role === 'owner' || role === 'admin',
       isOwner: role === 'owner',
+      isPlatformAdmin,
       loading: loading || authLoading,
       error,
       switchOrg,
       reload: load,
     }
-  }, [orgs, orgId, loading, authLoading, error, switchOrg, load])
+  }, [orgs, orgId, loading, authLoading, error, switchOrg, load, isPlatformAdmin])
 
   return <OrgContext.Provider value={value}>{children}</OrgContext.Provider>
 }

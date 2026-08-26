@@ -742,6 +742,11 @@ td.actions-cell {
   border-bottom: 1px solid var(--bg);
 }
 .tab-dot {
+  /* A bare span is inline, and width and height do not apply to inline boxes —
+     so this only ever showed up inside the printer tabs, whose inline-flex
+     parent blockified it. Anywhere else it silently collapsed to nothing. */
+  display: inline-block;
+  vertical-align: middle;
   width: 8px;
   height: 8px;
   border-radius: 50%;

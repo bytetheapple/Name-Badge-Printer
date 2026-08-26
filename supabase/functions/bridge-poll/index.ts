@@ -9,7 +9,7 @@
 //     provision_result?: { session_id, task, ok, next_state, data, log, error },
 //     rotation_error?: "…" }   // could not store the replacement credential
 // Response:
-//   { ok, config: {...}, printers: [...], job: {...} | null,
+//   { ok, suspended?: true, config: {...}, printers: [...], job: {...} | null,
 //     provision: {...} | null, bridge_token?: "nbk_…" }
 //
 // `bridge_token`, when present, is a replacement credential the device must
@@ -34,6 +34,7 @@ import {
 } from "../_shared/bridge-auth.ts";
 import { applyResult, claimStep } from "../_shared/provisioning.ts";
 import { noteFailure, noteUsed, rotate, rotationDue, sweep, tokenRow } from "../_shared/rotation.ts";
+import { orgIsActive } from "../_shared/org.ts";
 
 const nowIso = () => new Date().toISOString();
 
@@ -93,6 +94,22 @@ Deno.serve(async (req) => {
         error_state: row.error_state ?? null,
         last_checked: now,
       }),
+    });
+  }
+
+  // ---- is this organization still being served? -----------------------------
+  // A suspended org keeps a valid credential — this is not a revocation, and
+  // saying "unknown key" would send an operator hunting the wrong problem. The
+  // bridge simply gets no work and is told why, and resumes the moment the
+  // status goes back.
+  if (!(await orgIsActive(bridge.org_id))) {
+    return json({
+      ok: true,
+      suspended: true,
+      config: {},
+      printers: [],
+      job: null,
+      provision: null,
     });
   }
 

@@ -215,6 +215,7 @@ def main():
     last_probe = 0.0
     printers = []
     provision_result = None
+    suspended_logged = False
 
     while True:
         try:
@@ -229,6 +230,16 @@ def main():
             result = client.poll(reports, provision_result)
             provision_result = None
             cfg, printers = result.config, result.printers
+
+            if result.suspended:
+                # Said once per spell rather than every couple of seconds: this
+                # can last days, and a log full of it hides everything else.
+                if not suspended_logged:
+                    _log("this organization is suspended; no jobs will be issued")
+                    suspended_logged = True
+                time.sleep(config.POLL_INTERVAL)
+                continue
+            suspended_logged = False
 
             if result.rotated:
                 _log("credential renewed and stored")
