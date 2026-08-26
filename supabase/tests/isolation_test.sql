@@ -629,7 +629,9 @@ begin
   values ('service_role', 'bridge_target_ref: records what a device reports');
 
   -- A pin beats the fleet release. This is both the staged rollout and the
-  -- hold-a-customer-back mechanism, so it has to win.
+  -- hold-a-customer-back mechanism, so it has to win. Set directly here: the
+  -- pin_pi_device() function requires a signed-in platform admin, and is
+  -- exercised in its own block below.
   update public.pi_devices set pinned_ref = 'heldback' where serial = v_serial;
   r := public.bridge_target_ref(v_org, v_serial, 'running9', null);
   if (r ->> 'ref') <> 'heldback' then
@@ -664,6 +666,36 @@ begin
 end;
 $$;
 
+reset role;
+set local request.jwt.claims = '{"sub":"bbbbbbbb-0000-4000-8000-000000000001","role":"authenticated"}';
+set local role authenticated;
+do $$
+declare
+  v_serial text := (select serial from _pinned);
+begin
+  -- Refused at the moment the mistake is made, not fifteen minutes later on a
+  -- device in somebody's building.
+  begin
+    perform public.pin_pi_device(v_serial, '--upload-pack');
+    raise exception 'ISOLATION FAILURE: an option-shaped ref was accepted as a pin';
+  exception when others then
+    if sqlstate <> 'P0001' or sqlerrm not like '%commit or tag%' then raise; end if;
+  end;
+  begin
+    perform public.pin_pi_device(v_serial, 'abc; rm -rf /');
+    raise exception 'ISOLATION FAILURE: a ref with metacharacters was accepted as a pin';
+  exception when others then
+    if sqlstate <> 'P0001' or sqlerrm not like '%commit or tag%' then raise; end if;
+  end;
+  perform public.pin_pi_device(v_serial, null);
+  if exists (select 1 from public.pi_devices where serial = v_serial and pinned_ref is not null) then
+    raise exception 'ISOLATION FAILURE: null did not unpin';
+  end if;
+  insert into public._isolation_results (signed_in, check_name)
+  values ('platform admin', 'pin_pi_device: validates the ref, and null unpins');
+end;
+$$;
+
 -- A tenant may not see or set what the fleet runs.
 set local request.jwt.claims = '{"sub":"aaaaaaaa-0000-4000-8000-000000000001","role":"authenticated"}';
 set local role authenticated;
@@ -683,6 +715,11 @@ begin
   begin
     perform public.bridge_target_ref('aaaaaaaa-0000-4000-8000-00000000000a', 'x', 'y', null);
     raise exception 'ISOLATION FAILURE: bridge_target_ref is callable from the browser';
+  exception when insufficient_privilege then null;
+  end;
+  begin
+    perform public.pin_pi_device('GuestBadgesServer0001', 'whatever');
+    raise exception 'ISOLATION FAILURE: an org owner pinned a print server';
   exception when insufficient_privilege then null;
   end;
   insert into public._isolation_results (signed_in, check_name)

@@ -39,6 +39,9 @@ export default function Platform() {
   const [building, setBuilding] = useState(false)
   const [release, setRelease] = useState<{ ref: string | null; notes: string | null } | null>(null)
   const [refDraft, setRefDraft] = useState('')
+  //: The device whose pin is being edited, and the ref typed so far.
+  const [pinning, setPinning] = useState<PiDevice | null>(null)
+  const [pinDraft, setPinDraft] = useState('')
   const { reload, isPlatformAdmin } = useOrg()
 
   const load = useCallback(async () => {
@@ -178,6 +181,24 @@ export default function Platform() {
       return
     }
     setNotice(ref ? `Release set to ${ref}.` : 'Release cleared — devices stay where they are.')
+    await load()
+  }
+
+  async function savePin(serial: string, ref: string | null) {
+    setBusy(serial)
+    setError(null)
+    const { error } = await supabase.rpc('pin_pi_device', { p_serial: serial, p_ref: ref })
+    setBusy(null)
+    if (error) {
+      setError(error.message)
+      return
+    }
+    setNotice(
+      ref
+        ? `${serial} is held on ${ref}, whatever the fleet release says.`
+        : `${serial} follows the fleet release again.`,
+    )
+    setPinning(null)
     await load()
   }
 
@@ -440,15 +461,60 @@ export default function Platform() {
                 <td>{d.customer ?? <span className="muted">—</span>}</td>
                 <td className="small">
                   {d.running_ref ? <code>{d.running_ref}</code> : <span className="muted">—</span>}
-                  {d.pinned_ref && (
-                    <div className="muted">
-                      pinned to <code>{d.pinned_ref}</code>
-                    </div>
-                  )}
+
                   {/* A device that reverted itself. Shown here because
                       otherwise the only symptom is a version that quietly
                       stopped moving with the fleet. */}
                   {d.update_error && <div className="pill pill-sync-failed">{d.update_error}</div>}
+
+                  {pinning?.id === d.id ? (
+                    <div className="pin-edit">
+                      <input
+                        value={pinDraft}
+                        onChange={(e) => setPinDraft(e.target.value)}
+                        placeholder="commit or tag"
+                        autoFocus
+                      />
+                      <button
+                        className="btn-sm"
+                        disabled={busy === d.serial || !pinDraft.trim()}
+                        onClick={() => void savePin(d.serial, pinDraft.trim())}
+                      >
+                        Hold
+                      </button>
+                      <button className="secondary btn-sm" onClick={() => setPinning(null)}>
+                        Cancel
+                      </button>
+                    </div>
+                  ) : d.pinned_ref ? (
+                    <div className="muted">
+                      held on <code>{d.pinned_ref}</code>{' '}
+                      <button
+                        className="linkish btn-sm"
+                        disabled={busy === d.serial}
+                        onClick={() => void savePin(d.serial, null)}
+                      >
+                        follow the fleet
+                      </button>
+                    </div>
+                  ) : (
+                    <div>
+                      <button
+                        className="linkish btn-sm"
+                        disabled={busy === d.serial}
+                        onClick={() => {
+                          setPinning(d)
+                          // Pre-filled with what it is on, because holding a
+                          // device where it is is the common case; typing a
+                          // different ref is how one device tries a release
+                          // before the fleet does.
+                          setPinDraft(d.running_ref ?? '')
+                        }}
+                      >
+                        hold on a version
+                      </button>
+                    </div>
+                  )}
                 </td>
                 <td className="small">
                   {d.claimed_at ? (
