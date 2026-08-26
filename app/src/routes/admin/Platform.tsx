@@ -30,6 +30,10 @@ export default function Platform() {
   const [slug, setSlug] = useState('')
   const [name, setName] = useState('')
   const [secret, setSecret] = useState<{ org: string; value: string } | null>(null)
+  //: The org being deleted, and the slug typed so far. Held together so the
+  //: dialog cannot outlive the row it was opened for.
+  const [doomed, setDoomed] = useState<PlatformOrg | null>(null)
+  const [typedSlug, setTypedSlug] = useState('')
   const { reload, isPlatformAdmin } = useOrg()
 
   const load = useCallback(async () => {
@@ -130,6 +134,32 @@ export default function Platform() {
       </>
     )
   }
+  async function remove() {
+    if (!doomed) return
+    setBusy(doomed.org_id)
+    setError(null)
+    const { data, error } = await supabase.rpc('delete_organization', {
+      p_org: doomed.org_id,
+      p_confirm_slug: typedSlug.trim(),
+    })
+    setBusy(null)
+    if (error) {
+      setError(error.message)
+      return
+    }
+    const gone = (data ?? {}) as Record<string, unknown>
+    setNotice(
+      `Deleted ${gone.name}: ${gone.printers} printer(s), ${gone.entries} sign-in(s), ` +
+        `${gone.members} member(s). This cannot be undone.`,
+    )
+    setDoomed(null)
+    setTypedSlug('')
+    await load()
+    // The org switcher is built from memberships, and one just disappeared —
+    // possibly the one currently selected.
+    await reload()
+  }
+
   if (loading) return <p className="muted">Loading…</p>
 
   return (
@@ -239,6 +269,17 @@ export default function Platform() {
                       onClick={() => void setStatus(o, o.status === 'active' ? 'suspended' : 'active')}
                     >
                       {o.status === 'active' ? 'Suspend' : 'Resume'}
+                    </button>{' '}
+                    <button
+                      className="secondary btn-sm danger"
+                      disabled={busy === o.org_id}
+                      onClick={() => {
+                        setDoomed(o)
+                        setTypedSlug('')
+                        setError(null)
+                      }}
+                    >
+                      Delete
                     </button>
                   </td>
                 </tr>
@@ -254,6 +295,53 @@ export default function Platform() {
           </tbody>
         </table>
       </div>
+
+      {doomed && (
+        <div className="modal-backdrop" onClick={() => setDoomed(null)}>
+          <div className="modal" role="dialog" aria-modal="true" onClick={(e) => e.stopPropagation()}>
+            <h2>Delete {doomed.name}?</h2>
+            {/* The real numbers, before the question. A slug alone guards
+                against the wrong row; this guards against the wrong belief
+                about what is in it. */}
+            <p className="warn">
+              This permanently deletes {doomed.printers} printer
+              {doomed.printers === 1 ? '' : 's'}, {doomed.entries_30d} sign-in
+              {doomed.entries_30d === 1 ? '' : 's'} in the last 30 days and every older one,
+              {' '}{doomed.members} member{doomed.members === 1 ? '' : 's'}, and all of this
+              organization's settings, credentials and history. There is no undo.
+            </p>
+            <p className="muted small">
+              Suspending instead stops their kiosks and print server without destroying anything,
+              and can be reversed.
+            </p>
+            <label className="field">
+              {/* One flex item, or the column layout stacks the three
+                  pieces of this sentence onto separate lines. */}
+              <span>
+                Type <code>{doomed.slug}</code> to confirm
+              </span>
+              <input
+                value={typedSlug}
+                onChange={(e) => setTypedSlug(e.target.value)}
+                autoFocus
+                autoComplete="off"
+              />
+            </label>
+            <div className="modal-actions">
+              <button className="secondary" onClick={() => setDoomed(null)} disabled={busy === doomed.org_id}>
+                Cancel
+              </button>
+              <button
+                className="danger"
+                onClick={() => void remove()}
+                disabled={busy === doomed.org_id || typedSlug.trim() !== doomed.slug}
+              >
+                {busy === doomed.org_id ? 'Deleting…' : 'Delete permanently'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       <div className="add-by-hand">
         {creating ? (
