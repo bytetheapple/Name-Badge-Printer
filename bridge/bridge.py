@@ -61,9 +61,6 @@ def resolve_header(url):
         return None
 
 
-#: Shipped in bridge/assets/. Currently one congregation's mark — it should
-#: become a per-organization upload, at which point this constant goes away.
-BUNDLED_LOGO = "shir-hadash-logo.png"
 
 
 def badge_template_for(target: dict, cfg: dict, header_path: str | None = None) -> dict:
@@ -77,10 +74,10 @@ def badge_template_for(target: dict, cfg: dict, header_path: str | None = None) 
     that what the admin shows and what prints cannot drift apart:
 
         text   the header line, drawn as words
-        logo   the logo bundled with the bridge
+        logo   the organization's own name mark, uploaded in Settings
         image  a graphic uploaded for this printer
 
-    `header_path` is a already-downloaded image to use, which overrides the
+    `header_path` is an already-downloaded image to use, which overrides the
     mode: the external print API can attach a graphic to a single job.
     """
     template = dict(cfg.get("badge_template") or {})
@@ -95,11 +92,12 @@ def badge_template_for(target: dict, cfg: dict, header_path: str | None = None) 
     # that could mean printing another congregation's logo.
     if header_path:
         template["header_image"] = header_path
-    elif target.get("badge_header_mode") == "logo":
-        template["header_image"] = BUNDLED_LOGO
     else:
-        # "text", or "image" whose upload could not be fetched — degrade to the
-        # header line rather than to somebody else's graphic.
+        # "text"; "logo" with no mark uploaded; or "image" whose upload could
+        # not be fetched — degrade to the header line rather than to somebody
+        # else's graphic. There is deliberately no bundled fallback: the logo
+        # that used to live here was one congregation's, and any other
+        # organization choosing "logo" would have printed their mark.
         template["header_image"] = ""
     return template
 
@@ -114,10 +112,15 @@ def handle_job(client, job: dict, cfg: dict, printers: list):
             raise RuntimeError("no printer assigned to this job (or its IP is unset)")
 
         # A per-job graphic (external API) beats the printer's own setting; a
-        # printer set to "image" uses the one uploaded for it.
+        # printer set to "image" uses the one uploaded for it; one set to
+        # "logo" uses the organization's name mark, which arrives in the config
+        # because it belongs to the org rather than to this printer.
         header_url = job.get("header_image_url")
-        if not header_url and target.get("badge_header_mode") == "image":
+        mode = target.get("badge_header_mode")
+        if not header_url and mode == "image":
             header_url = target.get("header_image_url")
+        elif not header_url and mode == "logo":
+            header_url = cfg.get("logo_url")
         header_path = resolve_header(header_url)
 
         template = badge_template_for(target, cfg, header_path)
