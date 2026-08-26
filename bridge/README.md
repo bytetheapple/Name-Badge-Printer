@@ -231,3 +231,13 @@ curl -sSL https://guestbadges.com/pi.sh | sudo bash -s -- gbc_<claim code>
 That script is `app/public/pi.sh` — it lives under the app because Vercel
 serves it, and there is deliberately only one copy. `scripts/install.sh` still
 exists and is what it calls to build the virtualenv.
+
+It installs to **`/opt/name-badge-printer`**, owned by the login user, and runs
+the bridge as a separate `nbkbridge` account that is in no privileged group.
+The service writes only to `/var/lib/name-badge-bridge` — its credential and
+its image cache — so it cannot rewrite the program it is running.
+
+The one Pi built before this exists lives in the home directory and runs as the
+login user. It keeps working: `credential.stored()` still reads the old token
+location, and `BRIDGE_STATE_DIR` defaults to the bridge directory. Moving it is
+optional and amounts to re-running the installer.

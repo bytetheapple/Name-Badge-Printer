@@ -110,6 +110,35 @@ for diagnosing one misbehaving device, which is one at a time anyway.
 It is also reversible: Tailscale is a package and an auth key, deliverable to
 every existing Pi through the update path, with no re-imaging.
 
+## What runs as what
+
+The bridge runs as **`nbkbridge`**, a system account with no login shell and no
+privileged group. The account you log in with — `gbadmin`, or whatever you set
+in Imager — is separate and is the one in `sudo`.
+
+That separation is the point. Before it, a fault in the bridge or a leaked
+bridge credential landed on an account that could `sudo`. Now it lands on one
+that can run a single program and write to one directory.
+
+| | Owned by | The service can |
+|---|---|---|
+| `/opt/name-badge-printer` | the login user | read and execute |
+| `bridge/.env` | login user, group `nbkbridge` | read |
+| `/var/lib/name-badge-bridge` | `nbkbridge` | read and write |
+
+The service writes only its rotated credential and its cache of header images.
+It cannot rewrite the program it is running, which is what a compromised
+service would want to do first.
+
+The unit also sets `NoNewPrivileges`, which closes the setuid route out of an
+unprivileged account.
+
+**This does not help against a compromised Raspberry Pi Connect account** — that
+lands on `gbadmin` directly, which is in `sudo`. The control there is two-factor
+authentication on the Raspberry Pi ID, which is now the single credential
+standing in front of every device you will ever ship. Turn it on before you
+build the first one.
+
 ## The registry
 
 Every device built is listed under Platform, with its serial, who it was built

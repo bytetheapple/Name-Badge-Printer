@@ -27,6 +27,10 @@ import credential  # noqa: E402
 
 work = tempfile.mkdtemp()
 credential.TOKEN_FILE = os.path.join(work, "token")
+# Point the legacy path somewhere empty too, or a real bridge/token on the
+# machine running the tests would leak into them.
+legacy_dir = tempfile.mkdtemp()
+credential.LEGACY_TOKEN_FILE = os.path.join(legacy_dir, "token")
 
 print("— a device that has never rotated —")
 check("no stored credential", credential.stored() == "")
@@ -76,8 +80,31 @@ check("the old credential is intact", credential.stored() == "nbk_padded")
 check("and no debris is left", [f for f in os.listdir(work) if f.startswith(".token-")] == [],
       str(os.listdir(work)))
 
+print("— a device that rotated before the state directory existed —")
+# Its only working credential is in the old location: the value in .env was
+# retired the first time it connected. Losing track of it would take that
+# device off the air until somebody re-imaged it.
+open(credential.LEGACY_TOKEN_FILE, "w").write("nbk_from_the_old_place\n")
+os.remove(credential.TOKEN_FILE)
+check("the old location is still honoured", credential.stored() == "nbk_from_the_old_place")
+check("and still beats the bootstrap token",
+      credential.current("nbk_bootstrap") == "nbk_from_the_old_place")
+
+credential.store("nbk_rotated_again")
+check("the next rotation writes to the new home", credential.stored() == "nbk_rotated_again")
+check("which wins over the old one",
+      open(credential.LEGACY_TOKEN_FILE).read().strip() == "nbk_from_the_old_place")
+
+print("— a state directory that does not exist yet —")
+fresh = os.path.join(tempfile.mkdtemp(), "nested", "token")
+credential.TOKEN_FILE = fresh
+credential.store("nbk_made_the_directory")
+check("is created rather than failing", credential.stored() == "nbk_made_the_directory")
+credential.TOKEN_FILE = os.path.join(work, "token")
+
 print("— an unreadable file reads as absent, not as a crash —")
 os.chmod(credential.TOKEN_FILE, 0)
+os.remove(credential.LEGACY_TOKEN_FILE)
 unreadable = credential.stored()
 os.chmod(credential.TOKEN_FILE, 0o600)
 # Root can read anything, so this check only means something as a normal user.
