@@ -1387,3 +1387,16 @@ button.danger:disabled {
   word-break: break-all;
   margin: 10px 0;
 }
+
+/* Setting the release: one field and one button, on a line. */
+.release-row {
+  display: flex;
+  gap: 12px;
+  align-items: flex-end;
+  flex-wrap: wrap;
+  margin-bottom: 8px;
+}
+.release-row .field {
+  margin: 0;
+  min-width: 34ch;
+}

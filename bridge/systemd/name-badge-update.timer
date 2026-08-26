@@ -1,0 +1,14 @@
+[Unit]
+Description=Check for a new print bridge version
+
+[Timer]
+# Every 15 minutes, with a spread so a fleet does not all fetch at once when a
+# release lands — and a first run shortly after boot, so a device that was off
+# while a release went out catches up rather than waiting a quarter of an hour.
+OnBootSec=3min
+OnUnitActiveSec=15min
+RandomizedDelaySec=5min
+Persistent=true
+
+[Install]
+WantedBy=timers.target

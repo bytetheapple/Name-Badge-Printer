@@ -37,6 +37,8 @@ export default function Platform() {
   const [typedSlug, setTypedSlug] = useState('')
   const [devices, setDevices] = useState<PiDevice[]>([])
   const [building, setBuilding] = useState(false)
+  const [release, setRelease] = useState<{ ref: string | null; notes: string | null } | null>(null)
+  const [refDraft, setRefDraft] = useState('')
   const { reload, isPlatformAdmin } = useOrg()
 
   const load = useCallback(async () => {
@@ -46,9 +48,19 @@ export default function Platform() {
 
     const { data: rows } = await supabase
       .from('pi_devices')
-      .select('id, serial, org_id, customer, notes, claim_prefix, claimed_at, bridge_token_id, created_at')
+      .select(
+        'id, serial, org_id, customer, notes, claim_prefix, claimed_at, bridge_token_id, ' +
+          'created_at, pinned_ref, running_ref, last_seen, update_error',
+      )
       .order('created_at', { ascending: false })
-    setDevices((rows ?? []) as PiDevice[])
+    setDevices((rows ?? []) as unknown as PiDevice[])
+
+    const { data: rel } = await supabase
+      .from('bridge_release')
+      .select('ref, notes')
+      .maybeSingle()
+    setRelease((rel as { ref: string | null; notes: string | null } | null) ?? null)
+    setRefDraft((rel?.ref as string | null) ?? '')
     setLoading(false)
   }, [])
 
@@ -143,6 +155,32 @@ export default function Platform() {
       </>
     )
   }
+  async function setReleaseRef() {
+    const ref = refDraft.trim()
+    if (
+      ref &&
+      !window.confirm(
+        `Every print server not pinned to something else will move to ${ref} within about ` +
+          `fifteen minutes. A device that fails to start on it reverts itself. Continue?`,
+      )
+    ) {
+      return
+    }
+    setBusy('release')
+    setError(null)
+    const { error } = await supabase
+      .from('bridge_release')
+      .update({ ref: ref || null, updated_at: new Date().toISOString() })
+      .eq('id', true)
+    setBusy(null)
+    if (error) {
+      setError(error.message)
+      return
+    }
+    setNotice(ref ? `Release set to ${ref}.` : 'Release cleared — devices stay where they are.')
+    await load()
+  }
+
   async function remove() {
     if (!doomed) return
     setBusy(doomed.org_id)
@@ -352,6 +390,29 @@ export default function Platform() {
         </div>
       )}
 
+      <h2 style={{ marginTop: 36 }}>Bridge release</h2>
+      <p className="muted small">
+        The version every print server converges on, unless it is pinned to something else.
+        Devices check every fifteen minutes; one that fails to start on a new version puts the
+        old one back by itself and says so below.
+      </p>
+      <div className="release-row">
+        <label className="field">
+          <span>Commit or tag</span>
+          <input
+            value={refDraft}
+            onChange={(e) => setRefDraft(e.target.value)}
+            placeholder="leave empty to hold every device where it is"
+          />
+        </label>
+        <button
+          onClick={() => void setReleaseRef()}
+          disabled={busy === 'release' || refDraft.trim() === (release?.ref ?? '')}
+        >
+          {busy === 'release' ? 'Setting…' : 'Set release'}
+        </button>
+      </div>
+
       <h2 style={{ marginTop: 36 }}>Print servers</h2>
       <p className="muted small">
         Every device built, and who it was built for. Kept independently of the organizations
@@ -365,6 +426,7 @@ export default function Platform() {
             <tr>
               <th>Serial</th>
               <th>Built for</th>
+              <th>Version</th>
               <th>Claimed</th>
               <th>Notes</th>
             </tr>
@@ -376,6 +438,18 @@ export default function Platform() {
                   <code>{d.serial}</code>
                 </td>
                 <td>{d.customer ?? <span className="muted">—</span>}</td>
+                <td className="small">
+                  {d.running_ref ? <code>{d.running_ref}</code> : <span className="muted">—</span>}
+                  {d.pinned_ref && (
+                    <div className="muted">
+                      pinned to <code>{d.pinned_ref}</code>
+                    </div>
+                  )}
+                  {/* A device that reverted itself. Shown here because
+                      otherwise the only symptom is a version that quietly
+                      stopped moving with the fleet. */}
+                  {d.update_error && <div className="pill pill-sync-failed">{d.update_error}</div>}
+                </td>
                 <td className="small">
                   {d.claimed_at ? (
                     new Date(d.claimed_at).toLocaleDateString()
@@ -390,7 +464,7 @@ export default function Platform() {
             ))}
             {!devices.length && (
               <tr>
-                <td colSpan={4} className="muted">
+                <td colSpan={5} className="muted">
                   No print servers built yet.
                 </td>
               </tr>

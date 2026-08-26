@@ -564,6 +564,135 @@ $$;
 reset role;
 set local request.jwt.claims = '';
 
+-- ------------------------------------- checks: managed updates (release)
+
+reset role;
+set local request.jwt.claims = '';
+
+do $$
+declare
+  v_org constant uuid := 'aaaaaaaa-0000-4000-8000-00000000000a';
+  r jsonb;
+begin
+  -- A device that has never been told anything must not be told to update.
+  -- "No release set" has to mean stay put: the failure of doing nothing is a
+  -- stale device, and of guessing is a fleet-wide deploy nobody asked for.
+  update public.bridge_release set ref = null where id;
+  r := public.bridge_target_ref(v_org, 'GuestBadgesServer0001', 'aaaa111', null);
+  if (r ->> 'ref') is not null then
+    raise exception 'ISOLATION FAILURE: an unset release told a device to move to %', r ->> 'ref';
+  end if;
+  insert into public._isolation_results (signed_in, check_name)
+  values ('service_role', 'bridge_target_ref: no release means stay put');
+
+  update public.bridge_release set ref = 'fleetref' where id;
+  r := public.bridge_target_ref(v_org, 'GuestBadgesServer0001', 'aaaa111', null);
+  if (r ->> 'ref') <> 'fleetref' then
+    raise exception 'TEST BROKEN: expected fleetref, got %', r ->> 'ref';
+  end if;
+  insert into public._isolation_results (signed_in, check_name)
+  values ('service_role', 'bridge_target_ref: the fleet release is handed out');
+end;
+$$;
+
+-- Reporting, and the pin that overrides the fleet.
+reset role;
+set local request.jwt.claims = '{"sub":"bbbbbbbb-0000-4000-8000-000000000001","role":"authenticated"}';
+set local role authenticated;
+do $$
+declare
+  a jsonb;
+begin
+  a := public.allocate_pi_device('aaaaaaaa-0000-4000-8000-00000000000a', 'Pinned Co', null);
+  create temporary table _pinned (serial text) on commit drop;
+  insert into _pinned values (a ->> 'serial');
+end;
+$$;
+
+reset role;
+set local request.jwt.claims = '';
+do $$
+declare
+  v_org constant uuid := 'aaaaaaaa-0000-4000-8000-00000000000a';
+  v_serial text := (select serial from _pinned);
+  r jsonb;
+  d public.pi_devices%rowtype;
+begin
+  -- What a device says it is running is recorded, not assumed.
+  r := public.bridge_target_ref(v_org, v_serial, 'running9', null);
+  select * into d from public.pi_devices where serial = v_serial;
+  if d.running_ref <> 'running9' or d.last_seen is null then
+    raise exception 'ISOLATION FAILURE: the device report was not recorded (% / %)',
+      d.running_ref, d.last_seen;
+  end if;
+  insert into public._isolation_results (signed_in, check_name)
+  values ('service_role', 'bridge_target_ref: records what a device reports');
+
+  -- A pin beats the fleet release. This is both the staged rollout and the
+  -- hold-a-customer-back mechanism, so it has to win.
+  update public.pi_devices set pinned_ref = 'heldback' where serial = v_serial;
+  r := public.bridge_target_ref(v_org, v_serial, 'running9', null);
+  if (r ->> 'ref') <> 'heldback' then
+    raise exception 'ISOLATION FAILURE: a pinned device was sent to %', r ->> 'ref';
+  end if;
+  insert into public._isolation_results (signed_in, check_name)
+  values ('service_role', 'bridge_target_ref: a device pin beats the fleet release');
+
+  -- A failed update is remembered until one succeeds, or the only symptom is a
+  -- version that quietly stopped moving with the fleet.
+  r := public.bridge_target_ref(v_org, v_serial, 'running9', 'did not start; reverted');
+  select * into d from public.pi_devices where serial = v_serial;
+  if d.update_error is null then
+    raise exception 'ISOLATION FAILURE: a reported update failure was dropped';
+  end if;
+  r := public.bridge_target_ref(v_org, v_serial, 'running9', null);
+  select * into d from public.pi_devices where serial = v_serial;
+  if d.update_error is not null then
+    raise exception 'ISOLATION FAILURE: the failure was not cleared once it recovered';
+  end if;
+  insert into public._isolation_results (signed_in, check_name)
+  values ('service_role', 'bridge_target_ref: an update failure is kept, then cleared');
+
+  -- A device belonging to another organization must not be steered by this one.
+  r := public.bridge_target_ref('bbbbbbbb-0000-4000-8000-00000000000b', v_serial, 'sneaky', null);
+  select * into d from public.pi_devices where serial = v_serial;
+  if d.running_ref = 'sneaky' then
+    raise exception 'ISOLATION FAILURE: another org reported against this device';
+  end if;
+  insert into public._isolation_results (signed_in, check_name)
+  values ('service_role', 'bridge_target_ref: another org cannot report for a device');
+end;
+$$;
+
+-- A tenant may not see or set what the fleet runs.
+set local request.jwt.claims = '{"sub":"aaaaaaaa-0000-4000-8000-000000000001","role":"authenticated"}';
+set local role authenticated;
+do $$
+declare
+  n bigint;
+begin
+  select count(*) into n from public.bridge_release;
+  if n <> 0 then
+    raise exception 'ISOLATION FAILURE: an org owner can read the release';
+  end if;
+  update public.bridge_release set ref = 'tenant-chose-this' where id;
+  get diagnostics n = row_count;
+  if n <> 0 then
+    raise exception 'ISOLATION FAILURE: an org owner set the fleet release';
+  end if;
+  begin
+    perform public.bridge_target_ref('aaaaaaaa-0000-4000-8000-00000000000a', 'x', 'y', null);
+    raise exception 'ISOLATION FAILURE: bridge_target_ref is callable from the browser';
+  exception when insufficient_privilege then null;
+  end;
+  insert into public._isolation_results (signed_in, check_name)
+  values ('org A owner', 'bridge_release: invisible, unsettable, uncallable');
+end;
+$$;
+
+reset role;
+set local request.jwt.claims = '';
+
 -- ------------------------------------- checks: the fleet firmware record
 -- Cross-tenant by design: a firmware version belongs to the hardware, not to
 -- the congregation. That makes who can read and write it worth pinning down.
