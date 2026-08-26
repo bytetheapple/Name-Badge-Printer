@@ -3,33 +3,14 @@
 // and hidden fields, then POST the mapped fields. Decoupled from printing.
 //
 // The form URL and field names come from the entry's own organization
-// (integrations, kind 'shulcloud'). An org with nothing configured falls back to
-// the environment variables below, but only while there is exactly one
-// organization — past that, the fallback would post one congregation's visitors
-// to another's CRM.
-//
-// Environment fallback:
-//   SHULCLOUD_FORM_URL      the form URL (e.g. https://www.shirhadash.org/form/welcome)
-//   SHULCLOUD_FIELD_FIRST   form input name for first name (e.g. element_30776892)
-//   SHULCLOUD_FIELD_LAST    "" last name
-//   SHULCLOUD_FIELD_EMAIL   "" email
-//   SHULCLOUD_FIELD_PHONE   "" phone
-//   SHULCLOUD_SUCCESS_TEXT  text that marks a successful submit (default below)
+// (integrations, kind 'shulcloud'), and from nowhere else. An org that has not
+// configured it syncs nowhere rather than posting into anyone's CRM.
 import { corsHeaders, json } from "../_shared/cors.ts";
 import { orgOfEntry, resolveSettings } from "../_shared/integration.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_ROLE = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const DEFAULT_SUCCESS_TEXT = "Thank you for your interest";
-
-const envDefaults = () => ({
-  form_url: Deno.env.get("SHULCLOUD_FORM_URL") ?? "",
-  field_first: Deno.env.get("SHULCLOUD_FIELD_FIRST") ?? "",
-  field_last: Deno.env.get("SHULCLOUD_FIELD_LAST") ?? "",
-  field_email: Deno.env.get("SHULCLOUD_FIELD_EMAIL") ?? "",
-  field_phone: Deno.env.get("SHULCLOUD_FIELD_PHONE") ?? "",
-  success_text: Deno.env.get("SHULCLOUD_SUCCESS_TEXT") ?? DEFAULT_SUCCESS_TEXT,
-});
 
 // ShulCloud returns 406 without browser-like headers.
 const BROWSER: Record<string, string> = {
@@ -76,7 +57,7 @@ Deno.serve(async (req) => {
   if (!entryId) return json({ ok: false, error: "entry_id required" }, 400);
 
   const orgId = await orgOfEntry(entryId);
-  const settings = await resolveSettings(orgId, "shulcloud", envDefaults);
+  const settings = await resolveSettings(orgId, "shulcloud");
 
   const FORM_URL = String(settings?.config.form_url ?? "");
   const F_FIRST = String(settings?.config.field_first ?? "");
