@@ -23,7 +23,7 @@ endpoint URL and an API key, both provided by the service operator.
 Your key is scoped to **one organization**. It can list and print to that
 organization's printers and read the status of jobs it created — nothing else,
 and nothing belonging to anyone else. Keys are issued in the admin under
-**Settings → Print API keys**, shown once, and can be revoked at any time
+**Integrations → Print API**, shown once, and can be revoked at any time
 without affecting any other key.
 
 The badge's visual design — label size, fonts, header logo — is managed centrally
