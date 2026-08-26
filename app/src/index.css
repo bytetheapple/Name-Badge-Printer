@@ -1207,3 +1207,64 @@ td.actions-cell {
 .manual-address .field {
   margin-bottom: 12px;
 }
+
+/* ---------------------------------------------------------------------------
+   Public pages — the landing page and the two legal ones.
+
+   Read by people who have never seen the product, and by Google's OAuth
+   reviewers, so they get a plain readable column rather than the admin's
+   denser layout.
+   --------------------------------------------------------------------------- */
+.page {
+  max-width: 68ch;
+  margin: 0 auto;
+  padding: 48px 24px 64px;
+  line-height: 1.6;
+  /* The kiosk centres its text, which suits a form seen from arm's length and
+     is miserable for two pages of policy. */
+  text-align: left;
+}
+.page h1,
+.page-head {
+  text-align: left;
+}
+.page h1 {
+  margin: 0 0 8px;
+}
+.page h2 {
+  margin: 32px 0 10px;
+  font-size: 1.15rem;
+  color: var(--text-h);
+}
+.page p,
+.page ul {
+  margin: 0 0 14px;
+}
+.page ul {
+  padding-left: 22px;
+}
+.page li {
+  margin-bottom: 6px;
+}
+.page code {
+  font-size: 0.9em;
+}
+.page-head .lede {
+  font-size: 1.15rem;
+  color: var(--text-h);
+  margin-bottom: 8px;
+}
+.page-foot {
+  margin-top: 44px;
+  padding-top: 18px;
+  border-top: 1px solid var(--border);
+  font-size: 14px;
+}
+.page-foot p {
+  margin: 0 0 6px;
+}
+/* Legal pages run long; a touch more air between sections helps someone
+   scanning for the one clause they came to read. */
+.legal section {
+  margin-bottom: 26px;
+}
