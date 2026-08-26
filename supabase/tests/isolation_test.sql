@@ -250,6 +250,121 @@ begin
 end;
 $$;
 
+-- --------------------------------------- checks: creating and suspending (A6)
+
+reset role;
+set local request.jwt.claims = '{"sub":"bbbbbbbb-0000-4000-8000-000000000001","role":"authenticated"}';
+set local role authenticated;
+
+do $$
+declare
+  v_org uuid;
+  n bigint;
+begin
+  -- User B is a platform admin.
+  v_org := public.create_organization('new-congregation', 'New Congregation');
+  if v_org is null then
+    raise exception 'TEST BROKEN: create_organization returned nothing';
+  end if;
+  insert into public._isolation_results (signed_in, check_name)
+  values ('platform admin', 'create_organization: makes a tenant');
+
+  -- The creator owns it, or nobody could get in to set it up.
+  if public.auth_org_role(v_org) <> 'owner' then
+    raise exception 'ISOLATION FAILURE: the creator is % of the new org, not owner',
+      coalesce(public.auth_org_role(v_org), '(nothing)');
+  end if;
+  insert into public._isolation_results (signed_in, check_name)
+  values ('platform admin', 'create_organization: the creator owns it');
+
+  -- The three singletons a kiosk needs. Their absence fails later and
+  -- somewhere else, which is exactly why the function creates them.
+  select (select count(*) from public.printer_config where org_id = v_org)
+       + (select count(*) from public.printer_status where org_id = v_org)
+       + (select count(*) from public.app_settings   where org_id = v_org)
+    into n;
+  if n <> 3 then
+    raise exception 'ISOLATION FAILURE: a new org has % of its 3 singleton rows', n;
+  end if;
+  insert into public._isolation_results (signed_in, check_name)
+  values ('platform admin', 'create_organization: settings rows exist');
+
+  -- A slug is how a support conversation refers to a tenant; two the same
+  -- would be worse than a refusal.
+  begin
+    perform public.create_organization('new-congregation', 'Another One');
+    raise exception 'ISOLATION FAILURE: a duplicate slug was accepted';
+  exception when others then
+    if sqlstate = 'P0001' and sqlerrm not like '%already exists%' then raise; end if;
+  end;
+  begin
+    perform public.create_organization('Not A Slug!', 'Bad Slug');
+    raise exception 'ISOLATION FAILURE: a malformed slug was accepted';
+  exception when others then
+    if sqlstate = 'P0001' and sqlerrm not like '%lowercase%' then raise; end if;
+  end;
+  insert into public._isolation_results (signed_in, check_name)
+  values ('platform admin', 'create_organization: slugs are unique and well formed');
+
+  -- Hand the id to the server-side block below: org_is_active is revoked from
+  -- authenticated, so even a platform admin cannot call it from a session.
+  create temporary table _new_org (id uuid) on commit drop;
+  insert into _new_org values (v_org);
+end;
+$$;
+
+reset role;
+set local request.jwt.claims = '';
+
+do $$
+declare
+  v_org uuid := (select id from _new_org);
+begin
+  if not public.org_is_active(v_org) then
+    raise exception 'TEST BROKEN: a new org is not active';
+  end if;
+  update public.organizations set status = 'suspended' where id = v_org;
+  if public.org_is_active(v_org) then
+    raise exception 'ISOLATION FAILURE: a suspended org still reads as active';
+  end if;
+  update public.organizations set status = 'active' where id = v_org;
+  if not public.org_is_active(v_org) then
+    raise exception 'ISOLATION FAILURE: resuming an org did not restore it';
+  end if;
+  insert into public._isolation_results (signed_in, check_name)
+  values ('service_role', 'org_is_active: follows status, and is reversible');
+end;
+$$;
+
+-- The overview is the support view; it must show nothing to a tenant.
+reset role;
+set local request.jwt.claims = '{"sub":"aaaaaaaa-0000-4000-8000-000000000001","role":"authenticated"}';
+set local role authenticated;
+
+do $$
+declare
+  n bigint;
+begin
+  select count(*) into n from public.platform_overview();
+  if n <> 0 then
+    raise exception 'ISOLATION FAILURE: an org owner sees % row(s) of the platform overview', n;
+  end if;
+  insert into public._isolation_results (signed_in, check_name)
+  values ('org A owner', 'platform_overview: empty for a tenant');
+
+  begin
+    perform public.org_is_active('bbbbbbbb-0000-4000-8000-00000000000b');
+    raise exception 'ISOLATION FAILURE: org_is_active is callable from the browser';
+  exception when insufficient_privilege then null;
+  end;
+  insert into public._isolation_results (signed_in, check_name)
+  values ('org A owner', 'org_is_active: not callable from the browser');
+end;
+$$;
+
+reset role;
+set local request.jwt.claims = '';
+
 -- ------------------------------------- checks: the fleet firmware record
 -- Cross-tenant by design: a firmware version belongs to the hardware, not to
 -- the congregation. That makes who can read and write it worth pinning down.

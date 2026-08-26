@@ -441,6 +441,27 @@ try {
   else bad(`role negative control failed for the wrong reason: ${msg}`)
 }
 
+console.log('— negative control: without the trigger, an org lifts its own suspension —')
+// Suspension is only a lever if a tenant cannot pull it. A2's update policy on
+// organizations is column-blind, so the trigger is the whole of the guard.
+const unguarded = await build((sql, f) =>
+  f.includes('_mt_a6_platform')
+    ? sql.replace(
+        `    if new.status is distinct from old.status then
+      raise exception 'an organization''s status is set by the Name Badge Kiosk team'
+        using errcode = 'insufficient_privilege';
+    end if;`,
+        '')
+    : sql)
+try {
+  await unguarded.exec(ROLES)
+  bad('negative control: an owner changed their own status and the test PASSED')
+} catch (e) {
+  const msg = String(e.message).split('\n')[0]
+  if (msg.includes('changed their own organization status')) ok(`without the guard it is caught: "${msg}"`)
+  else bad(`negative control failed for the wrong reason: ${msg}`)
+}
+
 console.log('— negative control: without the trigger, an owner grants themselves a paid feature —')
 // A2's "owner updates organization" policy is column-blind, so the guard is the
 // only thing standing between an owner and the capability flag on their own row.

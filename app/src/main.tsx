@@ -19,6 +19,7 @@ import PrinterConfig from './routes/admin/PrinterConfig'
 import Settings from './routes/admin/Settings'
 import Members from './routes/admin/Members'
 import IntegrationsPage from './routes/admin/IntegrationsPage'
+import Platform from './routes/admin/Platform'
 
 /**
  * What `/` serves.
@@ -56,6 +57,7 @@ const router = createBrowserRouter([
       { path: 'settings', element: <Settings /> },
       { path: 'integrations', element: <IntegrationsPage /> },
       { path: 'members', element: <Members /> },
+      { path: 'platform', element: <Platform /> },
     ],
   },
 ])

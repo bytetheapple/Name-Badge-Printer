@@ -24,6 +24,8 @@ export const restHeaders = {
   "Content-Type": "application/json",
 };
 
+import { orgIsActive, SUSPENDED_MESSAGE } from "./org.ts";
+
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const TOKEN_RE = /^k_[0-9a-f]{32}$/;
 
@@ -50,7 +52,24 @@ async function printerBy(query: string): Promise<Record<string, unknown> | null>
   return rows.length ? rows[0] : null;
 }
 
+/**
+ * Refuse a kiosk whose organization is suspended.
+ *
+ * Applied once, at the end of resolution, rather than at each of the three
+ * ways a kiosk can be identified — a check that has to be repeated is a check
+ * that will eventually be forgotten in one branch.
+ */
+async function unlessSuspended(result: KioskResult): Promise<KioskResult> {
+  if (!result.kiosk) return result;
+  if (await orgIsActive(result.kiosk.org_id)) return result;
+  return { kiosk: null, error: SUSPENDED_MESSAGE };
+}
+
 export async function resolveKiosk(body: Record<string, unknown>): Promise<KioskResult> {
+  return unlessSuspended(await resolveKioskInner(body));
+}
+
+async function resolveKioskInner(body: Record<string, unknown>): Promise<KioskResult> {
   const token = String(body.kiosk_token ?? "").trim();
   const printerId = String(body.printer_id ?? "").trim();
 

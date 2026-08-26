@@ -43,6 +43,9 @@ class Poll:
     #: This poll carried a replacement credential, which has been stored. Worth
     #: a log line and nothing more — the value itself is never logged.
     rotated: bool = False
+    #: The organization is suspended. The credential is still good — this is
+    #: not a revocation — there is simply no work while it lasts.
+    suspended: bool = False
 
 
 class BridgeApiClient:
@@ -116,6 +119,7 @@ class BridgeApiClient:
             printers=body.get("printers") or [],
             job=body.get("job"),
             provision=body.get("provision"),
+            suspended=bool(body.get("suspended")),
             # Whether the credential actually changed, not whether one was
             # offered — a device that could not store it has not rotated, and
             # saying otherwise would put a false line in the log.
