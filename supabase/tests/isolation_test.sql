@@ -696,52 +696,6 @@ begin
 end;
 $$;
 
--- The catalogue: a ref that could confuse git must not get in at all.
-reset role;
-set local request.jwt.claims = '{"sub":"bbbbbbbb-0000-4000-8000-000000000001","role":"authenticated"}';
-set local role authenticated;
-do $$
-begin
-  insert into public.bridge_releases (ref, label, notes)
-  values ('a1b2c3d', 'v1.0.0', 'First release');
-  insert into public._isolation_results (signed_in, check_name)
-  values ('platform admin', 'bridge_releases: a platform admin records a release');
-
-  begin
-    insert into public.bridge_releases (ref, label) values ('--upload-pack', 'evil');
-    raise exception 'ISOLATION FAILURE: an option-shaped ref entered the catalogue';
-  exception when check_violation then null;
-  end;
-  begin
-    insert into public.bridge_releases (ref, label) values ('abc; rm -rf /', 'evil');
-    raise exception 'ISOLATION FAILURE: a ref with metacharacters entered the catalogue';
-  exception when check_violation then null;
-  end;
-  insert into public._isolation_results (signed_in, check_name)
-  values ('platform admin', 'bridge_releases: only plain git names are accepted');
-end;
-$$;
-
-set local request.jwt.claims = '{"sub":"aaaaaaaa-0000-4000-8000-000000000001","role":"authenticated"}';
-set local role authenticated;
-do $$
-declare
-  n bigint;
-begin
-  select count(*) into n from public.bridge_releases;
-  if n <> 0 then
-    raise exception 'ISOLATION FAILURE: an org owner can read the release catalogue';
-  end if;
-  begin
-    insert into public.bridge_releases (ref, label) values ('tenantref', 'mine');
-    raise exception 'ISOLATION FAILURE: an org owner added a release';
-  exception when insufficient_privilege then null;
-  end;
-  insert into public._isolation_results (signed_in, check_name)
-  values ('org A owner', 'bridge_releases: invisible and unwritable to a tenant');
-end;
-$$;
-
 -- A tenant may not see or set what the fleet runs.
 set local request.jwt.claims = '{"sub":"aaaaaaaa-0000-4000-8000-000000000001","role":"authenticated"}';
 set local role authenticated;

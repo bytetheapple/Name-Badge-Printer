@@ -20,19 +20,39 @@ operation.
 Devices built before this have no updater. Re-running the installer on one adds
 it; nothing else changes.
 
-## Recording a release
+## Where the version list comes from
 
-Platform → **Record a release**: a commit or tag, a name, and one line about
-what changed. Both version pickers choose from those rows, so a sha nobody has
-described cannot be put on a fleet.
+Both pickers read the repository directly — the last forty commits on `main`,
+each with its sha and subject line, with any tags folded in on top:
 
-That line is not bureaucracy. Six weeks later `a1b2c3d` answers neither what it
-changed nor whether it is the one that broke a device, and the moment you need
-to know is the moment you are rolling back under pressure.
+```
+[v1.0: First production release] a1b2c3d — feat: something
+c4dc926 — feat: pin a print server from the console
+```
 
-The ref is validated on the way in — plain git names only, and nothing starting
-with a hyphen, since `--upload-pack` is all legal characters and git reads it as
-an option.
+Nothing has to be maintained: this project writes commit subjects at length, so
+the commit list is already a list of changes. Tag an interesting one and it
+gains a name; leave it and the subject still says what it is.
+
+**Tagging happens on your machine, not here.**
+
+```
+git tag -a v1.0 -m "First production release" 8df9fb6
+git push origin v1.0
+```
+
+The console will not create tags, and that is deliberate. Creating one needs
+`contents: write`, which is the same permission as pushing code — and every Pi
+fetches from this repository and checks out what it is told. A write credential
+in the app would join "a leaked Supabase secret" to "arbitrary code running as
+root on every customer's device". Reading needs no credential at all, so the
+asymmetry costs two commands and buys the fleet's trust anchor staying outside
+the app.
+
+GitHub allows sixty unauthenticated requests an hour per address, which is
+ample: the list is fetched once per visit rather than on every action. If it
+cannot be read — a rate limit, an outage — the pickers become plain text boxes
+and say why, because an outage at GitHub must not leave the fleet unmanageable.
 
 ## Releasing
 

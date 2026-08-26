@@ -2,7 +2,8 @@ import { useCallback, useEffect, useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import { useOrg } from '../../lib/org'
 import { lastSeenLabel } from '../../lib/secrets'
-import type { BridgeRelease, PiDevice, PlatformOrg } from '../../lib/types'
+import type { PiDevice, PlatformOrg } from '../../lib/types'
+import { describeVersion, repoVersions, type RepoVersion } from '../../lib/repoVersions'
 import BuildServer from './BuildServer'
 
 const BRIDGE_FRESH_MS = 45000
@@ -45,9 +46,11 @@ export default function Platform() {
   //: deciding the version and choosing the devices are separate thoughts, and
   //: forcing an order on them is just friction.
   const [holdRef, setHoldRef] = useState('')
-  const [releases, setReleases] = useState<BridgeRelease[]>([])
-  const [newRelease, setNewRelease] = useState({ ref: '', label: '', notes: '' })
-  const [addingRelease, setAddingRelease] = useState(false)
+  const [versions, setVersions] = useState<RepoVersion[]>([])
+  //: Set when the repository could not be read. The pickers fall back to a
+  //: text box then: a rate limit or an outage at GitHub must not leave the
+  //: fleet unmanageable.
+  const [versionsError, setVersionsError] = useState<string | null>(null)
   const { reload, isPlatformAdmin } = useOrg()
 
   const load = useCallback(async () => {
@@ -64,12 +67,6 @@ export default function Platform() {
       .order('created_at', { ascending: false })
     setDevices((rows ?? []) as unknown as PiDevice[])
 
-    const { data: cat } = await supabase
-      .from('bridge_releases')
-      .select('id, ref, label, notes, created_at')
-      .order('created_at', { ascending: false })
-    setReleases((cat ?? []) as unknown as BridgeRelease[])
-
     const { data: rel } = await supabase
       .from('bridge_release')
       .select('ref, notes')
@@ -82,6 +79,17 @@ export default function Platform() {
   useEffect(() => {
     void load()
   }, [load])
+
+  // Once per visit rather than inside load(): every action reloads, and the
+  // unauthenticated GitHub budget is sixty requests an hour.
+  useEffect(() => {
+    void repoVersions()
+      .then((v) => {
+        setVersions(v)
+        setVersionsError(null)
+      })
+      .catch((e: Error) => setVersionsError(e.message))
+  }, [])
 
   async function createOrg() {
     if (!slug.trim() || !name.trim()) {
@@ -235,35 +243,6 @@ export default function Platform() {
     }
     setSelected(new Set())
     await load()
-  }
-
-  async function addRelease() {
-    const { ref, label, notes } = newRelease
-    if (!ref.trim() || !label.trim()) {
-      setError('A release needs both a commit or tag and a name.')
-      return
-    }
-    setBusy('add-release')
-    setError(null)
-    const { error } = await supabase.from('bridge_releases').insert({
-      ref: ref.trim(),
-      label: label.trim(),
-      notes: notes.trim() || null,
-    })
-    setBusy(null)
-    if (error) {
-      setError(error.message)
-      return
-    }
-    setNotice(`Recorded ${label.trim()}.`)
-    setNewRelease({ ref: '', label: '', notes: '' })
-    setAddingRelease(false)
-    await load()
-  }
-
-  /** "v1.2.0 — fixes the selfie upload", for a dropdown. */
-  function describe(r: BridgeRelease): string {
-    return r.notes ? `${r.label} — ${r.notes}` : r.label
   }
 
   function toggle(serial: string) {
@@ -497,14 +476,22 @@ export default function Platform() {
               should be able to put on a fleet — and six weeks later "a1b2c3d"
               answers neither what it changed nor whether it is the one that
               broke a device. */}
-          <select value={refDraft} onChange={(e) => setRefDraft(e.target.value)}>
-            <option value="">Hold every server where it is</option>
-            {releases.map((r) => (
-              <option key={r.id} value={r.ref}>
-                {describe(r)}
-              </option>
-            ))}
-          </select>
+          {versionsError ? (
+            <input
+              value={refDraft}
+              onChange={(e) => setRefDraft(e.target.value)}
+              placeholder="commit or tag"
+            />
+          ) : (
+            <select value={refDraft} onChange={(e) => setRefDraft(e.target.value)}>
+              <option value="">Hold every server where it is</option>
+              {versions.map((v) => (
+                <option key={v.sha} value={v.short}>
+                  {describeVersion(v)}
+                </option>
+              ))}
+            </select>
+          )}
         </label>
         <button
           onClick={() => void setReleaseRef()}
@@ -517,49 +504,10 @@ export default function Platform() {
             Currently <code>{release.ref}</code>
           </span>
         )}
-      </div>
-
-      <div className="add-by-hand">
-        {addingRelease ? (
-          <div className="manual-address">
-            <label className="field">
-              Commit or tag
-              <input
-                value={newRelease.ref}
-                onChange={(e) => setNewRelease({ ...newRelease, ref: e.target.value })}
-                placeholder="a1b2c3d"
-                autoFocus
-              />
-            </label>
-            <label className="field">
-              Name
-              <input
-                value={newRelease.label}
-                onChange={(e) => setNewRelease({ ...newRelease, label: e.target.value })}
-                placeholder="v1.2.0"
-              />
-            </label>
-            <label className="field">
-              What changed
-              <input
-                value={newRelease.notes}
-                onChange={(e) => setNewRelease({ ...newRelease, notes: e.target.value })}
-                placeholder="one line, read months later when deciding whether to roll back to it"
-              />
-            </label>
-            <div className="modal-actions">
-              <button className="secondary" onClick={() => setAddingRelease(false)}>
-                Cancel
-              </button>
-              <button onClick={() => void addRelease()} disabled={busy === 'add-release'}>
-                {busy === 'add-release' ? 'Recording…' : 'Record release'}
-              </button>
-            </div>
-          </div>
-        ) : (
-          <button className="secondary btn-sm" onClick={() => setAddingRelease(true)}>
-            + Record a release
-          </button>
+        {versionsError && (
+          <span className="muted small">
+            Could not read the repository ({versionsError}) — enter a commit or tag by hand.
+          </span>
         )}
       </div>
 
@@ -576,14 +524,22 @@ export default function Platform() {
       <div className="release-row">
         <label className="field">
           <span>Hold selected servers on</span>
-          <select value={holdRef} onChange={(e) => setHoldRef(e.target.value)}>
-            <option value="">Choose a version…</option>
-            {releases.map((r) => (
-              <option key={r.id} value={r.ref}>
-                {describe(r)}
-              </option>
-            ))}
-          </select>
+          {versionsError ? (
+            <input
+              value={holdRef}
+              onChange={(e) => setHoldRef(e.target.value)}
+              placeholder="commit or tag"
+            />
+          ) : (
+            <select value={holdRef} onChange={(e) => setHoldRef(e.target.value)}>
+              <option value="">Choose a version…</option>
+              {versions.map((v) => (
+                <option key={v.sha} value={v.short}>
+                  {describeVersion(v)}
+                </option>
+              ))}
+            </select>
+          )}
         </label>
         <button
           onClick={() => void applyHold(holdRef.trim())}
