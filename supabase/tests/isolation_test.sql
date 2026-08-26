@@ -336,6 +336,79 @@ begin
 end;
 $$;
 
+-- Deleting a tenant: the one action with no undo.
+reset role;
+set local request.jwt.claims = '{"sub":"bbbbbbbb-0000-4000-8000-000000000001","role":"authenticated"}';
+set local role authenticated;
+
+do $$
+declare
+  v_org uuid := (select id from _new_org);
+  v_gone jsonb;
+  n bigint;
+begin
+  -- A mistyped slug must not delete anything. This is the whole guard.
+  begin
+    perform public.delete_organization(v_org, 'not-the-slug');
+    raise exception 'ISOLATION FAILURE: a wrong slug deleted an organization';
+  exception when others then
+    if sqlstate <> 'P0001' or sqlerrm not like '%type its slug%' then raise; end if;
+  end;
+  select count(*) into n from public.organizations where id = v_org;
+  if n <> 1 then
+    raise exception 'ISOLATION FAILURE: the organization went anyway';
+  end if;
+  insert into public._isolation_results (signed_in, check_name)
+  values ('platform admin', 'delete_organization: a wrong slug deletes nothing');
+
+  -- Give it something to take with it, so the cascade is doing real work.
+  -- Through the same routes an operator would use: direct inserts into
+  -- bridge_tokens are revoked from the browser roles, which is the point.
+  insert into public.printers (org_id, name) values (v_org, 'Doomed Printer');
+  perform public.issue_bridge_token(v_org, 'Doomed bridge');
+
+  v_gone := public.delete_organization(v_org, 'new-congregation');
+  if (v_gone ->> 'printers')::int <> 1 or (v_gone ->> 'bridges')::int <> 1 then
+    raise exception 'TEST BROKEN: the report said %', v_gone;
+  end if;
+  insert into public._isolation_results (signed_in, check_name)
+  values ('platform admin', 'delete_organization: reports what it destroyed');
+end;
+$$;
+
+reset role;
+set local request.jwt.claims = '';
+
+do $$
+declare
+  v_org uuid := (select id from _new_org);
+  n bigint;
+begin
+  -- Nothing that carried its org_id may survive it.
+  select (select count(*) from public.organizations   where id = v_org)
+       + (select count(*) from public.printers        where org_id = v_org)
+       + (select count(*) from public.memberships     where org_id = v_org)
+       + (select count(*) from public.bridge_tokens   where org_id = v_org)
+       + (select count(*) from public.printer_config  where org_id = v_org)
+       + (select count(*) from public.printer_status  where org_id = v_org)
+       + (select count(*) from public.app_settings    where org_id = v_org)
+    into n;
+  if n <> 0 then
+    raise exception 'ISOLATION FAILURE: % row(s) outlived the organization', n;
+  end if;
+  insert into public._isolation_results (signed_in, check_name)
+  values ('—', 'delete_organization: nothing outlives the org');
+
+  -- The people do, though: a member may belong to other organizations, and
+  -- deleting their account is a different decision from deleting a tenant.
+  if not exists (select 1 from auth.users where id = 'bbbbbbbb-0000-4000-8000-000000000001') then
+    raise exception 'ISOLATION FAILURE: deleting an org deleted a user account';
+  end if;
+  insert into public._isolation_results (signed_in, check_name)
+  values ('—', 'delete_organization: user accounts survive');
+end;
+$$;
+
 -- The overview is the support view; it must show nothing to a tenant.
 reset role;
 set local request.jwt.claims = '{"sub":"aaaaaaaa-0000-4000-8000-000000000001","role":"authenticated"}';
@@ -359,6 +432,18 @@ begin
   end;
   insert into public._isolation_results (signed_in, check_name)
   values ('org A owner', 'org_is_active: not callable from the browser');
+
+  -- Even with the right slug: deleting a tenant is not a tenant's decision.
+  begin
+    perform public.delete_organization('aaaaaaaa-0000-4000-8000-00000000000a', 'isolation-test-a');
+    raise exception 'ISOLATION FAILURE: an org owner deleted their own organization';
+  exception when insufficient_privilege then null;
+  end;
+  if not exists (select 1 from public.organizations where id = 'aaaaaaaa-0000-4000-8000-00000000000a') then
+    raise exception 'ISOLATION FAILURE: the organization was deleted anyway';
+  end if;
+  insert into public._isolation_results (signed_in, check_name)
+  values ('org A owner', 'delete_organization: refused to a tenant, right slug or not');
 end;
 $$;
 

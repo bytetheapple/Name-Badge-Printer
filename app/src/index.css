@@ -1334,3 +1334,17 @@ td.actions-cell {
   margin: 0;
 }
 
+/* Actions with no undo. Only two things in the product wear this. */
+button.danger {
+  border-color: var(--err-border);
+  background: var(--err-text);
+  color: #fff;
+}
+button.secondary.danger {
+  background: transparent;
+  color: var(--err-text);
+  border-color: var(--err-border);
+}
+button.danger:disabled {
+  opacity: 0.45;
+}

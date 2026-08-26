@@ -71,7 +71,27 @@ The check fails **open** on a transport error: a database hiccup must not read
 as a suspension and stop a lobby working. Only the function returning false
 suspends anyone.
 
+## Deleting a tenant
+
+Platform → Delete, on the row. The dialog states what will be destroyed —
+printers, sign-ins, members — and will not enable its button until the slug is
+typed exactly. A prefix does not count.
+
+Everything carrying `org_id` cascades, and the two Vault-cleanup triggers fire
+on the cascaded rows, so no decrypted credential is left behind. The function
+returns what it destroyed, so the answer to "what did I just delete?" exists
+after the fact and not only in a dialog nobody screenshotted.
+
+Two things deliberately survive:
+
+* **User accounts.** A person may belong to other organizations, and deleting
+  their login is a separate decision.
+* **Uploaded images.** They are content-addressed, so an identical upload by
+  another org is the same object; deleting it would break them.
+
+There is no undo. Suspension is the reversible option and the dialog says so.
+
 ## Still not in A6
 
-Deleting an organization, transferring ownership between users in one step,
-and any billing hook. `plan` remains an unused column.
+Transferring ownership between users in one step, and any billing hook. `plan`
+remains an unused column.
