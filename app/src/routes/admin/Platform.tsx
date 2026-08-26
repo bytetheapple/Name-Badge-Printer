@@ -2,7 +2,8 @@ import { useCallback, useEffect, useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import { useOrg } from '../../lib/org'
 import { lastSeenLabel } from '../../lib/secrets'
-import type { PlatformOrg } from '../../lib/types'
+import type { PiDevice, PlatformOrg } from '../../lib/types'
+import BuildServer from './BuildServer'
 
 const BRIDGE_FRESH_MS = 45000
 
@@ -34,12 +35,20 @@ export default function Platform() {
   //: dialog cannot outlive the row it was opened for.
   const [doomed, setDoomed] = useState<PlatformOrg | null>(null)
   const [typedSlug, setTypedSlug] = useState('')
+  const [devices, setDevices] = useState<PiDevice[]>([])
+  const [building, setBuilding] = useState(false)
   const { reload, isPlatformAdmin } = useOrg()
 
   const load = useCallback(async () => {
     const { data, error } = await supabase.rpc('platform_overview')
     if (error) setError(error.message)
     else setOrgs((data ?? []) as PlatformOrg[])
+
+    const { data: rows } = await supabase
+      .from('pi_devices')
+      .select('id, serial, org_id, customer, notes, claim_prefix, claimed_at, bridge_token_id, created_at')
+      .order('created_at', { ascending: false })
+    setDevices((rows ?? []) as PiDevice[])
     setLoading(false)
   }, [])
 
@@ -342,6 +351,63 @@ export default function Platform() {
           </div>
         </div>
       )}
+
+      <h2 style={{ marginTop: 36 }}>Print servers</h2>
+      <p className="muted small">
+        Every device built, and who it was built for. Kept independently of the organizations
+        themselves, because an organization can be renamed or deleted and the question of what
+        hardware went where outlives both.
+      </p>
+
+      <div className="table-wrap">
+        <table className="data">
+          <thead>
+            <tr>
+              <th>Serial</th>
+              <th>Built for</th>
+              <th>Claimed</th>
+              <th>Notes</th>
+            </tr>
+          </thead>
+          <tbody>
+            {devices.map((d) => (
+              <tr key={d.id}>
+                <td>
+                  <code>{d.serial}</code>
+                </td>
+                <td>{d.customer ?? <span className="muted">—</span>}</td>
+                <td className="small">
+                  {d.claimed_at ? (
+                    new Date(d.claimed_at).toLocaleDateString()
+                  ) : (
+                    /* Allocated but never booted — a card that was written and
+                       not finished, or one still on the bench. */
+                    <span className="muted">not yet</span>
+                  )}
+                </td>
+                <td className="muted small">{d.notes ?? ''}</td>
+              </tr>
+            ))}
+            {!devices.length && (
+              <tr>
+                <td colSpan={4} className="muted">
+                  No print servers built yet.
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+
+      <div className="add-by-hand">
+        {building ? (
+          <BuildServer orgs={orgs} onDone={() => void load()} />
+        ) : (
+          <button className="secondary btn-sm" onClick={() => setBuilding(true)}>
+            + Build a print server
+          </button>
+        )}
+      </div>
 
       <div className="add-by-hand">
         {creating ? (

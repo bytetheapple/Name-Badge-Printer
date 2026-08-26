@@ -127,6 +127,19 @@ export interface ProvisioningSession {
   updated_at: string
 }
 
+/** A print server that has been built, or is being built. */
+export interface PiDevice {
+  id: string
+  serial: string
+  org_id: string | null
+  customer: string | null
+  notes: string | null
+  claim_prefix: string | null
+  claimed_at: string | null
+  bridge_token_id: string | null
+  created_at: string
+}
+
 /** One tenant as the platform team sees it, from platform_overview(). */
 export interface PlatformOrg {
   org_id: string

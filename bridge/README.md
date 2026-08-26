@@ -217,3 +217,17 @@ way print jobs are, collected by `bridge-poll`, executed on the Pi, and the
 transcript posted back. The WiFi passphrase travels in the task payload and is
 discarded once used, never stored. This script is that code, with an operator
 at a keyboard instead of a task queue.
+
+## Building a new print server
+
+There is no manual install any more. Allocate a device in the admin under
+**Platform → Build a print server**, image the card as the wizard describes,
+then on the Pi:
+
+```
+curl -sSL https://guestbadges.com/pi.sh | sudo bash -s -- gbc_<claim code>
+```
+
+That script is `app/public/pi.sh` — it lives under the app because Vercel
+serves it, and there is deliberately only one copy. `scripts/install.sh` still
+exists and is what it calls to build the virtualenv.
