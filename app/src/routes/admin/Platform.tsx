@@ -3,7 +3,12 @@ import { supabase } from '../../lib/supabase'
 import { useOrg } from '../../lib/org'
 import { lastSeenLabel } from '../../lib/secrets'
 import type { PiDevice, PlatformOrg } from '../../lib/types'
-import { describeVersion, repoVersions, type RepoVersion } from '../../lib/repoVersions'
+import {
+  describeVersion,
+  repoVersions,
+  versionDate,
+  type RepoVersion,
+} from '../../lib/repoVersions'
 import BuildServer from './BuildServer'
 
 const BRIDGE_FRESH_MS = 45000
@@ -243,6 +248,20 @@ export default function Platform() {
     }
     setSelected(new Set())
     await load()
+  }
+
+  /**
+   * What a reported sha actually is.
+   *
+   * A device reports seven characters, which on their own say nothing — not
+   * what changed, and not whether it is older or newer than the fleet. Looking
+   * it up in the list already fetched turns it back into a date and a subject.
+   * Null for a version older than the window, or when the repository could not
+   * be read.
+   */
+  function known(short: string | null): RepoVersion | null {
+    if (!short) return null
+    return versions.find((v) => v.short === short || v.sha.startsWith(short)) ?? null
   }
 
   function toggle(serial: string) {
@@ -604,6 +623,13 @@ export default function Platform() {
                 <td>{d.customer ?? <span className="muted">—</span>}</td>
                 <td className="small">
                   {d.running_ref ? <code>{d.running_ref}</code> : <span className="muted">—</span>}
+                  {known(d.running_ref) && (
+                    <div className="muted" title={known(d.running_ref)!.subject}>
+                      {versionDate(known(d.running_ref)!.date)}
+                      {known(d.running_ref)!.tags.length > 0 &&
+                        ` · ${known(d.running_ref)!.tags.map((t) => t.name).join(', ')}`}
+                    </div>
+                  )}
 
                   {/* A device that reverted itself. Shown here because
                       otherwise the only symptom is a version that quietly
