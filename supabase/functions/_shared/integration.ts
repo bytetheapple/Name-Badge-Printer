@@ -1,11 +1,15 @@
 // Per-organization integration settings (MULTI_TENANT_DESIGN.md §11).
 //
 // Each org configures its own Google Form, CRM endpoint and Drive service
-// account. While an org has nothing configured, the project-wide environment
-// variables are used instead — but only while this is a single-tenant database.
-// The moment a second org exists that fallback would mean one congregation's
-// visitors syncing into another's systems, so it is withdrawn rather than
-// guessed at. Same failsafe as everywhere else in this refactor.
+// account, and that is now the only source. There used to be a fallback to
+// project-wide environment variables for an org with nothing configured, held
+// safe by a check that only one organization existed — a failsafe that had to
+// be right every time it ran.
+//
+// It is gone because it is no longer needed: the one organization on this
+// deployment configures everything itself, verified end to end. An org with a
+// missing setting now gets "not configured" and nothing is sent, which is the
+// only answer that cannot be wrong for somebody else.
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_ROLE = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 
@@ -55,40 +59,19 @@ export async function integrationFor(
   };
 }
 
-let soleOrg: boolean | null = null;
-
 /**
- * Whether the project-wide environment fallback is still honest — i.e. there is
- * exactly one organization, so "the global setting" and "this org's setting"
- * cannot disagree. Cached per instance; a second org is not created often, and
- * an instance is short-lived.
- */
-export async function envFallbackAllowed(): Promise<boolean> {
-  if (soleOrg !== null) return soleOrg;
-  const res = await fetch(`${REST}/organizations?select=id&limit=2`, { headers: restHeaders });
-  const rows = res.ok ? await res.json() : [];
-  soleOrg = rows.length === 1;
-  return soleOrg;
-}
-
-/**
- * Resolve one integration's settings: the org's own if configured, otherwise
- * the environment defaults while that is still safe.
+ * This organization's settings for one integration, or null if it has none.
  *
- * Returns null when neither applies — the caller should skip rather than fail,
- * matching the existing "not configured" behaviour.
+ * Returns null rather than throwing when an org has not configured something —
+ * the caller skips, which is what the "not configured" replies downstream are
+ * for. Nothing is inherited from anywhere: an unconfigured org syncs nowhere.
  */
 export async function resolveSettings(
   orgId: string | null,
   kind: IntegrationKind,
-  envDefaults: () => Record<string, unknown>,
 ): Promise<{ config: Record<string, unknown>; secret: string | null; source: string } | null> {
-  if (orgId) {
-    const own = await integrationFor(orgId, kind);
-    if (own?.enabled) return { config: own.config, secret: own.secret, source: "org" };
-  }
-  if (await envFallbackAllowed()) {
-    return { config: envDefaults(), secret: null, source: "env" };
-  }
-  return null;
+  if (!orgId) return null;
+  const own = await integrationFor(orgId, kind);
+  if (!own?.enabled) return null;
+  return { config: own.config, secret: own.secret, source: "org" };
 }

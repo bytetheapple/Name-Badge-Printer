@@ -49,9 +49,15 @@ created. The values to copy are the ones currently in `supabase secrets list`:
 | `GOOGLE_SA_PRIVATE_KEY` | Google Drive | Service account private key |
 
 Tick **"Use this organization's own settings"** on each, save, then sign in as a
-test visitor and confirm the entry reaches Google and ShulCloud. Once that
-works, the environment variables are only a fallback and can be removed at your
-leisure.
+test visitor and confirm the entry reaches Google and ShulCloud.
+
+> **Done, and the fallback is gone.** Shir Hadash was moved onto its own
+> configuration on 26 August 2026 and the fourteen environment variables were
+> removed. The fallback code went with them — `resolveSettings()` now reads
+> only the org's own row, and an org that has not configured an integration
+> syncs nowhere rather than inheriting anyone's. The table above is kept
+> because it is still the map from an old deployment's variables to the fields
+> that replaced them.
 
 ## Credentials are write-only
 

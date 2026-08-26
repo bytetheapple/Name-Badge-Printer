@@ -2,43 +2,13 @@
 // endpoint, and updates the entry's google_sync_status.
 //
 // The form URL and field ids come from the entry's own organization
-// (integrations, kind 'google_form'). An org with nothing configured falls back
-// to the project-wide environment variables — but only while there is exactly
-// one organization, because past that point the fallback would push one
-// congregation's visitors into another's form.
-//
-// Environment fallback (set with `supabase secrets set ...`):
-//   GOOGLE_FORM_RESPONSE_URL  https://docs.google.com/forms/d/e/<FORM_ID>/formResponse
-//   GOOGLE_ENTRY_FIRST_NAME   entry.<id>   (required)
-//   GOOGLE_ENTRY_LAST_NAME    entry.<id>   (optional)
-//   GOOGLE_ENTRY_PHONE        entry.<id>   (optional)
-//   GOOGLE_COLLECT_EMAIL      "true" to use Google's built-in email capture
-//   GOOGLE_EXTRA_FIELDS       {"entry.<id>": "value"} for fixed answers
+// (integrations, kind 'google_form'), and from nowhere else. An org that has
+// not configured it syncs nowhere rather than inheriting anyone's form.
 import { corsHeaders, json } from "../_shared/cors.ts";
 import { orgOfEntry, resolveSettings } from "../_shared/integration.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_ROLE = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-// The environment defaults, in the same shape an org's own config uses.
-// Email is collected via Google's built-in "Collect email addresses"
-// (Responder input) feature, which uses the special `emailAddress` field.
-// extra_fields carries fixed answers to required questions the kiosk does not
-// ask about, as { "entry.<id>": "value" }.
-const envDefaults = () => ({
-  response_url: Deno.env.get("GOOGLE_FORM_RESPONSE_URL") ?? "",
-  entry_first: Deno.env.get("GOOGLE_ENTRY_FIRST_NAME") ?? "",
-  entry_last: Deno.env.get("GOOGLE_ENTRY_LAST_NAME") ?? "",
-  entry_phone: Deno.env.get("GOOGLE_ENTRY_PHONE") ?? "",
-  collect_email: (Deno.env.get("GOOGLE_COLLECT_EMAIL") ?? "") === "true",
-  extra_fields: (() => {
-    try {
-      return JSON.parse(Deno.env.get("GOOGLE_EXTRA_FIELDS") ?? "{}");
-    } catch {
-      return {};
-    }
-  })(),
-});
-
 const restHeaders = {
   apikey: SERVICE_ROLE,
   Authorization: `Bearer ${SERVICE_ROLE}`,
@@ -67,7 +37,7 @@ Deno.serve(async (req) => {
   if (!entryId) return json({ ok: false, error: "entry_id required" }, 400);
 
   const orgId = await orgOfEntry(entryId);
-  const settings = await resolveSettings(orgId, "google_form", envDefaults);
+  const settings = await resolveSettings(orgId, "google_form");
 
   const FORM_URL = String(settings?.config.response_url ?? "");
   const F_FIRST = String(settings?.config.entry_first ?? "");
