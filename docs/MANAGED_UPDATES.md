@@ -26,9 +26,18 @@ Both pickers read the repository directly — the last forty commits on `main`,
 each with its sha and subject line, with any tags folded in on top:
 
 ```
-[v1.0: First production release] a1b2c3d — feat: something
-c4dc926 — feat: pin a print server from the console
+[v1.0: First production release] 2026-08-26  a1b2c3d — feat: something
+2026-08-25  c4dc926 — feat: pin a print server from the console
 ```
+
+The date is there so "which of these is newer" does not mean counting rows,
+and it is written year-first because 08/09 means two different days depending
+on who is reading.
+
+A server's reported sha is looked up in the same list, so the Version column
+shows the date it was committed and any tag, with the commit subject on hover.
+Seven characters on their own say neither what changed nor whether it is behind
+the fleet. A version older than the last forty commits shows the sha alone.
 
 Nothing has to be maintained: this project writes commit subjects at length, so
 the commit list is already a list of changes. Tag an interesting one and it

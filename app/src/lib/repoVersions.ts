@@ -94,10 +94,17 @@ export async function repoVersions(): Promise<RepoVersion[]> {
   }))
 }
 
-/** One line for a dropdown: the tag if there is one, then the sha and subject. */
+/** ISO-ish and unambiguous. A console read by one person in one place still
+ *  does not need 08/09 to mean two different days depending on the reader. */
+export function versionDate(iso: string): string {
+  return iso ? iso.slice(0, 10) : ''
+}
+
+/** One line for a dropdown: any tag, then the date, sha and subject. The date
+ *  is what answers "which of these is newer" without counting rows. */
 export function describeVersion(v: RepoVersion): string {
   const tag = v.tags.length
     ? `[${v.tags.map((t) => (t.message ? `${t.name}: ${t.message}` : t.name)).join(', ')}] `
     : ''
-  return `${tag}${v.short} — ${v.subject}`
+  return `${tag}${versionDate(v.date)}  ${v.short} — ${v.subject}`
 }
