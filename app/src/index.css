@@ -1400,6 +1400,12 @@ button.danger:disabled {
   margin: 0;
   min-width: 34ch;
 }
+/* Wide enough to read a release description without opening the list — the
+   description is the reason these are dropdowns rather than a text box. */
+.release-row .field select {
+  min-width: 44ch;
+  max-width: 60ch;
+}
 
 /* Editing a device's pin, inline in its row. */
 .pin-edit {

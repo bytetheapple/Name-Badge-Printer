@@ -127,6 +127,15 @@ export interface ProvisioningSession {
   updated_at: string
 }
 
+/** A version that has been released, with something said about it. */
+export interface BridgeRelease {
+  id: string
+  ref: string
+  label: string
+  notes: string | null
+  created_at: string
+}
+
 /** A print server that has been built, or is being built. */
 export interface PiDevice {
   id: string
