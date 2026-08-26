@@ -32,15 +32,23 @@ nobody asked for.
 **Rollback is the same action.** Put the previous sha back; devices revert on
 their next check.
 
-**Hold one device back** with **hold on a version** in its row. It pre-fills
-with what that device is currently running, because "leave this one alone" is
-the common case — accept it and the fleet release passes that device by. **Follow
-the fleet** releases it again.
+**Hold servers back** by typing the version above the Print servers table,
+ticking the ones it applies to, and pressing **Hold**. The version can be typed
+before anything is selected — deciding which version and choosing which devices
+are separate thoughts. **Follow the fleet** releases the selected servers again.
 
-**Stage a rollout** with the same control, typing the *new* sha on one device
-while the fleet release stays where it is. Watch it for a day, then move the
+The header tick selects everything; with only some selected it shows as
+indeterminate rather than claiming either.
+
+**Stage a rollout** with the same control: hold one server on the *new* sha
+while the fleet release stays where it is, watch it for a day, then move the
 fleet. A pin always beats the fleet release, which is what makes both of these
 one mechanism rather than two.
+
+Each selected server is changed by its own call, so a rejected ref names the
+server it was rejected for. A failure part way through leaves the servers
+already changed changed — there is no rollback, and the message says how many
+went through.
 
 The ref is validated where you type it, so a typo is refused there rather than
 fifteen minutes later on a device in somebody's building.

@@ -39,9 +39,12 @@ export default function Platform() {
   const [building, setBuilding] = useState(false)
   const [release, setRelease] = useState<{ ref: string | null; notes: string | null } | null>(null)
   const [refDraft, setRefDraft] = useState('')
-  //: The device whose pin is being edited, and the ref typed so far.
-  const [pinning, setPinning] = useState<PiDevice | null>(null)
-  const [pinDraft, setPinDraft] = useState('')
+  //: Which devices the version actions apply to, by serial.
+  const [selected, setSelected] = useState<Set<string>>(new Set())
+  //: The version to hold on. Editable whether or not anything is selected —
+  //: deciding the version and choosing the devices are separate thoughts, and
+  //: forcing an order on them is just friction.
+  const [holdRef, setHoldRef] = useState('')
   const { reload, isPlatformAdmin } = useOrg()
 
   const load = useCallback(async () => {
@@ -184,22 +187,54 @@ export default function Platform() {
     await load()
   }
 
-  async function savePin(serial: string, ref: string | null) {
-    setBusy(serial)
+  /**
+   * Hold or release every selected device.
+   *
+   * One call each rather than one call for all: the function validates the ref
+   * and reports which device it objected to, and at this fleet size the
+   * round trips cost nothing. A failure part way through leaves the devices it
+   * already changed changed — said plainly rather than implying a rollback
+   * that does not happen.
+   */
+  async function applyHold(ref: string | null) {
+    const serials = [...selected]
+    if (!serials.length) return
+    setBusy('hold')
     setError(null)
-    const { error } = await supabase.rpc('pin_pi_device', { p_serial: serial, p_ref: ref })
-    setBusy(null)
-    if (error) {
-      setError(error.message)
-      return
+    setNotice(null)
+
+    const failed: string[] = []
+    for (const serial of serials) {
+      const { error } = await supabase.rpc('pin_pi_device', { p_serial: serial, p_ref: ref })
+      if (error) failed.push(`${serial}: ${error.message}`)
     }
-    setNotice(
-      ref
-        ? `${serial} is held on ${ref}, whatever the fleet release says.`
-        : `${serial} follows the fleet release again.`,
-    )
-    setPinning(null)
+    setBusy(null)
+
+    const done = serials.length - failed.length
+    if (failed.length) {
+      setError(
+        `${failed.length} of ${serials.length} could not be changed — ` +
+          `${done} were. ${failed.join('; ')}`,
+      )
+    } else {
+      setNotice(
+        ref
+          ? `${done} print server${done === 1 ? '' : 's'} held on ${ref}, whatever the fleet ` +
+            `release says.`
+          : `${done} print server${done === 1 ? '' : 's'} follow the fleet release again.`,
+      )
+    }
+    setSelected(new Set())
     await load()
+  }
+
+  function toggle(serial: string) {
+    setSelected((prev) => {
+      const next = new Set(prev)
+      if (next.has(serial)) next.delete(serial)
+      else next.add(serial)
+      return next
+    })
   }
 
   async function remove() {
@@ -441,10 +476,57 @@ export default function Platform() {
         hardware went where outlives both.
       </p>
 
+      {/* The version can be typed before anything is selected: deciding which
+          version and choosing which devices are separate thoughts. Only the
+          buttons wait for a selection. */}
+      <div className="release-row">
+        <label className="field">
+          <span>Hold selected servers on</span>
+          <input
+            value={holdRef}
+            onChange={(e) => setHoldRef(e.target.value)}
+            placeholder="commit or tag"
+          />
+        </label>
+        <button
+          onClick={() => void applyHold(holdRef.trim())}
+          disabled={busy === 'hold' || selected.size === 0 || !holdRef.trim()}
+        >
+          {busy === 'hold' ? 'Holding…' : `Hold ${selected.size || ''}`.trim()}
+        </button>
+        <button
+          className="secondary"
+          onClick={() => void applyHold(null)}
+          disabled={busy === 'hold' || selected.size === 0}
+        >
+          Follow the fleet
+        </button>
+        <span className="muted small">
+          {selected.size === 0
+            ? 'Select one or more servers below.'
+            : `${selected.size} selected.`}
+        </span>
+      </div>
+
       <div className="table-wrap">
         <table className="data">
           <thead>
             <tr>
+              <th className="tick-col">
+                <input
+                  type="checkbox"
+                  aria-label="Select every print server"
+                  checked={devices.length > 0 && selected.size === devices.length}
+                  ref={(el) => {
+                    // Neither checked nor unchecked when only some are — the
+                    // box says "some of these" rather than lying either way.
+                    if (el) el.indeterminate = selected.size > 0 && selected.size < devices.length
+                  }}
+                  onChange={(e) =>
+                    setSelected(e.target.checked ? new Set(devices.map((d) => d.serial)) : new Set())
+                  }
+                />
+              </th>
               <th>Serial</th>
               <th>Built for</th>
               <th>Version</th>
@@ -455,6 +537,14 @@ export default function Platform() {
           <tbody>
             {devices.map((d) => (
               <tr key={d.id}>
+                <td className="tick-col">
+                  <input
+                    type="checkbox"
+                    aria-label={`Select ${d.serial}`}
+                    checked={selected.has(d.serial)}
+                    onChange={() => toggle(d.serial)}
+                  />
+                </td>
                 <td>
                   <code>{d.serial}</code>
                 </td>
@@ -467,52 +557,9 @@ export default function Platform() {
                       stopped moving with the fleet. */}
                   {d.update_error && <div className="pill pill-sync-failed">{d.update_error}</div>}
 
-                  {pinning?.id === d.id ? (
-                    <div className="pin-edit">
-                      <input
-                        value={pinDraft}
-                        onChange={(e) => setPinDraft(e.target.value)}
-                        placeholder="commit or tag"
-                        autoFocus
-                      />
-                      <button
-                        className="btn-sm"
-                        disabled={busy === d.serial || !pinDraft.trim()}
-                        onClick={() => void savePin(d.serial, pinDraft.trim())}
-                      >
-                        Hold
-                      </button>
-                      <button className="secondary btn-sm" onClick={() => setPinning(null)}>
-                        Cancel
-                      </button>
-                    </div>
-                  ) : d.pinned_ref ? (
+                  {d.pinned_ref && (
                     <div className="muted">
-                      held on <code>{d.pinned_ref}</code>{' '}
-                      <button
-                        className="linkish btn-sm"
-                        disabled={busy === d.serial}
-                        onClick={() => void savePin(d.serial, null)}
-                      >
-                        follow the fleet
-                      </button>
-                    </div>
-                  ) : (
-                    <div>
-                      <button
-                        className="linkish btn-sm"
-                        disabled={busy === d.serial}
-                        onClick={() => {
-                          setPinning(d)
-                          // Pre-filled with what it is on, because holding a
-                          // device where it is is the common case; typing a
-                          // different ref is how one device tries a release
-                          // before the fleet does.
-                          setPinDraft(d.running_ref ?? '')
-                        }}
-                      >
-                        hold on a version
-                      </button>
+                      held on <code>{d.pinned_ref}</code>
                     </div>
                   )}
                 </td>
@@ -530,7 +577,7 @@ export default function Platform() {
             ))}
             {!devices.length && (
               <tr>
-                <td colSpan={5} className="muted">
+                <td colSpan={6} className="muted">
                   No print servers built yet.
                 </td>
               </tr>

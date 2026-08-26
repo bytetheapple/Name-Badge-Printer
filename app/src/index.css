@@ -1418,3 +1418,14 @@ button.danger:disabled {
   background: var(--bg);
   color: var(--text-h);
 }
+
+/* The tick column: as narrow as a checkbox, and not stretched by nowrap. */
+.tick-col {
+  width: 1%;
+  white-space: nowrap;
+  text-align: center;
+}
+.tick-col input {
+  margin: 0;
+  cursor: pointer;
+}
