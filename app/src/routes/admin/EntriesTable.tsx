@@ -13,6 +13,45 @@ const familyLabel = (primary: FormEntry) =>
 const personName = (e: FormEntry) =>
   `${e.first_name} ${e.last_name ?? ''}`.trim() + (e.pronouns ? ` (${e.pronouns})` : '')
 
+type SyncStatus = 'pending' | 'sent' | 'failed' | 'skipped'
+
+/**
+ * One destination's state, with a way to try it again.
+ *
+ * All three sit in a single cell rather than a column each. The table already
+ * ran wide enough that its right-hand columns scrolled out of sight, which is
+ * how a Resync button came to be invisible in exactly the situation it existed
+ * for.
+ */
+function SyncPill({
+  label,
+  status,
+  busy,
+  title,
+  onResync,
+}: {
+  label: string
+  status: SyncStatus
+  busy?: boolean
+  /** The recorded error, shown on hover — the detail is usually the answer. */
+  title?: string | null
+  onResync?: () => void
+}) {
+  const retryable = Boolean(onResync) && (status === 'failed' || status === 'pending')
+  return (
+    <span className="sync-pill">
+      <span className={`pill pill-sync-${status}`} title={title ?? undefined}>
+        {label} {status}
+      </span>
+      {retryable && (
+        <button className="linkish btn-sm" onClick={onResync} disabled={busy} title={`Retry ${label}`}>
+          {busy ? '…' : '↻'}
+        </button>
+      )}
+    </span>
+  )
+}
+
 /**
  * A date box that looks empty when it is empty.
  *
@@ -163,17 +202,18 @@ export default function EntriesTable() {
     )
   }
 
-  async function resync(entry: FormEntry) {
-    setResyncing(entry.id)
+  async function resync(entry: FormEntry, fn: 'google-sync' | 'shulcloud-sync') {
+    setResyncing(`${fn.split('-')[0]}:${entry.id}`)
     setNotice(null)
-    const { data, error } = await supabase.functions.invoke('google-sync', {
+    const { data, error } = await supabase.functions.invoke(fn, {
       body: { entry_id: entry.id },
     })
     setResyncing(null)
+    const where = fn === 'google-sync' ? 'Google' : 'ShulCloud'
     if (error || !data?.ok) {
-      setNotice(`Google sync failed: ${data?.error ?? error?.message ?? 'unknown error'}`)
+      setNotice(`${where} sync failed: ${data?.error ?? error?.message ?? 'unknown error'}`)
     } else {
-      setNotice(`Synced ${entry.first_name} to Google.`)
+      setNotice(`Synced ${entry.first_name} to ${where}.`)
     }
     void load()
   }
@@ -194,6 +234,8 @@ export default function EntriesTable() {
       Email: r.email ?? '',
       Submitted: new Date(r.created_at).toLocaleString(),
       'Google sync': r.google_sync_status,
+      'ShulCloud sync': r.shulcloud_sync_status,
+      Photo: r.selfie_status,
     }))
     const ws = XLSX.utils.json_to_sheet(data)
     const wb = XLSX.utils.book_new()
@@ -251,11 +293,11 @@ export default function EntriesTable() {
               <th>Last</th>
               <th>Pronouns</th>
               <th>Type</th>
+              <th>Syncs</th>
               <th>Printer</th>
               <th>Phone</th>
               <th>Email</th>
               <th>Submitted</th>
-              <th>Google</th>
               <th />
             </tr>
           </thead>
@@ -293,25 +335,30 @@ export default function EntriesTable() {
                     <td>{it.kind === 'party' ? `${it.roster.length} people` : r.last_name ?? '—'}</td>
                     <td>{it.kind === 'party' ? '—' : r.pronouns ?? '—'}</td>
                     <td>{r.visitor_type === 'member' ? 'Member' : 'Visitor'}</td>
+                    <td>
+                      <div className="sync-cell">
+                        <SyncPill
+                          label="Google"
+                          status={r.google_sync_status}
+                          busy={resyncing === `google:${r.id}`}
+                          onResync={() => resync(r, 'google-sync')}
+                        />
+                        <SyncPill
+                          label="ShulCloud"
+                          status={r.shulcloud_sync_status}
+                          busy={resyncing === `shulcloud:${r.id}`}
+                          onResync={() => resync(r, 'shulcloud-sync')}
+                        />
+                        {/* No resync: the photo only exists in the kiosk's
+                            browser at capture time, so it cannot be sent
+                            again from here. */}
+                        <SyncPill label="Photo" status={r.selfie_status} title={r.selfie_error} />
+                      </div>
+                    </td>
                     <td>{r.printer?.name ?? '—'}</td>
                     <td>{r.phone ?? '—'}</td>
                     <td>{r.email ?? '—'}</td>
                     <td>{new Date(r.created_at).toLocaleString()}</td>
-                    <td>
-                      <span className={`pill pill-google-${r.google_sync_status}`}>
-                        {r.google_sync_status}
-                      </span>
-                      {(r.google_sync_status === 'pending' || r.google_sync_status === 'failed') && (
-                        <button
-                          className="secondary btn-sm"
-                          style={{ marginLeft: 8 }}
-                          onClick={() => resync(r)}
-                          disabled={resyncing === r.id}
-                        >
-                          {resyncing === r.id ? '…' : 'Resync'}
-                        </button>
-                      )}
-                    </td>
                     <td className="actions-cell">
                       <button
                         className="secondary btn-sm"

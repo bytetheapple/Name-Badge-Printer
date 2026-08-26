@@ -483,21 +483,41 @@ td.actions-cell {
   background: var(--pending-bg);
   color: var(--muted);
 }
-.pill-google-sent {
+/* One palette for all three destinations, rather than a set per destination.
+   'skipped' and 'pending' deliberately look alike and quiet: neither is a
+   problem, and only 'failed' should catch the eye when scanning a column. */
+.pill-sync-sent {
   background: var(--ok-bg);
   color: var(--ok-text);
 }
-.pill-google-failed {
+.pill-sync-failed {
   background: var(--err-bg);
   color: var(--err-text);
 }
-.pill-google-pending {
+.pill-sync-pending,
+.pill-sync-skipped {
   background: var(--pending-bg);
   color: var(--muted);
 }
-.pill-google-skipped {
-  background: var(--pending-bg);
-  color: var(--muted);
+
+/* Three destinations in one cell. They wrap rather than widen the table. */
+.sync-cell {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 6px;
+  align-items: center;
+}
+.sync-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  white-space: nowrap;
+}
+.sync-pill .linkish {
+  font-size: 13px;
+  line-height: 1;
+  text-decoration: none;
+  padding: 0 2px;
 }
 
 .segment {
