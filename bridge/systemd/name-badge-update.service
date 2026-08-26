@@ -1,0 +1,12 @@
+[Unit]
+Description=Converge the print bridge on its released version
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+# Root, because the bridge's own account deliberately cannot write the code it
+# runs. This is the only thing on the device that can, and it does exactly one
+# thing: check out a commit the service named.
+User=root
+ExecStart=/opt/name-badge-printer/bridge/scripts/update.sh

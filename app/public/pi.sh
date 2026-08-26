@@ -111,8 +111,17 @@ sed -e "s|^User=.*|User=$SVC_USER|" \
     -e "s|^ExecStart=.*|ExecStart=$TARGET/bridge/venv/bin/python $TARGET/bridge/bridge.py|" \
     -e "s|^EnvironmentFile=.*|EnvironmentFile=$TARGET/bridge/.env|" \
     "$TARGET/bridge/systemd/$SERVICE.service" > "/etc/systemd/system/$SERVICE.service"
+# The updater: a separate unit, run by a timer, as root. The bridge cannot
+# update itself by design — its account cannot write the code it runs — so the
+# thing that can is small, scheduled, and does only a git checkout.
+install -m 755 "$TARGET/bridge/systemd/name-badge-update.service" \
+  /etc/systemd/system/name-badge-update.service
+install -m 644 "$TARGET/bridge/systemd/name-badge-update.timer" \
+  /etc/systemd/system/name-badge-update.timer
+
 systemctl daemon-reload
 systemctl enable --quiet --now "$SERVICE"
+systemctl enable --quiet --now name-badge-update.timer
 
 say "Checking it started"
 # The bridge polls every two seconds, so a working device says so almost at

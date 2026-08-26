@@ -136,6 +136,13 @@ export interface PiDevice {
   notes: string | null
   claim_prefix: string | null
   claimed_at: string | null
+  /** Overrides the fleet release for this device — a staged rollout, or a
+   *  customer held on a known-good version. */
+  pinned_ref: string | null
+  /** What it last reported running. Reported, never assumed. */
+  running_ref: string | null
+  last_seen: string | null
+  update_error: string | null
   bridge_token_id: string | null
   created_at: string
 }

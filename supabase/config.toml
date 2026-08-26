@@ -426,6 +426,11 @@ verify_jwt = false
 [functions.bridge-complete]
 verify_jwt = false
 
+# The updater on a print server asking what version to run. It presents the
+# device's bridge credential in a header, not a Supabase JWT.
+[functions.bridge-release]
+verify_jwt = false
+
 # A Raspberry Pi claiming its credential on first boot. It has no account and
 # no key yet — the claim code is the whole of its identity — so there is no JWT
 # to demand.
