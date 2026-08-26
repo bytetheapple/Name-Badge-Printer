@@ -20,10 +20,24 @@ operation.
 Devices built before this have no updater. Re-running the installer on one adds
 it; nothing else changes.
 
+## Recording a release
+
+Platform → **Record a release**: a commit or tag, a name, and one line about
+what changed. Both version pickers choose from those rows, so a sha nobody has
+described cannot be put on a fleet.
+
+That line is not bureaucracy. Six weeks later `a1b2c3d` answers neither what it
+changed nor whether it is the one that broke a device, and the moment you need
+to know is the moment you are rolling back under pressure.
+
+The ref is validated on the way in — plain git names only, and nothing starting
+with a hyphen, since `--upload-pack` is all legal characters and git reads it as
+an option.
+
 ## Releasing
 
-Platform → **Bridge release** → a commit sha or tag → Set release. Every device
-not pinned elsewhere moves within about fifteen minutes.
+Platform → **Bridge release** → choose a version → Set release. Every device not
+pinned elsewhere moves within about fifteen minutes.
 
 **Leave it empty to hold everything still.** An unset release means *stay put* —
 the failure of doing nothing is a stale device, and of guessing is a deploy
@@ -32,8 +46,8 @@ nobody asked for.
 **Rollback is the same action.** Put the previous sha back; devices revert on
 their next check.
 
-**Hold servers back** by typing the version above the Print servers table,
-ticking the ones it applies to, and pressing **Hold**. The version can be typed
+**Hold servers back** by choosing the version above the Print servers table,
+ticking the ones it applies to, and pressing **Hold**. The version can be chosen
 before anything is selected — deciding which version and choosing which devices
 are separate thoughts. **Follow the fleet** releases the selected servers again.
 
