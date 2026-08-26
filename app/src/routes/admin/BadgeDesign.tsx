@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { supabase } from '../../lib/supabase'
-import defaultHeader from '../../assets/shir-hadash-logo.png'
+import { useOrg } from '../../lib/org'
 import type { Printer } from '../../lib/types'
 
 const HEADER_BUCKET = 'badge-headers'
@@ -32,9 +32,26 @@ export default function BadgeDesign({
   const [subtitle, setSubtitle] = useState(printer.badge_subtitle ?? '')
   const [mode, setMode] = useState<'text' | 'logo' | 'image'>(printer.badge_header_mode ?? 'text')
   const [headerUrl, setHeaderUrl] = useState(printer.header_image_url ?? '')
+  //: The organization's own mark. Null means there is nothing to offer, so the
+  //: logo option is not shown at all rather than shown and broken.
+  const [orgLogo, setOrgLogo] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   const [msg, setMsg] = useState<string | null>(null)
   const fileRef = useRef<HTMLInputElement>(null)
+  const { orgId } = useOrg()
+
+  // The organization's mark, for the preview and to decide whether the logo
+  // option exists. Read here rather than passed down: it belongs to the org,
+  // not to the printer this component is editing.
+  useEffect(() => {
+    if (!orgId) return
+    void supabase
+      .from('app_settings')
+      .select('logo_url')
+      .eq('org_id', orgId)
+      .maybeSingle()
+      .then(({ data }) => setOrgLogo((data?.logo_url as string | null) ?? null))
+  }, [orgId])
 
   // Switching printer tabs reuses this component, so follow the printer.
   useEffect(() => {
@@ -118,15 +135,15 @@ export default function BadgeDesign({
     }
   }
 
-  // In image mode show the upload; otherwise the built-in logo is what 'logo' means.
-  const shown = mode === 'image' && headerUrl ? headerUrl : defaultHeader
+  // In image mode show the upload; in logo mode the organization's own mark.
+  const shown = mode === 'image' && headerUrl ? headerUrl : orgLogo
 
   return (
     <div className="badge-design">
       <div>
         <div className="badge-preview" aria-label="Badge preview">
           <div className="badge-preview-header">
-            {mode !== 'text' ? (
+            {mode !== 'text' && shown ? (
               <img src={shown} alt="" />
             ) : (
               <span>{header || ' '}</span>
@@ -162,18 +179,30 @@ export default function BadgeDesign({
           />
         </div>
 
-        <div className="field-row">
-          <span className="field-label" />
-          <label className="check">
-            <input
-              type="radio"
-              checked={mode === 'logo'}
-              onChange={() => void chooseMode('logo')}
-              disabled={busy}
-            />
-            Built-in logo
-          </label>
-        </div>
+        {/* Offered only when the organization has uploaded a mark. Showing it
+            otherwise would print nothing, or — before this was per-org — print
+            another congregation's logo. */}
+        {orgLogo ? (
+          <div className="field-row">
+            <span className="field-label" />
+            <label className="check">
+              <input
+                type="radio"
+                checked={mode === 'logo'}
+                onChange={() => void chooseMode('logo')}
+                disabled={busy}
+              />
+              Organization name mark
+            </label>
+          </div>
+        ) : (
+          <div className="field-row">
+            <span className="field-label" />
+            <span className="muted small">
+              To use your organization's name mark here, upload one under Settings.
+            </span>
+          </div>
+        )}
 
         <div className="field-row">
           <span className="field-label" />

@@ -1,9 +1,9 @@
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { supabase } from '../../lib/supabase'
+import { useOrg } from '../../lib/org'
 import { kioskUrl } from '../../lib/publicUrl'
 import { newSecret } from '../../lib/secrets'
 import type { Printer } from '../../lib/types'
-import logoUrl from '../../assets/shir-hadash-logo.png'
 
 const slugify = (s: string) =>
   s.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'printer'
@@ -27,8 +27,49 @@ export default function PrinterQr({
   const [notice, setNotice] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
+  const { orgId } = useOrg()
+  const [orgLogo, setOrgLogo] = useState<string | null>(null)
 
   const url = kioskUrl(printer.kiosk_token)
+
+  useEffect(() => {
+    if (!orgId) return
+    void supabase
+      .from('app_settings')
+      .select('logo_url')
+      .eq('org_id', orgId)
+      .maybeSingle()
+      .then(({ data }) => setOrgLogo((data?.logo_url as string | null) ?? null))
+  }, [orgId])
+
+  /**
+   * Centre the organization's mark on the code. Error correction level H
+   * tolerates the obstruction.
+   *
+   * Skipped when the org has not uploaded one. This used to draw a mark
+   * shipped with the app — one congregation's — which would have put their
+   * logo in the middle of every other congregation's lobby QR code.
+   */
+  const drawLogo = useCallback(async (canvas: HTMLCanvasElement) => {
+    if (!orgLogo) return
+    const ctx = canvas.getContext('2d')
+    if (!ctx) return
+    const img = new Image()
+    // The mark comes from storage on another origin; without this the canvas
+    // is tainted and toDataURL throws, breaking Download PNG and the label.
+    img.crossOrigin = 'anonymous'
+    img.src = orgLogo
+    await img.decode()
+    const size = canvas.width
+    const logoW = Math.round(size * 0.28)
+    const logoH = Math.round(logoW * (img.naturalHeight / img.naturalWidth))
+    const x = (size - logoW) / 2
+    const y = (size - logoH) / 2
+    const pad = Math.round(size * 0.03)
+    ctx.fillStyle = '#ffffff'
+    ctx.fillRect(x - pad, y - pad, logoW + pad * 2, logoH + pad * 2)
+    ctx.drawImage(img, x, y, logoW, logoH)
+  }, [orgLogo])
 
   useEffect(() => {
     let cancelled = false
@@ -53,25 +94,11 @@ export default function PrinterQr({
     return () => {
       cancelled = true
     }
-  }, [url])
+    // drawLogo is a dependency only because it closes over orgLogo, which
+    // arrives after the first paint — without it the code renders once, bare,
+    // and never picks the mark up.
+  }, [url, drawLogo])
 
-  /** Centre the mark on the code. Error correction level H tolerates it. */
-  async function drawLogo(canvas: HTMLCanvasElement) {
-    const ctx = canvas.getContext('2d')
-    if (!ctx) return
-    const img = new Image()
-    img.src = logoUrl
-    await img.decode()
-    const size = canvas.width
-    const logoW = Math.round(size * 0.28)
-    const logoH = Math.round(logoW * (img.naturalHeight / img.naturalWidth))
-    const x = (size - logoW) / 2
-    const y = (size - logoH) / 2
-    const pad = Math.round(size * 0.03)
-    ctx.fillStyle = '#ffffff'
-    ctx.fillRect(x - pad, y - pad, logoW + pad * 2, logoH + pad * 2)
-    ctx.drawImage(img, x, y, logoW, logoH)
-  }
 
   function downloadPng() {
     const canvas = canvasRef.current

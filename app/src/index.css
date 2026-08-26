@@ -1288,3 +1288,44 @@ td.actions-cell {
 .legal section {
   margin-bottom: 26px;
 }
+
+/* The organization's name mark, in Settings. Shown on a light ground whatever
+   the theme, because that is what it prints onto. */
+.org-logo {
+  display: flex;
+  gap: 20px;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  margin-top: 12px;
+}
+.org-logo-preview {
+  flex: 0 0 auto;
+  width: 260px;
+  min-height: 90px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 12px;
+  background: #fff;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+.org-logo-preview img {
+  max-width: 100%;
+  max-height: 110px;
+}
+.org-logo-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  max-width: 46ch;
+}
+/* The note takes the full width beneath the buttons. */
+.org-logo-actions p {
+  flex-basis: 100%;
+}
+.org-logo-actions p {
+  margin: 0;
+}
+

@@ -131,6 +131,16 @@ Deno.serve(async (req) => {
   const cfgRows = cfgRes.ok ? await cfgRes.json() : [];
   const config = cfgRows[0] ?? {};
 
+  // The organization's name mark, for any printer whose header mode is 'logo'.
+  // It travels with the config rather than per printer because it belongs to
+  // the org — every printer choosing the logo prints the same one. Null when
+  // none is uploaded, and the bridge then prints text instead.
+  const logoRes = await fetch(
+    `${REST}/app_settings?org_id=eq.${bridge.org_id}&select=logo_url`,
+    { headers: restHeaders },
+  );
+  config.logo_url = logoRes.ok ? ((await logoRes.json())[0]?.logo_url ?? null) : null;
+
   const printersRes = await fetch(
     `${REST}/printers?org_id=eq.${bridge.org_id}${printerFilter(bridge)}` +
       `&select=id,name,printer_ip,port,header_image_url,badge_header,badge_subtitle,badge_header_mode` +
