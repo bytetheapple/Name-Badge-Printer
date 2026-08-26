@@ -32,10 +32,18 @@ nobody asked for.
 **Rollback is the same action.** Put the previous sha back; devices revert on
 their next check.
 
-**Stage a rollout** by pinning: set `pi_devices.pinned_ref` on one device to the
-new sha while the fleet release stays where it is, watch it for a day, then move
-the fleet. The same field holds a customer back on a known-good version while
-something is fixed. A pin always beats the fleet release.
+**Hold one device back** with **hold on a version** in its row. It pre-fills
+with what that device is currently running, because "leave this one alone" is
+the common case — accept it and the fleet release passes that device by. **Follow
+the fleet** releases it again.
+
+**Stage a rollout** with the same control, typing the *new* sha on one device
+while the fleet release stays where it is. Watch it for a day, then move the
+fleet. A pin always beats the fleet release, which is what makes both of these
+one mechanism rather than two.
+
+The ref is validated where you type it, so a typo is refused there rather than
+fifteen minutes later on a device in somebody's building.
 
 ## What the device does
 
