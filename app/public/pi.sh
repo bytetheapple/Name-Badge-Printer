@@ -16,8 +16,17 @@ set -euo pipefail
 
 REPO="https://github.com/bytetheapple/Name-Badge-Printer.git"
 SUPABASE_URL="https://xesgdkwwhszdtcgcdjjw.supabase.co"
-TARGET="/home/${SUDO_USER:-$USER}/name-badge-printer"
+# /opt, not the login user's home. A home directory is 0750 on Pi OS, so the
+# service account could not traverse into it — and opening it up would undo
+# the separation this exists for. The login user owns the checkout, so git
+# pull still works as them.
+TARGET="/opt/name-badge-printer"
 SERVICE="name-badge-bridge"
+# The bridge runs as its own account, not as the person who logs in. That
+# account is in no privileged group, so a fault in the bridge — or a leaked
+# bridge credential — reaches something that can only run this one program.
+# Support still happens as the login user, which is separately in sudo.
+SVC_USER="nbkbridge"
 
 say()  { printf '\n\033[1m==> %s\033[0m\n' "$*"; }
 fail() { printf '\n\033[31mFAILED: %s\033[0m\n' "$*" >&2; exit 1; }
@@ -59,6 +68,7 @@ apt-get update -qq
 apt-get install -y -qq git python3-venv python3-pip libopenjp2-7 >/dev/null
 
 say "Fetching the bridge"
+install -d -o "$RUN_AS" -g "$RUN_AS" -m 755 "$TARGET"
 if [ -d "$TARGET/.git" ]; then
   sudo -u "$RUN_AS" git -C "$TARGET" fetch --quiet origin
   sudo -u "$RUN_AS" git -C "$TARGET" reset --quiet --hard origin/main
@@ -69,22 +79,37 @@ fi
 say "Building the virtualenv"
 sudo -u "$RUN_AS" bash -c "cd '$TARGET/bridge' && ./scripts/install.sh" >/dev/null
 
+say "Creating the service account"
+if ! id -u "$SVC_USER" >/dev/null 2>&1; then
+  # System account: no login shell, no home, no password. It exists to own a
+  # process and a state directory and nothing else.
+  useradd --system --no-create-home --shell /usr/sbin/nologin "$SVC_USER"
+fi
+
 say "Writing the configuration"
-# 600 and owned by the service user: this is a credential, however short-lived.
-install -o "$RUN_AS" -g "$RUN_AS" -m 600 /dev/null "$TARGET/bridge/.env"
 cat > "$TARGET/bridge/.env" <<ENV
 SUPABASE_URL=$SUPABASE_URL
 BRIDGE_TOKEN=$TOKEN
 POLL_INTERVAL_SECONDS=2
 HEARTBEAT_INTERVAL_SECONDS=15
 ENV
-chown "$RUN_AS:$RUN_AS" "$TARGET/bridge/.env"
-chmod 600 "$TARGET/bridge/.env"
+# Readable by the service account and by nobody else on the device. It is
+# owned by the login user so that a later git pull or hand edit still works,
+# and group-readable so systemd can load it as nbkbridge.
+chown "$RUN_AS:$SVC_USER" "$TARGET/bridge/.env"
+chmod 640 "$TARGET/bridge/.env"
+
+# The repository stays owned by the login user. The service account reaches it
+# as "other" — read and execute, never write. It must not be able to rewrite
+# the program it is running.
+chmod -R o+rX "$TARGET"
 
 say "Installing the service"
-sed -e "s|^User=.*|User=$RUN_AS|" \
+sed -e "s|^User=.*|User=$SVC_USER|" \
+    -e "s|^Group=.*|Group=$SVC_USER|" \
     -e "s|^WorkingDirectory=.*|WorkingDirectory=$TARGET/bridge|" \
     -e "s|^ExecStart=.*|ExecStart=$TARGET/bridge/venv/bin/python $TARGET/bridge/bridge.py|" \
+    -e "s|^EnvironmentFile=.*|EnvironmentFile=$TARGET/bridge/.env|" \
     "$TARGET/bridge/systemd/$SERVICE.service" > "/etc/systemd/system/$SERVICE.service"
 systemctl daemon-reload
 systemctl enable --quiet --now "$SERVICE"

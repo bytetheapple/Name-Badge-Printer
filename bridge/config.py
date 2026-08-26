@@ -13,6 +13,15 @@ BRIDGE_TOKEN = os.environ.get("BRIDGE_TOKEN", "")
 # tenant. Only used when no BRIDGE_TOKEN is set.
 SERVICE_ROLE_KEY = os.environ.get("SUPABASE_SERVICE_ROLE_KEY", "")
 
+#: Where the bridge writes what it owns: its rotated credential, and its cache
+#: of downloaded header images.
+#:
+#: Separate from the code so the service account can be given write access to
+#: its state without write access to the program it runs. Defaults to the
+#: bridge directory, which is what a development checkout and every install
+#: made before this existed will keep using.
+STATE_DIR = os.environ.get("BRIDGE_STATE_DIR") or os.path.dirname(os.path.abspath(__file__))
+
 POLL_INTERVAL = float(os.environ.get("POLL_INTERVAL_SECONDS", "2"))
 HEARTBEAT_INTERVAL = float(os.environ.get("HEARTBEAT_INTERVAL_SECONDS", "15"))
 

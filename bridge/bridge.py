@@ -24,7 +24,9 @@ import provision_task
 import printer
 from badge import render_badge, render_test_badge
 
-_HEADER_CACHE = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".header_cache")
+#: Under the state directory, not beside the code: the service account writes
+#: here, and it has no business being able to write to the program it runs.
+_HEADER_CACHE = os.path.join(config.STATE_DIR, ".header_cache")
 
 
 def _now() -> str:

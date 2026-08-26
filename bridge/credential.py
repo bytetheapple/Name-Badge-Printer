@@ -17,15 +17,21 @@ import os
 import stat
 import tempfile
 
-#: Beside the code, which is where .env already lives.
-_DIR = os.path.dirname(os.path.abspath(__file__))
-TOKEN_FILE = os.path.join(_DIR, "token")
+import config
+
+#: Written by the bridge, read by nothing else.
+TOKEN_FILE = os.path.join(config.STATE_DIR, "token")
+
+#: Where it used to live, beside the code. A device that rotated before the
+#: state directory existed is holding its only working credential there — the
+#: value in .env was retired the first time it connected — so losing track of
+#: it would take that device off the air until somebody re-imaged it.
+LEGACY_TOKEN_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "token")
 
 
-def stored() -> str:
-    """The rotated credential, or "" if the device has never rotated."""
+def _read(path: str) -> str:
     try:
-        with open(TOKEN_FILE, encoding="utf-8") as fh:
+        with open(path, encoding="utf-8") as fh:
             return fh.read().strip()
     except FileNotFoundError:
         return ""
@@ -33,6 +39,16 @@ def stored() -> str:
         # Unreadable is not the same as absent, but the caller can do nothing
         # different about it: either way we fall back to the bootstrap token.
         return ""
+
+
+def stored() -> str:
+    """The rotated credential, or "" if the device has never rotated.
+
+    The old location is still read, and only as a fallback. A device that
+    rotated before the state directory existed keeps working; the next
+    rotation writes to the new home and the old file stops mattering.
+    """
+    return _read(TOKEN_FILE) or _read(LEGACY_TOKEN_FILE)
 
 
 def store(token: str) -> None:
@@ -53,6 +69,7 @@ def store(token: str) -> None:
         raise ValueError("refusing to store an empty credential")
 
     directory = os.path.dirname(TOKEN_FILE)
+    os.makedirs(directory, exist_ok=True)
     fd, tmp = tempfile.mkstemp(dir=directory, prefix=".token-")
     try:
         with os.fdopen(fd, "w", encoding="utf-8") as fh:

@@ -5,12 +5,31 @@ Wants=network-online.target
 
 [Service]
 Type=simple
-# Adjust User and paths to match your Pi (username set in Raspberry Pi Imager,
-# and wherever you cloned the repo).
-User=pi
+# Its own account, deliberately not the one you log in with and not in the
+# sudo group. A fault in the bridge, or a leaked bridge credential, then
+# reaches an account that can do nothing but run this.
+#
+# The installer rewrites User, the paths, and StateDirectory to match the
+# device; these are the development defaults.
+User=nbkbridge
+Group=nbkbridge
 WorkingDirectory=/home/pi/name-badge-printer/bridge
 ExecStart=/home/pi/name-badge-printer/bridge/venv/bin/python bridge.py
 EnvironmentFile=/home/pi/name-badge-printer/bridge/.env
+
+# The code is not the bridge's to write. Its credential and its image cache
+# live here instead, which systemd creates and owns.
+StateDirectory=name-badge-bridge
+Environment=BRIDGE_STATE_DIR=/var/lib/name-badge-bridge
+
+# Nothing this runs needs to gain privileges, and saying so blocks the setuid
+# route out of an unprivileged account.
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectControlGroups=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+
 Restart=always
 RestartSec=5
 
