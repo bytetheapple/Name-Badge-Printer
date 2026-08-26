@@ -24,6 +24,25 @@ const envPrivateKey = () => (Deno.env.get("GOOGLE_SA_PRIVATE_KEY") ?? "").replac
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
+/**
+ * Record the outcome on the entry, the way the other two syncs do.
+ *
+ * Without this a failure is invisible everywhere: the kiosk calls this
+ * fire-and-forget so a photo can never hold up a badge, which is right, but it
+ * meant the only trace was a log line — and three of the failure paths below
+ * do not even reach one.
+ */
+async function noteSelfie(entryId: string, status: string, error?: string) {
+  await fetch(`${SUPABASE_URL}/rest/v1/form_entries?id=eq.${entryId}`, {
+    method: "PATCH",
+    headers: restHeaders,
+    body: JSON.stringify({
+      selfie_status: status,
+      selfie_error: error ? String(error).slice(0, 500) : null,
+    }),
+  });
+}
+
 const restHeaders = {
   apikey: SERVICE_ROLE,
   Authorization: `Bearer ${SERVICE_ROLE}`,
@@ -121,7 +140,9 @@ Deno.serve(async (req) => {
   // fallback and is \n-escaped.
   const SA_KEY = settings?.secret ? settings.secret.replace(/\\n/g, "\n") : envPrivateKey();
   if (!SA_EMAIL || !SA_KEY) {
-    return json({ ok: false, error: "Google service account is not configured for this organization" });
+    const err = "Google service account is not configured for this organization";
+    await noteSelfie(entryId, "failed", err);
+    return json({ ok: false, error: err });
   }
 
   const cfgRes = await fetch(
@@ -129,7 +150,11 @@ Deno.serve(async (req) => {
     { headers: restHeaders },
   );
   const folderId = (await cfgRes.json())[0]?.selfie_drive_folder_id;
-  if (!folderId) return json({ ok: false, error: "No Drive folder configured" });
+  if (!folderId) {
+    const err = "No Drive folder configured";
+    await noteSelfie(entryId, "failed", err);
+    return json({ ok: false, error: err });
+  }
 
   // Decode the data URL / base64 into bytes.
   const base64 = image.includes(",") ? image.split(",")[1] : image;
@@ -168,6 +193,7 @@ Deno.serve(async (req) => {
     const upData = await up.json();
     if (!up.ok) {
       console.error("upload-selfie: Drive upload failed:", JSON.stringify(upData));
+      await noteSelfie(entryId, "failed", `Drive upload failed: ${JSON.stringify(upData)}`);
       return json({ ok: false, error: `Drive upload failed: ${JSON.stringify(upData)}` }, 500);
     }
 
@@ -175,12 +201,20 @@ Deno.serve(async (req) => {
       await fetch(`${SUPABASE_URL}/rest/v1/form_entries?id=eq.${entryId}&org_id=eq.${orgId}`, {
         method: "PATCH",
         headers: restHeaders,
-        body: JSON.stringify({ selfie_link: upData.webViewLink }),
+        body: JSON.stringify({
+          selfie_link: upData.webViewLink,
+          selfie_status: "sent",
+          selfie_error: null,
+        }),
       });
     }
     return json({ ok: true, file_id: upData.id, link: upData.webViewLink ?? null });
   } catch (e) {
     console.error("upload-selfie error:", e);
+    // The one that mattered in practice: InvalidCharacterError out of
+    // pemToPkcs8, which is a service-account key with a stray character —
+    // usually the quotes it was copied with out of the JSON file.
+    await noteSelfie(entryId, "failed", String(e));
     return json({ ok: false, error: String(e).slice(0, 300) }, 500);
   }
 });

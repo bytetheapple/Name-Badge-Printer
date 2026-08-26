@@ -173,6 +173,13 @@ export interface FormEntry {
   is_primary: boolean
   source_ip: string | null
   google_sync_status: 'pending' | 'sent' | 'failed' | 'skipped'
+  /** Recorded since August, and until now never shown anywhere. */
+  shulcloud_sync_status: 'pending' | 'sent' | 'failed' | 'skipped'
+  shulcloud_error: string | null
+  /** 'skipped' means no photo reached us; 'failed' means it did and could not
+   *  be stored, with the reason in selfie_error. */
+  selfie_status: 'pending' | 'sent' | 'failed' | 'skipped'
+  selfie_error: string | null
   google_synced_at: string | null
   google_error: string | null
   created_at: string
