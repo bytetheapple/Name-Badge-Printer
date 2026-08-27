@@ -169,25 +169,37 @@ Deno.serve(async (req) => {
   let invited = false;
 
   if (!userId) {
-    const res = await fetch(`${SUPABASE_URL}/auth/v1/admin/invite`, {
+    // POST /auth/v1/invite — NOT /auth/v1/admin/invite, which does not exist
+    // and answers 404. Only some admin operations live under /admin (the user
+    // lookup above is one); invite is not among them, and the 404 surfaces as
+    // a mail failure because that is the branch it lands in.
+    //
+    // redirect_to is a query parameter here. In the body it is accepted and
+    // ignored, and the invitation link then points at the project's default
+    // site URL instead of the page that sets a password.
+    const inviteUrl = new URL(`${SUPABASE_URL}/auth/v1/invite`);
+    if (SITE_URL) inviteUrl.searchParams.set("redirect_to", SITE_URL);
+    const res = await fetch(inviteUrl.toString(), {
       method: "POST",
       headers: {
         apikey: SERVICE_ROLE,
         Authorization: `Bearer ${SERVICE_ROLE}`,
         "Content-Type": "application/json",
       },
-      body: JSON.stringify(
-        SITE_URL ? { email, redirect_to: SITE_URL } : { email },
-      ),
+      body: JSON.stringify({ email }),
     });
     if (!res.ok) {
       const text = await res.text();
       // Also to the log: the body reaches the browser, but a bare 502 in the
       // dashboard's function log is a dead end.
       console.error(`invite failed for ${email}: ${res.status} ${text.slice(0, 300)}`);
+      // The status, not a guess at the cause. Naming SMTP here when the real
+      // answer was a 404 from a wrong URL sent two rounds of debugging at a
+      // mail server that was working perfectly.
       return json({
         ok: false,
-        error: "Could not send the invitation email. Check the project's SMTP settings.",
+        error: `The invitation could not be sent (HTTP ${res.status}).` +
+          (res.status >= 500 ? " The mail server rejected it — check the project's SMTP settings." : ""),
         detail: text.slice(0, 300),
       }, 502);
     }
