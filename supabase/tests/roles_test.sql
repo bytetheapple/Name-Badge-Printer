@@ -121,15 +121,18 @@ begin
   if n <> 0 then raise exception 'ROLE FAILURE: staff changed printer_config'; end if;
   insert into public._role_results (acting_as, check_name) values ('staff', 'cannot change settings or printer config');
 
-  -- But can read all of it. A greeter should be able to answer "what is this
-  -- set to" without being able to change the answer.
+  -- Reads the printers, and only the printers. The Print Server tab shows
+  -- per-printer state — ready, unreachable, what media is loaded — which is
+  -- the question a greeter at a sign-in table actually has. The Printers and
+  -- Settings tabs are an admin's, so the rows behind them are too.
   select count(*) into n from public.printers where org_id = org;
   if n < 1 then raise exception 'ROLE FAILURE: staff cannot see the printers'; end if;
   select count(*) into n from public.printer_config where org_id = org;
-  if n < 1 then raise exception 'ROLE FAILURE: staff cannot see the printer config'; end if;
+  if n <> 0 then raise exception 'ROLE FAILURE: staff read % printer_config row(s)', n; end if;
   select count(*) into n from public.app_settings where org_id = org;
-  if n < 1 then raise exception 'ROLE FAILURE: staff cannot see the settings'; end if;
-  insert into public._role_results (acting_as, check_name) values ('staff', 'reads printers, config and settings');
+  if n <> 0 then raise exception 'ROLE FAILURE: staff read % app_settings row(s)', n; end if;
+  insert into public._role_results (acting_as, check_name)
+    values ('staff', 'reads printers but not config or settings');
 
   -- Integrations and API keys are not staff business at all.
   select count(*) into n from public.api_keys where org_id = org;
