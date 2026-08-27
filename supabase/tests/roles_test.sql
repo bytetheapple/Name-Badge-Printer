@@ -121,6 +121,21 @@ begin
   if n <> 0 then raise exception 'ROLE FAILURE: staff changed printer_config'; end if;
   insert into public._role_results (acting_as, check_name) values ('staff', 'cannot change settings or printer config');
 
+  -- But can read all of it. A greeter should be able to answer "what is this
+  -- set to" without being able to change the answer.
+  select count(*) into n from public.printers where org_id = org;
+  if n < 1 then raise exception 'ROLE FAILURE: staff cannot see the printers'; end if;
+  select count(*) into n from public.printer_config where org_id = org;
+  if n < 1 then raise exception 'ROLE FAILURE: staff cannot see the printer config'; end if;
+  select count(*) into n from public.app_settings where org_id = org;
+  if n < 1 then raise exception 'ROLE FAILURE: staff cannot see the settings'; end if;
+  insert into public._role_results (acting_as, check_name) values ('staff', 'reads printers, config and settings');
+
+  -- Integrations and API keys are not staff business at all.
+  select count(*) into n from public.api_keys where org_id = org;
+  if n <> 0 then raise exception 'ROLE FAILURE: staff read % API key(s)', n; end if;
+  insert into public._role_results (acting_as, check_name) values ('staff', 'sees no API keys');
+
   -- Device credentials are not staff business: invisible, and uncreatable.
   select count(*) into n from public.bridge_tokens where org_id = org;
   if n <> 0 then
@@ -244,30 +259,42 @@ begin
   if n <> 1 then raise exception 'ROLE FAILURE: admin could not change printer_config'; end if;
   insert into public._role_results (acting_as, check_name) values ('admin', 'changes settings and printer config');
 
-  -- Manages staff, and only staff.
+  -- Manages nobody. Access is granted by the people who own the account, not
+  -- by whoever runs the desk equipment — so an admin cannot touch a
+  -- membership of any role, including staff.
   update public.memberships set role = 'staff' where org_id = org and user_id = staffid;
   get diagnostics n = row_count;
-  if n <> 1 then raise exception 'ROLE FAILURE: admin could not manage a staff membership'; end if;
-  insert into public._role_results (acting_as, check_name) values ('admin', 'manages staff members');
+  if n <> 0 then raise exception 'ROLE FAILURE: admin changed % staff membership(s)', n; end if;
+  delete from public.memberships where org_id = org and user_id = staffid;
+  get diagnostics n = row_count;
+  if n <> 0 then raise exception 'ROLE FAILURE: admin removed % staff membership(s)', n; end if;
 
   begin
     insert into public.memberships (org_id, user_id, role)
-    values (org, '0a2b0000-0000-4000-8000-00000000000b', 'admin');
-    raise exception 'ROLE FAILURE: admin created another admin';
+    values (org, '0a2b0000-0000-4000-8000-00000000000b', 'staff');
+    raise exception 'ROLE FAILURE: admin added a member';
   exception when insufficient_privilege then null;
        when foreign_key_violation then
          raise exception 'TEST BROKEN: the policy allowed the insert (it failed on the FK instead)';
   end;
-  insert into public._role_results (acting_as, check_name) values ('admin', 'cannot create an admin or owner');
+  insert into public._role_results (acting_as, check_name) values ('admin', 'manages no members at all');
 
-  -- Cannot touch an owner: the row is invisible to the statement.
+  -- Cannot touch an owner either, for the same reason rather than a special one.
   update public.memberships set role = 'staff' where org_id = org and user_id = ownerid;
   get diagnostics n = row_count;
   if n <> 0 then raise exception 'ROLE FAILURE: admin demoted an owner'; end if;
-  delete from public.memberships where org_id = org and user_id = ownerid;
-  get diagnostics n = row_count;
-  if n <> 0 then raise exception 'ROLE FAILURE: admin deleted an owner'; end if;
   insert into public._role_results (acting_as, check_name) values ('admin', 'cannot demote or remove an owner');
+
+  -- Integrations and API keys moved to the owner: both hand out a way in.
+  select count(*) into n from public.api_keys where org_id = org;
+  if n <> 0 then raise exception 'ROLE FAILURE: admin read % API key(s)', n; end if;
+  begin
+    insert into public.api_keys (org_id, name, key_hash, key_prefix)
+    values (org, 'admin key', 'hash-admin-000000', 'nbk_adm');
+    raise exception 'ROLE FAILURE: admin minted an API key';
+  exception when insufficient_privilege then null;
+  end;
+  insert into public._role_results (acting_as, check_name) values ('admin', 'cannot see or mint API keys');
 
   -- Cannot rename the organization.
   update public.organizations set name = 'Renamed by admin' where id = org;
@@ -305,17 +332,23 @@ begin
   insert into public._role_results (acting_as, check_name)
   values ('admin', 'cannot read token_hash');
 
-  -- Configures integrations, including writing a credential …
-  insert into public.integrations (org_id, kind, enabled, config)
-  values (org, 'google_form', true, '{"response_url": "https://example.invalid/form"}');
-  perform public.set_integration_secret(org, 'google_drive', 'a-fake-private-key');
-  if not public.integration_has_secret(org, 'google_drive') then
-    raise exception 'ROLE FAILURE: admin could not store an integration credential';
-  end if;
+  -- Integrations belong to the owner now, and the boundary has to hold on
+  -- both routes: the table, and the SECURITY DEFINER helpers that write into
+  -- the Vault behind it.
+  begin
+    insert into public.integrations (org_id, kind, enabled, config)
+    values (org, 'google_form', true, '{"response_url": "https://example.invalid/form"}');
+    raise exception 'ROLE FAILURE: admin configured an integration';
+  exception when insufficient_privilege then null;
+  end;
+  begin
+    perform public.set_integration_secret(org, 'google_drive', 'a-fake-private-key');
+    raise exception 'ROLE FAILURE: admin stored an integration credential';
+  exception when insufficient_privilege then null;
+  end;
   insert into public._role_results (acting_as, check_name)
-  values ('admin', 'configures integrations and stores a credential');
+  values ('admin', 'cannot configure integrations or store a credential');
 
-  -- … but cannot read that credential back, by any route.
   begin
     perform secret_id from public.integrations where org_id = org;
     raise exception 'ROLE FAILURE: secret_id is readable through the Data API';
@@ -368,6 +401,34 @@ begin
   get diagnostics n = row_count;
   if n <> 1 then raise exception 'ROLE FAILURE: owner could not rename the organization'; end if;
   insert into public._role_results (acting_as, check_name) values ('owner', 'renames the organization');
+
+  -- The capability the admin was just refused has to land somewhere, or a
+  -- suite made only of refusals passes with the feature entirely broken.
+  insert into public.integrations (org_id, kind, enabled, config)
+  values (org, 'google_form', true, '{"response_url": "https://example.invalid/form"}');
+  perform public.set_integration_secret(org, 'google_drive', 'a-fake-private-key');
+  if not public.integration_has_secret(org, 'google_drive') then
+    raise exception 'ROLE FAILURE: owner could not store an integration credential';
+  end if;
+  insert into public._role_results (acting_as, check_name)
+  values ('owner', 'configures integrations and stores a credential');
+
+  -- … and still cannot read the credential back. Owning the integration is not
+  -- the same as being able to extract what is inside it.
+  begin
+    perform secret_id from public.integrations where org_id = org;
+    raise exception 'ROLE FAILURE: secret_id is readable through the Data API';
+  exception when insufficient_privilege then null;
+  end;
+  insert into public._role_results (acting_as, check_name)
+  values ('owner', 'cannot read a stored credential back');
+
+  -- API keys moved with them.
+  insert into public.api_keys (org_id, name, key_hash, key_prefix)
+  values (org, 'owner key', 'hash-owner-000000', 'nbk_own');
+  select count(*) into n from public.api_keys where org_id = org;
+  if n <> 1 then raise exception 'ROLE FAILURE: owner sees % API key(s), expected 1', n; end if;
+  insert into public._role_results (acting_as, check_name) values ('owner', 'mints and sees API keys');
 
   -- The same row, a different column. A2's update policy cannot tell them
   -- apart, so if the trigger is missing this succeeds and an org helps itself

@@ -1,11 +1,12 @@
 // Invite someone into an organization, or change/remove an existing member.
 //
-// The caller is a signed-in admin, identified by their own JWT — never by an
+// The caller is a signed-in owner, identified by their own JWT — never by an
 // org_id sent from the browser. The function resolves the caller's membership
-// with the service_role key and enforces the §5 rules before touching anything:
+// with the service_role key and enforces the rules before touching anything:
 //
-//   admin -> may invite, change and remove *staff* only
-//   owner -> may do the same for any role
+//   owner -> may invite, change and remove any member
+//   anyone else -> may not, including admins; an admin manages the equipment,
+//                  not who gets in
 //
 // Membership rows themselves are also protected by RLS (A2 migration), so this
 // is defence in depth rather than the only gate. What genuinely needs the
@@ -60,13 +61,15 @@ async function roleInOrg(userId: string, orgId: string): Promise<Role | null> {
 }
 
 /**
- * May `actor` act on a membership whose role is (or would become) `target`?
- * Owners may touch any role; admins only staff. Mirrors the RLS policies.
+ * May `actor` change who belongs to this organization?
+ *
+ * Members are the owner's job. An admin manages the equipment — printers,
+ * their configuration, the org's settings — not who gets in, so there is no
+ * longer a per-target question to ask. Mirrors the RLS policies, which is the
+ * actual gate; this is the friendly refusal in front of it.
  */
-function mayManage(actor: Role | null, ...targets: (Role | null)[]): boolean {
-  if (actor === "owner") return true;
-  if (actor !== "admin") return false;
-  return targets.every((t) => t === null || t === "staff");
+function mayManage(actor: Role | null): boolean {
+  return actor === "owner";
 }
 
 /** Look up an auth user by email; null when they have no account yet. */
@@ -100,9 +103,9 @@ Deno.serve(async (req) => {
   if (!UUID_RE.test(orgId)) return json({ ok: false, error: "Invalid organization" }, 400);
 
   const actor = await roleInOrg(caller, orgId);
-  if (actor !== "owner" && actor !== "admin") {
-    // Same answer whether they are staff or a stranger: never confirm that an
-    // org exists to someone who has no business there.
+  if (!mayManage(actor)) {
+    // Same answer whether they are an admin, staff, or a stranger: never
+    // confirm that an org exists to someone who has no business there.
     return json({ ok: false, error: "You cannot manage members of this organization" }, 403);
   }
 
@@ -117,7 +120,7 @@ Deno.serve(async (req) => {
     if (!current) return json({ ok: false, error: "That person is not a member" }, 404);
 
     if (action === "remove") {
-      if (!mayManage(actor, current)) {
+      if (!mayManage(actor)) {
         return json({ ok: false, error: `Only an owner can remove an ${current}` }, 403);
       }
       // The last-owner trigger is the real guard; this is the friendly message.
@@ -137,7 +140,7 @@ Deno.serve(async (req) => {
 
     const nextRole = String(body.role ?? "") as Role;
     if (!ROLES.includes(nextRole)) return json({ ok: false, error: "Invalid role" }, 400);
-    if (!mayManage(actor, current, nextRole)) {
+    if (!mayManage(actor)) {
       return json({ ok: false, error: "Only an owner can change owner and admin roles" }, 403);
     }
     const upd = await fetch(
@@ -159,7 +162,7 @@ Deno.serve(async (req) => {
   const role = (String(body.role ?? "staff") || "staff") as Role;
   if (!EMAIL_RE.test(email)) return json({ ok: false, error: "Enter a valid email address." }, 400);
   if (!ROLES.includes(role)) return json({ ok: false, error: "Invalid role" }, 400);
-  if (!mayManage(actor, role)) {
+  if (!mayManage(actor)) {
     return json({ ok: false, error: "Only an owner can invite an admin or owner." }, 403);
   }
 
@@ -219,5 +222,14 @@ Deno.serve(async (req) => {
   });
   if (!ins.ok) return json({ ok: false, error: "Could not add that member." }, 500);
 
+  // Which path this took, in the log as well as the response. "No email was
+  // sent because the account already existed" and "an email was sent and did
+  // not arrive" are indistinguishable from the recipient's inbox, and only one
+  // of them is a mail problem.
+  console.log(
+    invited
+      ? `invited ${email} (new account ${userId})`
+      : `added existing account ${email} (${userId}) — no email sent`,
+  );
   return json({ ok: true, user_id: userId, email, role, invited });
 });

@@ -155,5 +155,14 @@ Deno.serve(async (req) => {
   });
   if (!ins.ok) return json({ ok: false, error: "Could not add that operator." }, 500);
 
+  // Which path this took, in the log as well as the response. "No email was
+  // sent because the account already existed" and "an email was sent and did
+  // not arrive" are indistinguishable from the recipient's inbox, and only one
+  // of them is a mail problem.
+  console.log(
+    invited
+      ? `invited ${email} (new account ${userId})`
+      : `added existing account ${email} (${userId}) — no email sent`,
+  );
   return json({ ok: true, user_id: userId, email, role, invited });
 });

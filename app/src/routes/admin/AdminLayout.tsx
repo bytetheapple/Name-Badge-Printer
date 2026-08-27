@@ -10,7 +10,7 @@ const OPS_HOME = '/admin/ops/organizations'
 
 export default function AdminLayout() {
   const { session, signOut } = useAuth()
-  const { orgs, org, orgId, role, isAdmin, isPlatformAdmin, loading, error, switchOrg } = useOrg()
+  const { orgs, org, orgId, role, isAdmin, isOwner, isPlatformAdmin, loading, error, switchOrg } = useOrg()
   const location = useLocation()
   const navigate = useNavigate()
 
@@ -137,8 +137,10 @@ export default function AdminLayout() {
               <NavLink to="/admin/status">Print Server</NavLink>
               {isAdmin && <NavLink to="/admin/config">Printers</NavLink>}
               {isAdmin && <NavLink to="/admin/settings">Settings</NavLink>}
-              {isAdmin && <NavLink to="/admin/integrations">Integrations</NavLink>}
-              {isAdmin && <NavLink to="/admin/members">Members</NavLink>}
+              {/* Owner, not admin: both hand out a way in. Printers and
+                  Settings stay with admin — the equipment. */}
+              {isOwner && <NavLink to="/admin/integrations">Integrations</NavLink>}
+              {isOwner && <NavLink to="/admin/members">Members</NavLink>}
             </>
           )}
         </nav>

@@ -13,7 +13,7 @@ const ROLE_HELP: Record<Role, string> = {
 
 export default function Members() {
   const { session } = useAuth()
-  const { orgId, org, isAdmin, isOwner, reload: reloadOrgs } = useOrg()
+  const { orgId, org, isOwner, reload: reloadOrgs } = useOrg()
 
   const [members, setMembers] = useState<OrgMember[]>([])
   const [loading, setLoading] = useState(true)
@@ -39,7 +39,9 @@ export default function Members() {
   }, [load])
 
   /** Owners manage any role; admins only staff. Mirrors the RLS policies. */
-  const mayManage = (m: OrgMember) => isOwner || m.role === 'staff'
+  //: Members are the owner's job now — an admin manages the equipment, not
+  //: who gets in. So there is no per-row question left to ask.
+  const mayManage = (_m: OrgMember) => isOwner
 
   async function call(
     body: Record<string, unknown>,
@@ -56,7 +58,13 @@ export default function Members() {
       setError(data.detail ? `${data.error} — ${data.detail}` : (data.error ?? 'Something went wrong.'))
       return false
     }
-    setNotice(typeof success === 'function' ? success(data) : success)
+    // Only when there is something to say. A green banner announcing that the
+    // thing you just watched happen has happened is noise, and the reload
+    // clears it before it can be read anyway — the list itself is the
+    // confirmation. An invitation that sent no email is the exception: that
+    // is news, not confirmation.
+    const said = typeof success === 'function' ? success(data) : success
+    setNotice(said || null)
     await load()
     await reloadOrgs()
     return true
@@ -74,7 +82,7 @@ export default function Members() {
     // look like a mail failure.
     const ok = await call({ org_id: orgId, email: address, role }, (d) =>
       d.invited
-        ? `Invited ${address} as ${role}. They will get an email to set a password.`
+        ? '' // it worked, and the new row in the list says so
         : `${address} already had an account and was added as ${role}. No email was sent — ` +
           `they sign in with their existing password.`,
     )
@@ -90,7 +98,7 @@ export default function Members() {
     setBusy(m.user_id)
     await call(
       { action: 'set_role', org_id: orgId, user_id: m.user_id, role: next },
-      `${m.email} is now ${next}.`,
+      '', // the row's own role changed in front of you
     )
     setBusy(null)
   }
@@ -102,11 +110,11 @@ export default function Members() {
       : `Remove ${m.email} from ${org?.organization.name}?`
     if (!window.confirm(question)) return
     setBusy(m.user_id)
-    await call({ action: 'remove', org_id: orgId, user_id: m.user_id }, `Removed ${m.email}.`)
+    await call({ action: 'remove', org_id: orgId, user_id: m.user_id }, '')
     setBusy(null)
   }
 
-  if (!isAdmin) {
+  if (!isOwner) {
     return (
       <>
         <h1>Members</h1>
