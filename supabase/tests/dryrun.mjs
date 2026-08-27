@@ -33,6 +33,16 @@ create role authenticated nologin;
 create role service_role nologin bypassrls;   -- as on Supabase
 grant usage on schema public to anon, authenticated, service_role;
 
+-- Supabase's own default privileges, which the stub used to omit. Every table
+-- created in public is granted ALL to the Data API roles, so a migration that
+-- carefully grants SELECT and nothing else still ends up with INSERT, UPDATE,
+-- DELETE, TRUNCATE, REFERENCES and TRIGGER attached to anon and authenticated.
+-- RLS still stands in front of the DML — but TRUNCATE is not an RLS-checked
+-- operation, and "I only granted SELECT" is a belief this harness must be able
+-- to falsify rather than share.
+alter default privileges in schema public
+  grant all on tables to anon, authenticated, service_role;
+
 create schema auth;
 create table auth.users (
   id uuid primary key default gen_random_uuid(),
@@ -559,6 +569,39 @@ for (const [label, from, to] of [
     if (msg.includes("decrypted another org's WiFi passphrase")) ok(`dropping ${label} is caught`)
     else bad(`negative control (${label}) failed for the wrong reason: ${msg}`)
   }
+}
+
+console.log('— no table hands TRUNCATE to the Data API roles —')
+// TRUNCATE is not an RLS-checked operation: a role holding it empties the
+// table, policies and all. Supabase's default privileges grant it on every new
+// table, so this is a standing invariant rather than a one-off cleanup — the
+// next table added will arrive with it unless the default is also revoked.
+const loose = await db.query(`
+  select table_name, privilege_type
+  from information_schema.role_table_grants
+  where table_schema = 'public'
+    and grantee in ('anon', 'authenticated')
+    and privilege_type in ('TRUNCATE', 'REFERENCES', 'TRIGGER')
+  order by table_name, privilege_type`)
+if (loose.rows.length === 0) ok('anon and authenticated hold no TRUNCATE on any public table')
+else {
+  bad(`${loose.rows.length} unwanted grant(s), e.g. ` +
+      loose.rows.slice(0, 4).map((r) => `${r.table_name}:${r.privilege_type}`).join(', '))
+}
+
+// And that the check bites: without the revoke the grants must be there, or
+// the assertion above is agreeing with a stub rather than testing anything.
+const noRevoke = await build((sql, f) => (f.includes('_mt_table_grants') ? 'select 1;' : sql))
+const still = await noRevoke.query(`
+  select count(*)::int as n
+  from information_schema.role_table_grants
+  where table_schema = 'public'
+    and grantee in ('anon', 'authenticated')
+    and privilege_type in ('TRUNCATE', 'REFERENCES', 'TRIGGER')`)
+if (still.rows[0].n > 0) {
+  ok(`negative control: without the revoke, ${still.rows[0].n} such grant(s) exist`)
+} else {
+  bad('negative control: the grants were absent even without the revoke — the check proves nothing')
 }
 
 console.log('— the migrations are idempotent (safe to paste twice) —')
