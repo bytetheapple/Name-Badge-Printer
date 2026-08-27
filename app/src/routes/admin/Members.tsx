@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState, type FormEvent } from 'react'
 import { supabase } from '../../lib/supabase'
+import { invokeFn } from '../../lib/functions'
 import { useAuth } from '../../lib/auth'
 import { useOrg } from '../../lib/org'
 import type { OrgMember, Role } from '../../lib/types'
@@ -43,9 +44,9 @@ export default function Members() {
   async function call(body: Record<string, unknown>, success: string) {
     setNotice(null)
     setError(null)
-    const { data, error } = await supabase.functions.invoke('invite-member', { body })
-    if (error || !data?.ok) {
-      setError(data?.error ?? error?.message ?? 'Something went wrong.')
+    const data = await invokeFn('invite-member', body)
+    if (!data.ok) {
+      setError(data.error ?? 'Something went wrong.')
       return false
     }
     setNotice(success)

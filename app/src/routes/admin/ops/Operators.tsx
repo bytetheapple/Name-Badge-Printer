@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { supabase } from '../../../lib/supabase'
 import { useAuth } from '../../../lib/auth'
+import { invokeFn } from '../../../lib/functions'
 import type { Operator, OperatorRole } from '../../../lib/types'
 
 /**
@@ -50,12 +51,10 @@ export default function Operators() {
     setBusy('invite')
     setNotice(null)
     setError(null)
-    const { data, error } = await supabase.functions.invoke('invite-operator', {
-      body: { email: email.trim(), role },
-    })
+    const data = await invokeFn('invite-operator', { email: email.trim(), role })
     setBusy(null)
-    if (error || !data?.ok) {
-      setError(data?.error ?? error?.message ?? 'Something went wrong.')
+    if (!data.ok) {
+      setError(data.detail ? `${data.error} — ${data.detail}` : (data.error ?? 'Something went wrong.'))
       return
     }
     setNotice(
