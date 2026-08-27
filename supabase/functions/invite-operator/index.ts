@@ -113,6 +113,10 @@ Deno.serve(async (req) => {
     });
     if (!res.ok) {
       const text = await res.text();
+      // Also to the log: the body reaches the browser, but a 502 in the
+      // dashboard's function log is otherwise a dead end, and this is the
+      // failure most likely to be looked at from there.
+      console.error(`invite failed for ${email}: ${res.status} ${text.slice(0, 300)}`);
       return json({
         ok: false,
         error: "Could not send the invitation email. Check the project's SMTP settings.",
