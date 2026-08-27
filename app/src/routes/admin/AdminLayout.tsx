@@ -2,9 +2,11 @@ import { Navigate, NavLink, Outlet, useLocation, useNavigate } from 'react-route
 import { useAuth } from '../../lib/auth'
 import { useOrg } from '../../lib/org'
 
-/** The switcher's value when the platform console is showing. Not a real org
- *  id, and deliberately not shaped like one. */
-const PLATFORM = '__platform__'
+/** The switcher's value for the Operations context. Not a real org id, and
+ *  deliberately not shaped like one. */
+const OPS = '__operations__'
+
+const OPS_HOME = '/admin/ops/organizations'
 
 export default function AdminLayout() {
   const { session, signOut } = useAuth()
@@ -14,18 +16,18 @@ export default function AdminLayout() {
 
   // Which "place" the admin is in, taken from the route rather than held in
   // state — so a refresh, a bookmark and the back button all agree.
-  const inPlatform = location.pathname.startsWith('/admin/platform')
+  const inOps = location.pathname.startsWith('/admin/ops')
 
   function choose(value: string) {
-    if (value === PLATFORM) {
-      navigate('/admin/platform')
+    if (value === OPS) {
+      navigate(OPS_HOME)
       return
     }
     switchOrg(value)
-    // Leaving the platform console needs somewhere to land: its route belongs
-    // to no organization, so staying put would show platform data under an
+    // Leaving Operations needs somewhere to land: its routes belong to no
+    // organization, so staying put would show cross-tenant data under one
     // org's name.
-    if (inPlatform) navigate('/admin/entries')
+    if (inOps) navigate('/admin/entries')
   }
 
   if (loading) {
@@ -36,10 +38,11 @@ export default function AdminLayout() {
     )
   }
 
-  // The console returns no rows to anyone else, so this is not the access
-  // control — but platform mode hides the org nav, and someone who typed the
-  // URL would otherwise be left on an empty page with nothing to click.
-  if (inPlatform && !isPlatformAdmin) {
+  // Presentation rather than access control — platform_overview() returns
+  // nothing to anyone else, so reaching these by URL would show empty tables
+  // rather than another org's data. But Operations hides the org nav, and
+  // someone who typed the URL would be left with nothing to click.
+  if (inOps && !isPlatformAdmin) {
     return <Navigate to="/admin/entries" replace />
   }
 
@@ -51,7 +54,7 @@ export default function AdminLayout() {
   // nothing is where that flow ends — being locked out at that point would be
   // absurd, and every org-scoped route below would render against a null id.
   if (!orgId && isPlatformAdmin) {
-    return <Navigate to="/admin/platform" replace />
+    return <Navigate to={OPS_HOME} replace />
   }
 
   if (!orgId) {
@@ -74,33 +77,52 @@ export default function AdminLayout() {
     <div className="admin">
       <header className="admin-header">
         <div className="admin-brand">
-          {inPlatform ? 'Platform' : (org?.organization.name ?? 'Name Badge Admin')}
-          {/* Shown for a platform admin even with a single organization —
-              otherwise the console would have no way in. */}
+          {inOps ? 'Operations' : (org?.organization.name ?? 'Name Badge Admin')}
+          {/* Shown for an operator even with a single organization —
+              otherwise Operations would have no way in. */}
           {(orgs.length > 1 || isPlatformAdmin) && (
             <select
               className="org-switcher"
-              value={inPlatform ? PLATFORM : orgId}
+              value={inOps ? OPS : orgId}
               onChange={(e) => choose(e.target.value)}
               aria-label="Switch organization"
             >
-              {orgs.map((m) => (
-                <option key={m.org_id} value={m.org_id}>
-                  {m.organization.name}
-                </option>
-              ))}
-              {isPlatformAdmin && (
-                <optgroup label="Name Badge Kiosk">
-                  <option value={PLATFORM}>Platform</option>
-                </optgroup>
+              {/* Grouped only for an operator, for whom the list holds two
+                  kinds of thing. A customer sees a plain list of their own
+                  organizations and no headings to wonder about. */}
+              {isPlatformAdmin ? (
+                <>
+                  <optgroup label="Customer organizations">
+                    {orgs.map((m) => (
+                      <option key={m.org_id} value={m.org_id}>
+                        {m.organization.name}
+                      </option>
+                    ))}
+                  </optgroup>
+                  <optgroup label="Guest Badges">
+                    <option value={OPS}>Operations</option>
+                  </optgroup>
+                </>
+              ) : (
+                orgs.map((m) => (
+                  <option key={m.org_id} value={m.org_id}>
+                    {m.organization.name}
+                  </option>
+                ))
               )}
             </select>
           )}
         </div>
-        {/* Every one of these is scoped to an organization, so none of them
-            means anything while the platform console is showing. */}
+        {/* Two navs, never both: the org tabs are all scoped to one
+            organization and mean nothing in Operations, and vice versa. */}
         <nav className="admin-nav">
-          {!inPlatform && (
+          {inOps ? (
+            <>
+              <NavLink to={OPS_HOME}>Organizations</NavLink>
+              <NavLink to="/admin/ops/fleet">Fleet</NavLink>
+              <NavLink to="/admin/ops/operators">Operators</NavLink>
+            </>
+          ) : (
             <>
               <NavLink to="/admin/entries">Entries</NavLink>
               <NavLink to="/admin/status">Print Server</NavLink>
@@ -114,7 +136,7 @@ export default function AdminLayout() {
         <div className="admin-user">
           <span className="muted">
             {session?.user.email}
-            {role && !inPlatform && <span className="role-badge">{role}</span>}
+            {role && !inOps && <span className="role-badge">{role}</span>}
           </span>
           <button className="secondary btn-sm" onClick={() => void signOut()}>
             Sign out

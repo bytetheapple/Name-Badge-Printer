@@ -19,7 +19,9 @@ import PrinterConfig from './routes/admin/PrinterConfig'
 import Settings from './routes/admin/Settings'
 import Members from './routes/admin/Members'
 import IntegrationsPage from './routes/admin/IntegrationsPage'
-import Platform from './routes/admin/Platform'
+import OpsOrganizations from './routes/admin/ops/Organizations'
+import OpsFleet from './routes/admin/ops/Fleet'
+import OpsOperators from './routes/admin/ops/Operators'
 
 /**
  * What `/` serves.
@@ -57,7 +59,16 @@ const router = createBrowserRouter([
       { path: 'settings', element: <Settings /> },
       { path: 'integrations', element: <IntegrationsPage /> },
       { path: 'members', element: <Members /> },
-      { path: 'platform', element: <Platform /> },
+      // Operations: the cross-tenant context, reached from the switcher
+      // rather than from this nav. Its own tabs, because none of the ones
+      // above mean anything without an organization.
+      { path: 'ops', element: <Navigate to="/admin/ops/organizations" replace /> },
+      { path: 'ops/organizations', element: <OpsOrganizations /> },
+      { path: 'ops/fleet', element: <OpsFleet /> },
+      { path: 'ops/operators', element: <OpsOperators /> },
+      // Where the console used to live; bookmarks and browser history still
+      // point at it.
+      { path: 'platform', element: <Navigate to="/admin/ops/organizations" replace /> },
     ],
   },
 ])
