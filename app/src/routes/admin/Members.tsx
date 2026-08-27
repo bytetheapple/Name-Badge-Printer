@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState, type FormEvent } from 'react'
 import { supabase } from '../../lib/supabase'
 import { invokeFn, type FnResult } from '../../lib/functions'
+import ActivityLog from './ActivityLog'
 import { useAuth } from '../../lib/auth'
 import { useOrg } from '../../lib/org'
 import type { OrgMember, Role } from '../../lib/types'
@@ -104,11 +105,10 @@ export default function Members() {
   }
 
   async function remove(m: OrgMember) {
-    const self = m.user_id === session?.user.id
-    const question = self
-      ? `Remove yourself from ${org?.organization.name}? You will lose access immediately.`
-      : `Remove ${m.email} from ${org?.organization.name}?`
-    if (!window.confirm(question)) return
+    // Plainly what it is. Whether the login survives depends on whether they
+    // belong to another organization, and that is not a distinction an owner
+    // should have to hold in their head to answer this question.
+    if (!window.confirm(`Delete ${m.email}?`)) return
     setBusy(m.user_id)
     await call({ action: 'remove', org_id: orgId, user_id: m.user_id }, '')
     setBusy(null)
@@ -199,13 +199,16 @@ export default function Members() {
                   </td>
                   <td className="muted small">{new Date(m.created_at).toLocaleDateString()}</td>
                   <td>
-                    {mayManage(m) && (
+                    {/* Never on your own row. Owners remove other owners; the
+                        last one leaves when the operations team closes the
+                        account. The database refuses it either way. */}
+                    {mayManage(m) && m.user_id !== session?.user.id && (
                       <button
-                        className="secondary btn-sm"
+                        className="secondary btn-sm danger"
                         disabled={busy === m.user_id}
                         onClick={() => void remove(m)}
                       >
-                        Remove
+                        Delete
                       </button>
                     )}
                   </td>
@@ -222,9 +225,13 @@ export default function Members() {
           </table>
         )}
         <p className="muted small" style={{ marginTop: 8 }}>
-          The last owner cannot be removed or demoted — promote someone else first.
+          Deleting someone removes their access here, and their account too if this was their
+          only organization. You cannot delete yourself — another owner can. The last owner
+          cannot be demoted; promote someone else first.
         </p>
       </section>
+    
+      <ActivityLog />
     </>
   )
 }

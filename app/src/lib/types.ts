@@ -181,6 +181,19 @@ export interface OrgMember {
   created_at: string
 }
 
+/** One thing that happened, and who did it. Actor and subject are stored as
+ *  text as well as ids, so an entry still reads correctly after the account it
+ *  describes has been deleted — which is one of the things it records. */
+export interface ActivityEntry {
+  id: number
+  at: string
+  org_id: string | null
+  actor_email: string | null
+  action: string
+  subject: string | null
+  detail: Record<string, unknown>
+}
+
 /** Guest Badges staff, as distinct from a customer's own people. An operator
  *  holds no membership in any organization — that is what keeps them off a
  *  customer's Members tab as a fact rather than as a filter. */

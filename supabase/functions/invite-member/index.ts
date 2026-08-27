@@ -38,7 +38,7 @@ const ROLES = ["owner", "admin", "staff"] as const;
 type Role = (typeof ROLES)[number];
 
 /** The signed-in user behind this request, or null if the JWT is missing/bad. */
-async function callerId(req: Request): Promise<string | null> {
+async function callerOf(req: Request): Promise<{ id: string; email: string | null } | null> {
   const auth = req.headers.get("Authorization") ?? "";
   if (!auth.toLowerCase().startsWith("bearer ")) return null;
   const res = await fetch(`${SUPABASE_URL}/auth/v1/user`, {
@@ -46,7 +46,54 @@ async function callerId(req: Request): Promise<string | null> {
   });
   if (!res.ok) return null;
   const user = await res.json();
-  return typeof user?.id === "string" ? user.id : null;
+  return typeof user?.id === "string" ? { id: user.id, email: user.email ?? null } : null;
+}
+
+/** One entry in the activity log. Best effort by design: failing to record
+ *  something must not undo work that already happened, and telling the caller
+ *  their removal failed because a log write did would be reporting the wrong
+ *  thing entirely. It goes to the function log instead, where it is a bug
+ *  report rather than a user-facing error. */
+async function logActivity(entry: Record<string, unknown>): Promise<void> {
+  const res = await fetch(`${SUPABASE_URL}/rest/v1/activity_log`, {
+    method: "POST",
+    headers: restHeaders,
+    body: JSON.stringify(entry),
+  });
+  if (!res.ok) {
+    console.error(`activity_log write failed: ${res.status} ${(await res.text()).slice(0, 200)}`);
+  }
+}
+
+/** That account's email, read from auth rather than taken from the browser. */
+async function emailOf(userId: string): Promise<string | null> {
+  const res = await fetch(`${SUPABASE_URL}/auth/v1/admin/users/${userId}`, {
+    headers: { apikey: SERVICE_ROLE, Authorization: `Bearer ${SERVICE_ROLE}` },
+  });
+  if (!res.ok) return null;
+  return (await res.json())?.email ?? null;
+}
+
+/** How many organizations this account still belongs to, or -1 if the question
+ *  could not be answered — which is not the same as zero, and must never be
+ *  treated as it. */
+async function countMemberships(userId: string): Promise<number> {
+  const res = await fetch(
+    `${SUPABASE_URL}/rest/v1/memberships?user_id=eq.${userId}&select=org_id`,
+    { headers: restHeaders },
+  );
+  if (!res.ok) return -1;
+  return (await res.json()).length;
+}
+
+/** Whether this account is a Guest Badges operator. Null when unknown. */
+async function isOperator(userId: string): Promise<boolean | null> {
+  const res = await fetch(
+    `${SUPABASE_URL}/rest/v1/platform_admins?user_id=eq.${userId}&select=user_id`,
+    { headers: restHeaders },
+  );
+  if (!res.ok) return null;
+  return (await res.json()).length > 0;
 }
 
 /** The caller's role in one org, from the database — never from the request. */
@@ -89,7 +136,7 @@ Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
   if (req.method !== "POST") return json({ ok: false, error: "Method not allowed" }, 405);
 
-  const caller = await callerId(req);
+  const caller = await callerOf(req);
   if (!caller) return json({ ok: false, error: "Not signed in" }, 401);
 
   let body: Record<string, unknown>;
@@ -102,7 +149,7 @@ Deno.serve(async (req) => {
   const orgId = String(body.org_id ?? "").trim();
   if (!UUID_RE.test(orgId)) return json({ ok: false, error: "Invalid organization" }, 400);
 
-  const actor = await roleInOrg(caller, orgId);
+  const actor = await roleInOrg(caller.id, orgId);
   if (!mayManage(actor)) {
     // Same answer whether they are an admin, staff, or a stranger: never
     // confirm that an org exists to someone who has no business there.
@@ -120,9 +167,21 @@ Deno.serve(async (req) => {
     if (!current) return json({ ok: false, error: "That person is not a member" }, 404);
 
     if (action === "remove") {
-      if (!mayManage(actor)) {
-        return json({ ok: false, error: `Only an owner can remove an ${current}` }, 403);
+      // Owners remove other owners, never themselves. Removal deletes the
+      // account behind it when nothing else holds that account, so without
+      // this an owner destroys their own login by clicking the wrong row's
+      // button. The RLS policy enforces it too; this is the readable refusal
+      // in front of it.
+      if (userId === caller.id) {
+        return json({
+          ok: false,
+          error: "You cannot remove yourself. Another owner can, or ask the Guest Badges team.",
+        }, 403);
       }
+
+      // Read before the delete: afterwards there may be no account to ask.
+      const email = await emailOf(userId);
+
       // The last-owner trigger is the real guard; this is the friendly message.
       const del = await fetch(
         `${SUPABASE_URL}/rest/v1/memberships?org_id=eq.${orgId}&user_id=eq.${userId}`,
@@ -135,7 +194,43 @@ Deno.serve(async (req) => {
         }
         return json({ ok: false, error: "Could not remove that member." }, 500);
       }
-      return json({ ok: true, removed: userId });
+
+      // Nothing left holding this account? Then it has no purpose and no way
+      // in, and leaving it behind is how you get a login that belongs to
+      // nobody and an address you cannot re-invite.
+      //
+      // The operator check is load-bearing rather than defensive: operators
+      // deliberately hold no membership anywhere, so a rule keyed on "no
+      // organizations left" would delete every one of them. Both lookups
+      // return an explicit unknown on failure, and unknown never deletes.
+      let accountDeleted = false;
+      const remaining = await countMemberships(userId);
+      const operator = await isOperator(userId);
+      if (remaining === 0 && operator === false) {
+        const gone = await fetch(`${SUPABASE_URL}/auth/v1/admin/users/${userId}`, {
+          method: "DELETE",
+          headers: { apikey: SERVICE_ROLE, Authorization: `Bearer ${SERVICE_ROLE}` },
+        });
+        accountDeleted = gone.ok;
+        if (!gone.ok) {
+          console.error(
+            `account delete failed for ${userId}: ${gone.status} ${(await gone.text()).slice(0, 200)}`,
+          );
+        }
+      }
+
+      // One row, the whole story — including whether the account went with the
+      // membership, which is the part nobody can reconstruct afterwards.
+      await logActivity({
+        org_id: orgId,
+        actor_id: caller.id,
+        actor_email: caller.email,
+        action: "member.remove",
+        subject: email ?? userId,
+        detail: { role: current, account_deleted: accountDeleted },
+      });
+
+      return json({ ok: true, removed: userId, account_deleted: accountDeleted });
     }
 
     const nextRole = String(body.role ?? "") as Role;
@@ -154,6 +249,14 @@ Deno.serve(async (req) => {
       }
       return json({ ok: false, error: "Could not change that role." }, 500);
     }
+    await logActivity({
+      org_id: orgId,
+      actor_id: caller.id,
+      actor_email: caller.email,
+      action: "member.role",
+      subject: (await emailOf(userId)) ?? userId,
+      detail: { from: current, to: nextRole },
+    });
     return json({ ok: true, user_id: userId, role: nextRole });
   }
 
@@ -231,5 +334,13 @@ Deno.serve(async (req) => {
       ? `invited ${email} (new account ${userId})`
       : `added existing account ${email} (${userId}) — no email sent`,
   );
+  await logActivity({
+    org_id: orgId,
+    actor_id: caller.id,
+    actor_email: caller.email,
+    action: "member.add",
+    subject: email,
+    detail: { role, invited },
+  });
   return json({ ok: true, user_id: userId, email, role, invited });
 });

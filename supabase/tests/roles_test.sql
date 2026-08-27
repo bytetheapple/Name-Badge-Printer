@@ -136,6 +136,11 @@ begin
   if n <> 0 then raise exception 'ROLE FAILURE: staff read % API key(s)', n; end if;
   insert into public._role_results (acting_as, check_name) values ('staff', 'sees no API keys');
 
+  -- Who did what is the owner's business, not the desk's.
+  select count(*) into n from public.activity_log where org_id = org;
+  if n <> 0 then raise exception 'ROLE FAILURE: staff read % activity row(s)', n; end if;
+  insert into public._role_results (acting_as, check_name) values ('staff', 'sees no activity log');
+
   -- Device credentials are not staff business: invisible, and uncreatable.
   select count(*) into n from public.bridge_tokens where org_id = org;
   if n <> 0 then
@@ -493,13 +498,29 @@ begin
   end;
   insert into public._role_results (acting_as, check_name) values ('owner', 'cannot demote the last owner');
 
+  -- Self-removal is refused for every owner, not only the last one, and by the
+  -- policy rather than the trigger — so the statement matches nothing instead
+  -- of raising. Owners remove other owners; the last one leaves when the
+  -- operations team closes the account.
+  --
+  -- The rule exists because removal now deletes the account behind it: without
+  -- it, an owner destroys their own login by clicking the wrong row.
+  delete from public.memberships
+  where org_id = org and user_id = '0a2a0000-0000-4000-8000-000000000001';
+  get diagnostics n = row_count;
+  if n <> 0 then raise exception 'ROLE FAILURE: an owner removed their own membership'; end if;
+  insert into public._role_results (acting_as, check_name) values ('owner', 'cannot remove themselves');
+
+  -- The activity log is readable by the owner and writable by nobody. The
+  -- absence of an insert grant is the whole of the tamper evidence, so it gets
+  -- an assertion rather than a comment.
   begin
-    delete from public.memberships
-    where org_id = org and user_id = '0a2a0000-0000-4000-8000-000000000001';
-    raise exception 'ROLE FAILURE: the last owner deleted their own membership';
-  exception when restrict_violation then null;
+    insert into public.activity_log (org_id, action, subject)
+    values (org, 'member.forged', 'not-a-real-event');
+    raise exception 'ROLE FAILURE: an owner wrote to the activity log';
+  exception when insufficient_privilege then null;
   end;
-  insert into public._role_results (acting_as, check_name) values ('owner', 'cannot remove the last owner');
+  insert into public._role_results (acting_as, check_name) values ('owner', 'cannot write the activity log');
 end;
 $$;
 
