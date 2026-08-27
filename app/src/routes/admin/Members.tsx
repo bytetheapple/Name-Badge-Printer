@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState, type FormEvent } from 'react'
 import { supabase } from '../../lib/supabase'
-import { invokeFn } from '../../lib/functions'
+import { invokeFn, type FnResult } from '../../lib/functions'
 import { useAuth } from '../../lib/auth'
 import { useOrg } from '../../lib/org'
 import type { OrgMember, Role } from '../../lib/types'
@@ -41,7 +41,12 @@ export default function Members() {
   /** Owners manage any role; admins only staff. Mirrors the RLS policies. */
   const mayManage = (m: OrgMember) => isOwner || m.role === 'staff'
 
-  async function call(body: Record<string, unknown>, success: string) {
+  async function call(
+    body: Record<string, unknown>,
+    //: A function when the message depends on what actually happened, which
+    //: for an invitation it does — see invite() below.
+    success: string | ((d: FnResult) => string),
+  ) {
     setNotice(null)
     setError(null)
     const data = await invokeFn('invite-member', body)
@@ -51,7 +56,7 @@ export default function Members() {
       setError(data.detail ? `${data.error} — ${data.detail}` : (data.error ?? 'Something went wrong.'))
       return false
     }
-    setNotice(success)
+    setNotice(typeof success === 'function' ? success(data) : success)
     await load()
     await reloadOrgs()
     return true
@@ -62,9 +67,16 @@ export default function Members() {
     if (!orgId) return
     setBusy('invite')
     const address = email.trim().toLowerCase()
-    const ok = await call(
-      { org_id: orgId, email: address, role },
-      `Invited ${address} as ${role}. They will get an email to set a password.`,
+    // Which of the two things happened, rather than a promise of an email.
+    // Someone who already has an account is simply added and gets nothing —
+    // saying "they will get an email" then sends the person who invited them
+    // to look for a message that was never sent, and makes a stale account
+    // look like a mail failure.
+    const ok = await call({ org_id: orgId, email: address, role }, (d) =>
+      d.invited
+        ? `Invited ${address} as ${role}. They will get an email to set a password.`
+        : `${address} already had an account and was added as ${role}. No email was sent — ` +
+          `they sign in with their existing password.`,
     )
     setBusy(null)
     if (ok) {
