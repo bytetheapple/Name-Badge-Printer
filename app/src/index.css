@@ -269,6 +269,15 @@ button.secondary {
   gap: 10px;
 }
 /* Only rendered for users who belong to more than one organization. */
+.status-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+.status-row .status-card {
+  flex: 1 1 240px;
+  max-width: 340px;
+}
 .org-switcher {
   font-size: 0.85rem;
   padding: 2px 6px;
