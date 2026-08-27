@@ -46,18 +46,22 @@ export default function AdminLayout() {
     return <Navigate to="/admin/entries" replace />
   }
 
-  // Signed in, but not a member of anything: an invited account whose
-  // membership has not been created yet, or one that was removed.
-  //
-  // A platform admin lands on the console instead. Handing an organization
-  // over means promoting the real owner and removing yourself, so belonging to
-  // nothing is where that flow ends — being locked out at that point would be
-  // absurd, and every org-scoped route below would render against a null id.
-  if (!orgId && isPlatformAdmin) {
-    return <Navigate to={OPS_HOME} replace />
-  }
+  // Below here an organization is required — but Operations belongs to none,
+  // and an operator holds no memberships at all, which is the entire point of
+  // them. So this whole branch is skipped in Operations. Without that, an
+  // operator standing on OPS_HOME with no memberships is redirected to
+  // OPS_HOME, which returns a redirect instead of the layout, and the page
+  // renders nothing at all — no header, no nav, forever.
+  if (!orgId && !inOps) {
+    // Handing an organization over means promoting the real owner and removing
+    // yourself, so belonging to nothing is where that flow ends. An operator
+    // goes to Operations rather than being locked out of their own app.
+    if (isPlatformAdmin) {
+      return <Navigate to={OPS_HOME} replace />
+    }
 
-  if (!orgId) {
+    // Signed in but a member of nothing: an invited account whose membership
+    // has not been created yet, or one that was removed.
     return (
       <main className="page">
         <h1>No organization</h1>
@@ -83,7 +87,7 @@ export default function AdminLayout() {
           {(orgs.length > 1 || isPlatformAdmin) && (
             <select
               className="org-switcher"
-              value={inOps ? OPS : orgId}
+              value={inOps ? OPS : (orgId ?? '')}
               onChange={(e) => choose(e.target.value)}
               aria-label="Switch organization"
             >
