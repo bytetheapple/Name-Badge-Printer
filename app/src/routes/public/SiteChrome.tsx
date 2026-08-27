@@ -14,7 +14,7 @@ export function SiteHeader() {
         Guest&nbsp;Badges
       </Link>
       <a href="/#how">How it works</a>
-      <a href="/#features">Features</a>
+      <a href="/#uses">Use cases</a>
       <Link to="/pricing">Pricing</Link>
       <Link to="/admin">Sign in</Link>
     </nav>

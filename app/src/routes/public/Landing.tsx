@@ -67,29 +67,74 @@ export default function Landing() {
           </div>
         </section>
 
-        <section id="features">
-          <h2>What it does</h2>
+        <section id="uses">
+          <h2>Three reasons congregations put one in</h2>
           <p className="mk-sub">
-            Built for the people who actually run a welcome desk — and for the office that has to
-            live with whatever the welcome desk collects.
+            They overlap — the same kiosk does all three — but they are different jobs, and most
+            congregations start with one of them in mind.
+          </p>
+          <div className="mk-cases">
+            <div className="mk-case">
+              <p className="mk-eyebrow">Every week</p>
+              <h3>Everyone wearing their name</h3>
+              <p>
+                People know each other by face and not by name, and nobody wants to admit it. A
+                badge everyone is wearing quietly solves that — without a marker, a sheet of peel-off
+                labels, or somebody's handwriting.
+              </p>
+              <ul>
+                <li>Members print their own in a few seconds on the way in</li>
+                <li>Legible, consistent, and with your logo rather than a Sharpie</li>
+                <li>An optional pronouns field you can switch on for Pride or any event</li>
+                <li>Families sign in together and every badge prints at once</li>
+              </ul>
+            </div>
+
+            <div className="mk-case">
+              <p className="mk-eyebrow">Visitors</p>
+              <h3>Knowing who is new, and being able to follow up</h3>
+              <p>
+                A visitor's badge tells the room to go and say hello. What they type while printing
+                it tells the office who came — so a first visit can turn into a second one.
+              </p>
+              <ul>
+                <li>Visitors are asked for contact details; members are not asked again</li>
+                <li>An optional photo, so staff can put a face to the name afterwards</li>
+                <li>A record of who visited and when, filterable and exportable</li>
+                <li>Details flow into your membership system without retyping</li>
+              </ul>
+            </div>
+
+            <div className="mk-case">
+              <p className="mk-eyebrow">Events</p>
+              <h3>Checking in a ticketed event</h3>
+              <p>
+                For a concert, a gala, or a High Holy Day service with reserved seating: check
+                people in against the list you already have, and print their badge as they arrive.
+              </p>
+              <ul>
+                <li>Arrivals are matched against your list of ticket holders</li>
+                <li>Anyone who did not pre-register is flagged as they check in</li>
+                <li>You end the night knowing who actually came, not who bought</li>
+                <li>The same kiosk, switched to the event for the evening</li>
+              </ul>
+            </div>
+          </div>
+        </section>
+
+        <section id="features">
+          <h2>What else it does</h2>
+          <p className="mk-sub">
+            The parts nobody thinks about until the morning they need them.
           </p>
           <div className="mk-features">
             <div className="mk-feature">
-              <h3>Simple and self-service</h3>
+              <h3>Set up the way you want</h3>
               <ul>
-                <li>Works on any phone through a QR code, with nothing to install</li>
-                <li>Separate member and visitor flows, each asking only what it needs</li>
-                <li>Family sign-in prints a badge for everyone in the household at once</li>
-                <li>Reprints in one tap when a badge comes out wrong</li>
-              </ul>
-            </div>
-            <div className="mk-feature">
-              <h3>Warm and inclusive</h3>
-              <ul>
-                <li>An optional pronouns field you can switch on for Pride or any event</li>
                 <li>Your congregation's own logo and wording on every badge</li>
-                <li>Optional guest photo, saved to a Drive folder you choose</li>
                 <li>Different wording per kiosk — a lobby desk and a social hall can differ</li>
+                <li>You choose what each form asks for, and what it does not</li>
+                <li>Reprints in one tap when a badge comes out wrong</li>
               </ul>
             </div>
             <div className="mk-feature">
@@ -116,10 +161,12 @@ export default function Landing() {
         <section>
           <h2>How it is put together</h2>
           <p className="mk-sub">
-            The part that matters on a busy morning: a small print server sits on your own network
-            and drives the printer directly, so badges keep coming out whether or not your internet
-            is having a good day. We build that server, set it up for your congregation, and ship
-            it ready to plug in.
+            The part that matters on a busy morning: a print server about the size of a deck of
+            playing cards sits on your own network and drives the printers directly, so badges keep
+            coming out whether or not your internet is having a good day. We build it, set it up
+            for your congregation, and ship it ready to plug in. The printer joins your wi-fi, so
+            the only cable it needs is power — and it can sit wherever the badges should come out
+            rather than wherever there happens to be a network socket.
           </p>
           <div className="mk-features">
             <div className="mk-feature">

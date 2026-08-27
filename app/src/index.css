@@ -1743,3 +1743,40 @@ button.danger:disabled {
 .mk-foot .mk-foot-end {
   margin-left: auto;
 }
+
+/* Three use cases, given more weight than a feature bullet: they are the
+   reason a congregation buys this, and they overlap enough that running them
+   together as prose blurs all three. */
+.mk-cases {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 20px;
+}
+.mk-case {
+  border: 1px solid var(--mk-edge);
+  border-radius: 12px;
+  background: var(--mk-panel);
+  padding: 24px;
+}
+.mk-case .mk-eyebrow {
+  margin-bottom: 8px;
+}
+.mk-case h3 {
+  font-size: 1.12rem;
+  color: var(--text-h);
+  margin: 0 0 10px;
+}
+.mk-case > p {
+  color: var(--text);
+  font-size: 0.96rem;
+  margin: 0 0 12px;
+}
+.mk-case ul {
+  margin: 0;
+  padding-left: 20px;
+  color: var(--muted);
+  font-size: 0.92rem;
+}
+.mk-case li {
+  margin-bottom: 6px;
+}

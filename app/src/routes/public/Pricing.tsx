@@ -49,8 +49,9 @@ export default function Pricing() {
                 <td>
                   Print server
                   <span className="mk-item-note">
-                    A small computer that drives the printers and talks to the service. We build
-                    it, set it up for your congregation, and ship it ready to plug in.
+                    A computer the size of a deck of playing cards that drives the printers and
+                    talks to the service. We build it, set it up for your congregation, and ship it
+                    ready to plug in. One covers the whole building.
                   </span>
                 </td>
                 <td>$125</td>
@@ -65,7 +66,9 @@ export default function Pricing() {
                 <td>
                   Label printer
                   <span className="mk-item-note">
-                    Brother QL-820NWB. Widely available, and you buy it yourself.
+                    Brother QL-820NWB. It joins your wi-fi, so the only cable it needs is power and
+                    it can go wherever the badges should come out. Widely available, and you buy it
+                    yourself.
                   </span>
                 </td>
                 <td>$250</td>
