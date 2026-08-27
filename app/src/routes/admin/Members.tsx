@@ -46,7 +46,9 @@ export default function Members() {
     setError(null)
     const data = await invokeFn('invite-member', body)
     if (!data.ok) {
-      setError(data.error ?? 'Something went wrong.')
+      // `detail` carries what the mail server actually said, which is the only
+      // part anyone can act on when an invitation fails to send.
+      setError(data.detail ? `${data.error} — ${data.detail}` : (data.error ?? 'Something went wrong.'))
       return false
     }
     setNotice(success)
