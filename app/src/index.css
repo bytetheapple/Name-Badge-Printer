@@ -1780,3 +1780,14 @@ button.danger:disabled {
 .mk-case li {
   margin-bottom: 6px;
 }
+
+/* Footnote small print, sitting directly under the table it qualifies rather
+   than in a section of its own at the foot of the page — a caveat about a
+   price is only useful next to the price. */
+.mk-fine {
+  color: var(--muted);
+  font-size: 0.87rem;
+  line-height: 1.5;
+  max-width: 68ch;
+  margin: 4px 0 26px;
+}

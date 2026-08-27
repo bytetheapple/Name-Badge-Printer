@@ -162,11 +162,11 @@ export default function Landing() {
           <h2>How it is put together</h2>
           <p className="mk-sub">
             The part that matters on a busy morning: a print server about the size of a deck of
-            playing cards sits on your own network and drives the printers directly, so badges keep
-            coming out whether or not your internet is having a good day. We build it, set it up
-            for your congregation, and ship it ready to plug in. The printer joins your wi-fi, so
-            the only cable it needs is power — and it can sit wherever the badges should come out
-            rather than wherever there happens to be a network socket.
+            playing cards sits in your wiring closet and drives the printers directly, so badges
+            keep coming out whether or not your internet is having a good day. We provide it fully
+            configured and manage it remotely, so it arrives ready to plug into your network. The
+            printer joins your wi-fi, so the only cable it needs is power — and it can sit wherever
+            the badges should come out rather than wherever there happens to be a network socket.
           </p>
           <div className="mk-features">
             <div className="mk-feature">

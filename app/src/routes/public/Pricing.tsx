@@ -5,7 +5,10 @@ import { SiteFooter, SiteHeader } from './SiteChrome'
  * What it costs.
  *
  * The figures come from the hardware bill of materials in
- * docs/marketing-onepager.html. Two deliberate departures from that document:
+ * docs/marketing-onepager.html, except the print server, which is $150 here
+ * against $125 there — it is the one item bought from us rather than from a
+ * supplier, so it is a price rather than an estimate. Two further departures
+ * from that document:
  *
  *   * It listed cloud hosting at $10/month as a cost to the congregation. That
  *     was written when a congregation would run the whole thing itself. As a
@@ -27,9 +30,9 @@ export default function Pricing() {
           <p className="mk-eyebrow">Pricing</p>
           <h1>Buy the hardware once.</h1>
           <p className="mk-lede">
-            The equipment is ordinary, off-the-shelf, and yours. You buy it from whoever you like,
-            it sits in your building, and nothing about it is locked to us. The only thing you pay
-            us for is the service that runs it.
+            The printer and the labels are ordinary stock items you buy from whoever you like. The
+            print server comes from us, configured and managed. All of it lives in your building,
+            and the hardware is yours.
           </p>
         </div>
       </div>
@@ -38,25 +41,32 @@ export default function Pricing() {
         <section>
           <h2>Equipment</h2>
           <p className="mk-sub">
-            One print server covers your whole building. Everything after that is per kiosk — per
+            One print server covers your whole campus. Everything after that is per kiosk — per
             door where you want badges to come out.
           </p>
 
           <table className="mk-price">
-            <caption>One-time, for the building</caption>
+            <caption>One-time, per campus</caption>
             <tbody>
               <tr>
                 <td>
                   Print server
                   <span className="mk-item-note">
-                    A computer the size of a deck of playing cards that drives the printers and
-                    talks to the service. We build it, set it up for your congregation, and ship it
-                    ready to plug in. One covers the whole building.
+                    A computer the size of a deck of playing cards that sits in your wiring closet,
+                    drives the printers, and talks to the service. We provide it fully configured
+                    and manage it remotely. It arrives ready to plug into your network. Bought from
+                    Guest Badges.
                   </span>
                 </td>
-                <td>$125</td>
+                <td>$150</td>
               </tr>
             </tbody>
+            <tfoot>
+              <tr>
+                <td>Per campus</td>
+                <td>$150</td>
+              </tr>
+            </tfoot>
           </table>
 
           <table className="mk-price">
@@ -67,31 +77,38 @@ export default function Pricing() {
                   Label printer
                   <span className="mk-item-note">
                     Brother QL-820NWB. It joins your wi-fi, so the only cable it needs is power and
-                    it can go wherever the badges should come out. Widely available, and you buy it
-                    yourself.
+                    it can go wherever the badges should come out.
                   </span>
                 </td>
-                <td>$250</td>
+                <td>$250*</td>
               </tr>
               <tr>
                 <td>
                   Wall-mount bracket
                   <span className="mk-item-note">Optional, for a tidy lobby installation.</span>
                 </td>
-                <td>$100</td>
+                <td>$100*</td>
               </tr>
             </tbody>
             <tfoot>
               <tr>
                 <td>Per kiosk</td>
-                <td>$350</td>
+                <td>$350*</td>
               </tr>
             </tfoot>
           </table>
 
+          <p className="mk-fine">
+            * Equipment prices are approximate, in US dollars. We do not sell the printer or the
+            labels, so you will pay whatever your supplier charges. The printer and labels are
+            broadly available stock Brother items, and if you ever stop using the service the
+            hardware is still yours.
+          </p>
+
           <p className="mk-sub">
-            So one door comes to about <strong>$475</strong> to set up, and a second door in the
-            same building adds <strong>$350</strong> — the print server is already there.
+            So the initial deployment is about <strong>$500</strong> to set up with a single
+            printer kiosk. Additional printer kiosks cost <strong>$200–$400</strong> depending on
+            how you configure them.
           </p>
         </section>
 
@@ -137,16 +154,10 @@ export default function Pricing() {
         </section>
 
         <section>
-          <h2>The small print</h2>
+          <h2>Not sure how many kiosks you need?</h2>
           <p className="mk-sub">
-            Equipment prices are indicative, in US dollars, and move with the market — we do not
-            sell the printer or the labels, so you will pay whatever your supplier charges on the
-            day. Nothing here is proprietary: the printer is a stock Brother model, the labels are
-            a standard size, and if you ever stop using the service the hardware is still yours.
-          </p>
-          <p className="mk-sub">
-            Not sure how many kiosks you need? <Link to="/#how">Look at how it works</Link>, then
-            tell us how many doors people arrive through and we will help you work it out.
+            <Link to="/#how">Look at how it works</Link>, then tell us how many doors people arrive
+            through and we will help you work it out.
           </p>
         </section>
 
