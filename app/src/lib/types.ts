@@ -169,8 +169,6 @@ export interface PlatformOrg {
   entries_30d: number
   bridge_last_seen: string | null
   live_bridges: number
-  /** A platform admin is still a member — an onboarding not yet handed over. */
-  operator_attached: boolean
 }
 
 /** A member of an organization, as returned by the org_members() function. */

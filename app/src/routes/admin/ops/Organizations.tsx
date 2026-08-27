@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { supabase } from '../../../lib/supabase'
 import { useOrg } from '../../../lib/org'
 import { lastSeenLabel } from '../../../lib/secrets'
@@ -29,7 +30,8 @@ export default function Organizations() {
   //: dialog cannot outlive the row it was opened for.
   const [doomed, setDoomed] = useState<PlatformOrg | null>(null)
   const [typedSlug, setTypedSlug] = useState('')
-  const { reload } = useOrg()
+  const { reload, switchOrg } = useOrg()
+  const navigate = useNavigate()
 
   const load = useCallback(async () => {
     const { data, error } = await supabase.rpc('platform_overview')
@@ -59,12 +61,16 @@ export default function Organizations() {
       setError(error.message)
       return
     }
-    setNotice(`${name.trim()} created. You are its owner — hand that over once it is set up.`)
+    setNotice(
+      `${name.trim()} created. Open it to set up printers and integrations, then invite their ` +
+        `first owner from the Members tab.`,
+    )
     setSlug('')
     setName('')
     setCreating(false)
     await load()
-    // The org switcher is built from memberships, and there is a new one.
+    // The switcher lists every organization for an operator, and there is a
+    // new one.
     await reload()
   }
 
@@ -139,8 +145,7 @@ export default function Organizations() {
     setDoomed(null)
     setTypedSlug('')
     await load()
-    // The org switcher is built from memberships, and one just disappeared —
-    // possibly the one currently selected.
+    // One just disappeared — possibly the one currently selected.
     await reload()
   }
 
@@ -196,10 +201,11 @@ export default function Organizations() {
                     {o.name}
                     <div className="muted small">
                       <code>{o.slug}</code>
-                      {/* The cost of making the creator the owner: without
-                          this, an onboarding never handed over looks exactly
-                          like one that was. */}
-                      {o.operator_attached && ' · not handed over'}
+                      {/* Built and given to nobody. This replaced the old
+                          operator_attached flag: creating an organization no
+                          longer makes you its owner, so an unhanded-over
+                          tenant is simply one with no members. */}
+                      {o.members === 0 && ' · nobody invited yet'}
                     </div>
                   </td>
                   <td>
@@ -238,6 +244,18 @@ export default function Organizations() {
                     </label>
                   </td>
                   <td className="actions-cell">
+                    {/* First, because it is now the common one: setting a
+                        congregation up happens inside the organization, and
+                        an operator is no longer a member of it. */}
+                    <button
+                      className="secondary btn-sm"
+                      onClick={() => {
+                        switchOrg(o.org_id)
+                        navigate('/admin/entries')
+                      }}
+                    >
+                      Open
+                    </button>{' '}
                     <button
                       className="secondary btn-sm"
                       disabled={busy === o.org_id}

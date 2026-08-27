@@ -129,7 +129,13 @@ $$;
 -- ------------------------------------------------- the cross-tenant view
 -- One row per organization with enough to answer "is this customer all right?"
 -- without switching into their account. Platform admins only.
-create or replace function public.platform_overview()
+-- Dropped first so this file survives being re-applied after a later migration
+-- has changed the shape of this function: `create or replace` cannot alter a
+-- returns-table signature, and a migration set that cannot be re-run in order
+-- is one you have to remember the history of. A no-op on a fresh database.
+drop function if exists public.platform_overview();
+
+create function public.platform_overview()
 returns table (
   org_id              uuid,
   slug                text,

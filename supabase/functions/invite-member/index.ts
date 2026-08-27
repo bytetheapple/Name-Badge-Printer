@@ -149,7 +149,12 @@ Deno.serve(async (req) => {
   const orgId = String(body.org_id ?? "").trim();
   if (!UUID_RE.test(orgId)) return json({ ok: false, error: "Invalid organization" }, 400);
 
-  const actor = await roleInOrg(caller.id, orgId);
+  // An operator holds no membership anywhere — that is the point of them — so
+  // resolving the caller's role from `memberships` alone answers null and
+  // refuses the person who is setting the organization up. Operators are
+  // owner-equivalent inside any tenant, matching auth_org_role().
+  let actor = await roleInOrg(caller.id, orgId);
+  if (!actor && (await isOperator(caller.id)) === true) actor = "owner";
   if (!mayManage(actor)) {
     // Same answer whether they are an admin, staff, or a stranger: never
     // confirm that an org exists to someone who has no business there.
