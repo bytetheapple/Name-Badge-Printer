@@ -181,6 +181,18 @@ export interface OrgMember {
   created_at: string
 }
 
+/** Guest Badges staff, as distinct from a customer's own people. An operator
+ *  holds no membership in any organization — that is what keeps them off a
+ *  customer's Members tab as a fact rather than as a filter. */
+export type OperatorRole = 'owner' | 'support'
+
+export interface Operator {
+  user_id: string
+  email: string
+  role: OperatorRole
+  created_at: string
+}
+
 export interface Printer {
   id: string
   org_id: string

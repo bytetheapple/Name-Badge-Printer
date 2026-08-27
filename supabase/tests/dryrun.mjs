@@ -462,6 +462,63 @@ try {
   else bad(`negative control failed for the wrong reason: ${msg}`)
 }
 
+console.log('— operator role test (operators) —')
+const OPS = readFileSync(path.join(REPO, 'supabase/tests/operators_test.sql'), 'utf8')
+try {
+  const res = await db.exec(OPS)
+  const rows = res.filter((r) => r.rows?.length).pop()?.rows ?? []
+  if (!rows.length) bad('operators_test.sql produced no result table')
+  else if (rows.some((r) => r.result !== 'pass')) bad('operators_test.sql reported a non-pass row')
+  else if (rows.at(-1).check_name !== 'ALL CHECKS PASSED') bad('operators_test.sql did not end with ALL CHECKS PASSED')
+  else ok(`operators_test.sql passed, ${rows.length} checks reported in its result table`)
+} catch (e) {
+  bad('operators_test.sql', e)
+  await db.exec('rollback').catch(() => {})
+}
+
+console.log('— negative control: the operator role must actually gate something —')
+// The whole reason for the role column is that `status` once sat unread while
+// suspension silently did nothing. Take the owner check out of
+// delete_organization and a support operator must be caught deleting a tenant.
+const roleBlindOps = await build((sql, f) =>
+  f.includes('_mt_operators')
+    ? sql.replace(
+        `  if not coalesce(public.is_platform_owner(), false) then
+    raise exception 'deleting an organization is reserved for an owner; suspending is not'
+      using errcode = 'insufficient_privilege';
+  end if;`,
+        '')
+    : sql)
+try {
+  await roleBlindOps.exec(OPS)
+  bad('negative control: a support operator deleted an organization and the test PASSED')
+} catch (e) {
+  const msg = String(e.message).split('\n')[0]
+  if (msg.includes('support operator deleted an organization')) ok(`without the owner check it is caught: "${msg}"`)
+  else bad(`operator negative control failed for the wrong reason: ${msg}`)
+}
+
+console.log('— negative control: without the last-owner guard, the console locks itself out —')
+// platform_admins has no insert policy, so an account that demotes the last
+// owner cannot promote anyone back. Recovery would mean the SQL editor.
+const noLastOwner = await build((sql, f) =>
+  f.includes('_mt_operators')
+    ? sql.replace(
+        `  if v_current = 'owner' and p_role <> 'owner'
+     and (select count(*) from public.platform_admins where role = 'owner') = 1 then
+    raise exception 'this is the last owner; promote someone else first';
+  end if;`,
+        '')
+    : sql)
+try {
+  await noLastOwner.exec(OPS)
+  bad('negative control: the last owner demoted themselves and the test PASSED')
+} catch (e) {
+  const msg = String(e.message).split('\n')[0]
+  if (msg.includes('sole owner demoted themselves')) ok(`without the guard it is caught: "${msg}"`)
+  else bad(`last-owner negative control failed for the wrong reason: ${msg}`)
+}
+
 console.log('— negative control: without the trigger, an owner grants themselves a paid feature —')
 // A2's "owner updates organization" policy is column-blind, so the guard is the
 // only thing standing between an owner and the capability flag on their own row.
