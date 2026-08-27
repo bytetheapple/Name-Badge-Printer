@@ -9,12 +9,31 @@ import { supabase } from '../../lib/supabase'
  */
 export default function SetPassword() {
   const [ready, setReady] = useState(false)
+  //: Why the link did not work, taken from the URL hash. Without this the page
+  //: waits forever for a session that is never coming.
+  const [linkError, setLinkError] = useState<string | null>(null)
   const [password, setPassword] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   const navigate = useNavigate()
 
   useEffect(() => {
+    // A rejected link comes back as error parameters in the hash, and
+    // supabase-js simply never produces a session — no throw, no event. The
+    // reason is sitting in the URL, so read it rather than waiting on
+    // something that will not arrive.
+    const hash = new URLSearchParams(window.location.hash.replace(/^#/, ''))
+    const code = hash.get('error_code')
+    const description = hash.get('error_description')
+    if (code || description) {
+      setLinkError(
+        code === 'otp_expired'
+          ? 'This link has already been used or has expired. Invitation and ' +
+            'password links work only once — ask for a new one.'
+          : (description ?? 'That link could not be used.'),
+      )
+    }
+
     supabase.auth.getSession().then(({ data }) => {
       if (data.session) setReady(true)
     })
@@ -35,6 +54,21 @@ export default function SetPassword() {
       return
     }
     navigate('/admin', { replace: true })
+  }
+
+  if (linkError) {
+    return (
+      <main className="page">
+        <h1>That link did not work</h1>
+        <div className="error">{linkError}</div>
+        <p className="muted">
+          Some mail apps open links in the background to check them, which uses the link up
+          before you get to it. Asking for a fresh one and opening it straight away usually
+          works.
+        </p>
+        <a href="/admin/login">Go to sign in</a>
+      </main>
+    )
   }
 
   if (!ready) {
