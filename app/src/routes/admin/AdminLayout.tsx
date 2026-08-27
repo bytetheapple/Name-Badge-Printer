@@ -92,13 +92,18 @@ export default function AdminLayout() {
                   organizations and no headings to wonder about. */}
               {isPlatformAdmin ? (
                 <>
-                  <optgroup label="Customer organizations">
-                    {orgs.map((m) => (
-                      <option key={m.org_id} value={m.org_id}>
-                        {m.organization.name}
-                      </option>
-                    ))}
-                  </optgroup>
+                  {/* Omitted entirely when empty, which is the normal state
+                      for an operator: they hold no memberships, and an empty
+                      group heading reads as something failing to load. */}
+                  {orgs.length > 0 && (
+                    <optgroup label="Customer organizations">
+                      {orgs.map((m) => (
+                        <option key={m.org_id} value={m.org_id}>
+                          {m.organization.name}
+                        </option>
+                      ))}
+                    </optgroup>
+                  )}
                   <optgroup label="Guest Badges">
                     <option value={OPS}>Operations</option>
                   </optgroup>
