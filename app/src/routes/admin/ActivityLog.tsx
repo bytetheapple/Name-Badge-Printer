@@ -1,29 +1,10 @@
 import { useCallback, useEffect, useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import { useOrg } from '../../lib/org'
+import { describeActivity } from '../../lib/activity'
 import type { ActivityEntry } from '../../lib/types'
 
 const SHOWN = 50
-
-/** Plain English for one entry. The action names are stable identifiers meant
- *  for querying; this is the part a person reads. */
-function describe(e: ActivityEntry): string {
-  const d = e.detail ?? {}
-  switch (e.action) {
-    case 'member.add':
-      return d.invited
-        ? `invited ${e.subject} as ${d.role}`
-        : `added ${e.subject} as ${d.role} (existing account, no email sent)`
-    case 'member.role':
-      return `changed ${e.subject} from ${d.from} to ${d.to}`
-    case 'member.remove':
-      return d.account_deleted
-        ? `deleted ${e.subject} — their account was removed as well`
-        : `removed ${e.subject} from this organization`
-    default:
-      return `${e.action} ${e.subject ?? ''}`.trim()
-  }
-}
 
 /**
  * Who changed what, for one organization.
@@ -81,7 +62,7 @@ export default function ActivityLog() {
               <tr key={e.id}>
                 <td className="small">{new Date(e.at).toLocaleString()}</td>
                 <td className="small">{e.actor_email ?? <span className="muted">—</span>}</td>
-                <td className="small">{describe(e)}</td>
+                <td className="small">{describeActivity(e)}</td>
               </tr>
             ))}
             {!rows.length && (

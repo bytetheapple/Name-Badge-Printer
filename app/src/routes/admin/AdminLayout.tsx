@@ -145,6 +145,7 @@ export default function AdminLayout() {
               <NavLink to={OPS_HOME}>Organizations</NavLink>
               <NavLink to="/admin/ops/fleet">Fleet</NavLink>
               <NavLink to="/admin/ops/operators">Operators</NavLink>
+              <NavLink to="/admin/ops/activity">Activity</NavLink>
             </>
           ) : (
             <>

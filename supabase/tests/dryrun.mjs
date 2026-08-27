@@ -508,6 +508,26 @@ try {
   else bad(`operator negative control failed for the wrong reason: ${msg}`)
 }
 
+console.log('— negative control: an unrecorded action must FAIL the operator test —')
+// A trigger that silently does nothing is indistinguishable from one that
+// works, which is the whole reason the log is asserted rather than assumed.
+const unlogged = await build((sql, f) =>
+  f.includes('_mt_operator_activity')
+    ? sql.replace(
+        `create trigger organizations_activity
+  after insert or update on public.organizations
+  for each row execute function public.log_organization_activity();`,
+        'select 1;')
+    : sql)
+try {
+  await unlogged.exec(OPS)
+  bad('negative control: org actions went unlogged and the test PASSED')
+} catch (e) {
+  const msg = String(e.message).split('\n')[0]
+  if (msg.includes('logged 0 row(s)')) ok(`an unrecorded action is caught: "${msg}"`)
+  else bad(`activity negative control failed for the wrong reason: ${msg}`)
+}
+
 console.log('— negative control: without the last-owner guard, the console locks itself out —')
 // platform_admins has no insert policy, so an account that demotes the last
 // owner cannot promote anyone back. Recovery would mean the SQL editor.

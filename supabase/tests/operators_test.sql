@@ -119,6 +119,20 @@ begin
   insert into public._op_results (acting_as, check_name)
     values ('support', 'is owner-equivalent inside any org');
 
+  -- Both of those should be on the record. A trigger that silently does
+  -- nothing looks exactly like one that works, so the log is asserted rather
+  -- than assumed.
+  select count(*) into n from public.activity_log
+   where org_id = fresh and action = 'org.create';
+  if n <> 1 then raise exception 'ROLE FAILURE: creating an org logged % row(s)', n; end if;
+  select count(*) into n from public.activity_log
+   where org_id = victim and action = 'org.status';
+  if n < 2 then
+    raise exception 'ROLE FAILURE: suspend and resume logged % row(s), expected 2', n;
+  end if;
+  insert into public._op_results (acting_as, check_name)
+    values ('support', 'org actions reach the activity log');
+
   -- But not the irreversible one.
   begin
     perform public.delete_organization(victim, 'op-test-victim');
@@ -181,6 +195,7 @@ declare
   support constant uuid := '0c0c0000-0000-4000-8000-000000000002';
   victim  constant uuid := '0c0c0000-0000-4000-8000-00000000000a';
   gone jsonb;
+  n bigint;
 begin
   if not public.is_platform_owner() then
     raise exception 'TEST BROKEN: expected to be acting as an owner';
@@ -221,6 +236,20 @@ begin
   end if;
   insert into public._op_results (acting_as, check_name) values ('owner', 'can remove another operator');
 
+  -- Operator changes are platform business: null org_id, so no customer's
+  -- owner ever sees the shape of the team supporting them.
+  -- By subject: this file's own setup empties platform_admins, and those
+  -- removals are logged too, which is correct and not what is being asserted.
+  select count(*) into n from public.activity_log
+   where org_id is null and action = 'operator.remove'
+     and subject = 'op-test-support@example.invalid';
+  if n <> 1 then raise exception 'ROLE FAILURE: removing an operator logged % row(s)', n; end if;
+  select count(*) into n from public.activity_log
+   where org_id is null and action = 'operator.role';
+  if n < 1 then raise exception 'ROLE FAILURE: re-roling an operator was not logged'; end if;
+  insert into public._op_results (acting_as, check_name)
+    values ('owner', 'operator changes are logged against no org');
+
   -- And the irreversible thing an owner is for.
   gone := public.delete_organization(victim, 'op-test-victim');
   if gone->>'slug' <> 'op-test-victim' then
@@ -230,6 +259,17 @@ begin
     raise exception 'ROLE FAILURE: the organization survived its own deletion';
   end if;
   insert into public._op_results (acting_as, check_name) values ('owner', 'can delete an organization');
+
+  -- The record of a deletion must outlive the thing deleted. org_id cascades,
+  -- so this row is written with null — a row blaming the deletion on the
+  -- deleted organization would delete itself.
+  select count(*) into n from public.activity_log
+   where org_id is null and action = 'org.delete' and subject = 'Operator Test Victim';
+  if n <> 1 then
+    raise exception 'ROLE FAILURE: the deletion left % record(s) behind, expected 1', n;
+  end if;
+  insert into public._op_results (acting_as, check_name)
+    values ('owner', 'a deleted org leaves its deletion on the record');
 end;
 $$;
 
