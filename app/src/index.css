@@ -1489,3 +1489,257 @@ button.danger:disabled {
   font-size: 0.85rem;
   cursor: pointer;
 }
+
+/* ---------------------------------------------------------------------------
+   Marketing pages — the home page and pricing.
+
+   Deliberately not sharing `.page` with the legal pages: those want a plain
+   readable column, and this wants width, panels and rhythm. System fonts
+   throughout, because this stylesheet is also loaded by the kiosk form a
+   visitor is standing in front of, and a webfont there costs a real wait for
+   no benefit.
+   --------------------------------------------------------------------------- */
+:root {
+  --mk-panel: #f6f7fa;
+  --mk-edge: #e6e9f0;
+  --mk-hero: linear-gradient(180deg, #f7f9fc 0%, var(--bg) 100%);
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --mk-panel: #161b26;
+    --mk-edge: #232a38;
+    --mk-hero: linear-gradient(180deg, #141924 0%, var(--bg) 100%);
+  }
+}
+
+.mk {
+  max-width: 1040px;
+  margin: 0 auto;
+  padding: 0 24px 72px;
+}
+.mk-nav {
+  display: flex;
+  align-items: center;
+  gap: 22px;
+  padding: 18px 0;
+  flex-wrap: wrap;
+}
+.mk-wordmark {
+  font-weight: 650;
+  font-size: 1.05rem;
+  color: var(--text-h);
+  text-decoration: none;
+  margin-right: auto;
+}
+.mk-nav a:not(.mk-wordmark) {
+  color: var(--muted);
+  text-decoration: none;
+  font-size: 0.94rem;
+}
+.mk-nav a:not(.mk-wordmark):hover {
+  color: var(--text-h);
+}
+
+/* ---------- hero ---------- */
+.mk-hero {
+  background: var(--mk-hero);
+  /* Full-bleed by sitting outside the padded container, not by pulling itself
+     out of one with negative margins — that put 24px of horizontal scroll on
+     every marketing page. */
+  padding: 56px 24px 60px;
+}
+.mk-hero-inner {
+  max-width: 1040px;
+  margin: 0 auto;
+}
+.mk-eyebrow {
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--accent);
+  margin: 0 0 14px;
+}
+.mk-hero h1 {
+  font-size: clamp(2rem, 5vw, 3rem);
+  line-height: 1.1;
+  letter-spacing: -0.02em;
+  margin: 0 0 18px;
+  max-width: 16ch;
+  text-wrap: balance;
+}
+.mk-lede {
+  font-size: 1.18rem;
+  line-height: 1.55;
+  color: var(--text);
+  max-width: 56ch;
+  margin: 0 0 26px;
+}
+.mk-actions {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+.mk-btn {
+  display: inline-block;
+  padding: 11px 20px;
+  border-radius: 8px;
+  font-size: 0.98rem;
+  font-weight: 550;
+  text-decoration: none;
+  border: 1px solid transparent;
+  background: var(--accent);
+  color: #fff;
+}
+.mk-btn.ghost {
+  background: transparent;
+  border-color: var(--border);
+  color: var(--text-h);
+}
+
+/* ---------- sections ---------- */
+.mk section {
+  margin-top: 60px;
+}
+.mk h2 {
+  font-size: 1.5rem;
+  letter-spacing: -0.01em;
+  margin: 0 0 10px;
+}
+.mk .mk-sub {
+  color: var(--muted);
+  max-width: 62ch;
+  margin: 0 0 26px;
+}
+
+/* ---------- numbered steps ---------- */
+.mk-steps {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 18px;
+  counter-reset: step;
+}
+.mk-step {
+  border: 1px solid var(--mk-edge);
+  border-radius: 12px;
+  padding: 20px;
+  background: var(--mk-panel);
+}
+.mk-step h3 {
+  font-size: 1rem;
+  color: var(--text-h);
+  margin: 0 0 6px;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+}
+.mk-step h3::before {
+  counter-increment: step;
+  content: counter(step);
+  flex: 0 0 auto;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: var(--accent);
+  color: #fff;
+  font-size: 0.76rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.mk-step p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.94rem;
+}
+
+/* ---------- feature groups ---------- */
+.mk-features {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 26px;
+}
+.mk-feature h3 {
+  font-size: 1.02rem;
+  color: var(--text-h);
+  margin: 0 0 10px;
+}
+.mk-feature ul {
+  margin: 0;
+  padding-left: 20px;
+  color: var(--text);
+}
+.mk-feature li {
+  margin-bottom: 8px;
+  font-size: 0.95rem;
+}
+
+/* ---------- a bordered aside ---------- */
+.mk-panel {
+  border: 1px solid var(--mk-edge);
+  border-radius: 12px;
+  background: var(--mk-panel);
+  padding: 26px;
+}
+.mk-panel h2 {
+  margin-top: 0;
+}
+.mk-panel p:last-child {
+  margin-bottom: 0;
+}
+
+/* ---------- pricing ---------- */
+.mk-price {
+  width: 100%;
+  border-collapse: collapse;
+  margin-bottom: 10px;
+}
+.mk-price caption {
+  text-align: left;
+  font-weight: 600;
+  color: var(--text-h);
+  padding: 0 0 10px;
+}
+.mk-price th,
+.mk-price td {
+  text-align: left;
+  padding: 11px 12px;
+  border-bottom: 1px solid var(--mk-edge);
+  vertical-align: top;
+}
+.mk-price td:last-child,
+.mk-price th:last-child {
+  text-align: right;
+  white-space: nowrap;
+}
+.mk-price .mk-item-note {
+  display: block;
+  color: var(--muted);
+  font-size: 0.88rem;
+  margin-top: 2px;
+}
+.mk-price tfoot td {
+  font-weight: 650;
+  color: var(--text-h);
+  border-bottom: none;
+}
+
+/* ---------- footer ---------- */
+.mk-foot {
+  margin-top: 72px;
+  padding-top: 22px;
+  border-top: 1px solid var(--border);
+  color: var(--muted);
+  font-size: 0.92rem;
+  display: flex;
+  gap: 16px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+.mk-foot a {
+  color: var(--muted);
+}
+.mk-foot .mk-foot-end {
+  margin-left: auto;
+}

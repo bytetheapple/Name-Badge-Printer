@@ -8,6 +8,7 @@ import { RequireAuth } from './components/RequireAuth'
 import { useSearchParams } from 'react-router-dom'
 import PublicForm from './routes/PublicForm'
 import Landing from './routes/public/Landing'
+import Pricing from './routes/public/Pricing'
 import Privacy from './routes/public/Privacy'
 import Terms from './routes/public/Terms'
 import Login from './routes/admin/Login'
@@ -39,6 +40,7 @@ function Root() {
 
 const router = createBrowserRouter([
   { path: '/', element: <Root /> },
+  { path: '/pricing', element: <Pricing /> },
   { path: '/privacy', element: <Privacy /> },
   { path: '/terms', element: <Terms /> },
   // Opaque per-printer kiosk link, encoded in the lobby QR code.
