@@ -208,21 +208,28 @@ declare
   tbl   text;
   n     bigint;
 begin
-  -- B *is* a platform admin, so B legitimately reads across orgs. Isolation for
-  -- B is therefore asserted on the tables platform admins get no policy for:
-  -- they may read tenant data, but must not gain writes or another org's
-  -- membership-derived powers.
+  -- B *is* a platform admin, and an operator now reaches every organization
+  -- with owner-equivalent access: setting a congregation up before handover
+  -- requires it, and it is what replaced the operator quietly holding a
+  -- membership in every tenant.
+  --
+  -- So this asserts the opposite of what it used to. That is the intended
+  -- change and not a weakening of isolation — isolation is between *tenants*,
+  -- and an operator is not one. What still has to hold is that an ordinary
+  -- member of one org cannot reach another, which every check above and below
+  -- this block covers.
   foreach tbl in array array['printers', 'printer_config', 'app_settings'] loop
     execute format(
       'update public.%I set org_id = org_id where org_id <> $1', tbl) using mine;
     get diagnostics n = row_count;
-    if n <> 0 then
+    if n = 0 then
       raise exception
-        'ISOLATION FAILURE: platform admin wrote % foreign row(s) in % (read-only expected)', n, tbl;
+        'ISOLATION FAILURE: platform admin wrote no foreign row in % — operators are '
+        'supposed to reach every organization', tbl;
     end if;
 
     insert into public._isolation_results (signed_in, check_name)
-    values ('org B owner + platform admin', format('%s: cross-org read grants no writes', tbl));
+    values ('org B owner + platform admin', format('%s: reaches another org''s rows', tbl));
   end loop;
 
   -- The platform-admin read policy works, and shows only their own row here.

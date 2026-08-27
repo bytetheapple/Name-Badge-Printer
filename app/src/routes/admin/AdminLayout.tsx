@@ -10,13 +10,21 @@ const OPS_HOME = '/admin/ops/organizations'
 
 export default function AdminLayout() {
   const { session, signOut } = useAuth()
-  const { orgs, org, orgId, role, isAdmin, isOwner, isPlatformAdmin, loading, error, switchOrg } = useOrg()
+  const {
+    orgs, org, orgId, role, isAdmin, isOwner, isPlatformAdmin, isMember, loading, error, switchOrg,
+  } = useOrg()
   const location = useLocation()
   const navigate = useNavigate()
 
   // Which "place" the admin is in, taken from the route rather than held in
   // state — so a refresh, a bookmark and the back button all agree.
   const inOps = location.pathname.startsWith('/admin/ops')
+
+  // Inside a customer's organization on operator authority rather than a
+  // membership of your own. Not shown in Operations — that is the operator's
+  // own space — and not shown to someone who genuinely belongs here, which is
+  // why it asks about membership rather than about being an operator.
+  const operating = isPlatformAdmin && !inOps && !isMember
 
   function choose(value: string) {
     if (value === OPS) {
@@ -78,7 +86,14 @@ export default function AdminLayout() {
   }
 
   return (
-    <div className="admin">
+    <div className={`admin${operating ? ' operating' : ''}`}>
+      {operating && (
+        <div className="op-banner">
+          ⚠ You are in <strong>{org?.organization.name}</strong> as Guest Badges operations. Changes
+          here affect a customer.
+          <button onClick={() => navigate(OPS_HOME)}>Back to Operations</button>
+        </div>
+      )}
       <header className="admin-header">
         <div className="admin-brand">
           {inOps ? 'Operations' : (org?.organization.name ?? 'Name Badge Admin')}

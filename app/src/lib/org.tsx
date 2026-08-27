@@ -22,6 +22,10 @@ interface OrgState {
    * database, so a wrong answer here shows or hides a link and leaks nothing.
    */
   isPlatformAdmin: boolean
+  /** True when the current organization is one the person actually belongs to.
+   *  False for an operator reaching in, which is what the marked background
+   *  and the banner key on. */
+  isMember: boolean
   loading: boolean
   error: string | null
   switchOrg: (orgId: string) => void
@@ -44,6 +48,7 @@ export function OrgProvider({ children }: { children: ReactNode }) {
 
   const [orgs, setOrgs] = useState<OrgMembership[]>([])
   const [isPlatformAdmin, setIsPlatformAdmin] = useState(false)
+  const [memberOrgIds, setMemberOrgIds] = useState<Set<string>>(new Set())
   const [orgId, setOrgId] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -78,28 +83,42 @@ export function OrgProvider({ children }: { children: ReactNode }) {
     const { data: pa } = await supabase.from('platform_admins').select('user_id').limit(1)
     setIsPlatformAdmin(Boolean(pa?.length))
 
+    const operator = Boolean(pa?.length)
     const ids = (rows ?? []).map((r) => r.org_id as string)
-    const { data: orgRows, error: orgError } = ids.length
+    //: Which of these the person actually belongs to, kept separately from the
+    //: list they can reach. An operator reaches every organization but is a
+    //: member of none, and telling those apart is what decides whether the
+    //: page is marked as operator access.
+    setMemberOrgIds(new Set(ids))
+
+    // An operator selects from every organization; everyone else from theirs.
+    // The platform read policy on `organizations` is what makes the unfiltered
+    // query return anything, so this is not a second source of truth.
+    const { data: orgRows, error: orgError } = operator
       ? await supabase
           .from('organizations')
           .select('id, slug, name, status, custom_integrations')
-          .in('id', ids)
-      : { data: [], error: null }
+      : ids.length
+        ? await supabase
+            .from('organizations')
+            .select('id, slug, name, status, custom_integrations')
+            .in('id', ids)
+        : { data: [], error: null }
     if (orgError) {
       setError(orgError.message)
       setOrgs([])
       setLoading(false)
       return
     }
-    const byId = new Map(
-      (orgRows ?? []).map((o) => [o.id as string, o as unknown as OrgMembership['organization']]),
-    )
-    const list: OrgMembership[] = (rows ?? [])
-      .map((r) => {
-        const org = byId.get(r.org_id as string)
-        return org ? { org_id: r.org_id as string, role: r.role as Role, organization: org } : null
-      })
-      .filter((m): m is OrgMembership => m !== null)
+    const roleById = new Map((rows ?? []).map((r) => [r.org_id as string, r.role as Role]))
+    const list: OrgMembership[] = (orgRows ?? [])
+      .map((o) => ({
+        org_id: o.id as string,
+        // A real membership wins, matching auth_org_role(): someone who is both
+        // an operator and a genuine member keeps their own role.
+        role: roleById.get(o.id as string) ?? ('owner' as Role),
+        organization: o as unknown as OrgMembership['organization'],
+      }))
       .sort((a, b) => a.organization.name.localeCompare(b.organization.name))
 
     setOrgs(list)
@@ -133,12 +152,13 @@ export function OrgProvider({ children }: { children: ReactNode }) {
       isAdmin: role === 'owner' || role === 'admin',
       isOwner: role === 'owner',
       isPlatformAdmin,
+      isMember: orgId !== null && memberOrgIds.has(orgId),
       loading: loading || authLoading,
       error,
       switchOrg,
       reload: load,
     }
-  }, [orgs, orgId, loading, authLoading, error, switchOrg, load, isPlatformAdmin])
+  }, [orgs, orgId, loading, authLoading, error, switchOrg, load, isPlatformAdmin, memberOrgIds])
 
   return <OrgContext.Provider value={value}>{children}</OrgContext.Provider>
 }

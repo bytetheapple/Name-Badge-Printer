@@ -97,15 +97,27 @@ begin
   update public.organizations set status = 'active' where id = fresh;
   insert into public._op_results (acting_as, check_name) values ('support', 'can suspend and resume');
 
-  -- And the other half of that fact, recorded so the widening has to come and
-  -- change it: an org support is not a member of does not move.
+  -- And an org it is not a member of, which is the whole point of an operator.
+  -- This assertion used to say the opposite, as a tripwire for the change that
+  -- has now happened: operators reach every organization with owner-equivalent
+  -- access, so support suspending a tenant it never joined is correct.
   update public.organizations set status = 'suspended' where id = victim;
-  if (select status from public.organizations where id = victim) = 'suspended' then
-    raise exception 'UNEXPECTED: support suspended an org it is not a member of — '
-      'cross-tenant write has landed, so this check needs rewriting';
+  if (select status from public.organizations where id = victim) <> 'suspended' then
+    raise exception 'ROLE FAILURE: support could not suspend an org it is not a member of';
+  end if;
+  update public.organizations set status = 'active' where id = victim;
+  insert into public._op_results (acting_as, check_name)
+    values ('support', 'acts in an org it does not belong to');
+
+  -- Owner-equivalent inside a tenant, but the platform role still governs
+  -- platform actions — which is why the delete check further down still
+  -- refuses. Reaching into an organization is not the same as destroying it.
+  if public.auth_org_role(victim) <> 'owner' then
+    raise exception 'ROLE FAILURE: support is % in a foreign org, expected owner',
+      public.auth_org_role(victim);
   end if;
   insert into public._op_results (acting_as, check_name)
-    values ('support', 'no cross-tenant write yet (pre-widening)');
+    values ('support', 'is owner-equivalent inside any org');
 
   -- But not the irreversible one.
   begin

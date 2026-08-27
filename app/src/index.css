@@ -14,6 +14,10 @@
   --pending-bg: #f3f4f6;
   --pending-border: #e5e7eb;
 
+  --op-wash: #fff8ed;
+  --op-banner: #b45309;
+  --op-mark: url("data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20width='420'%20height='240'%3E%3Cg%20fill='rgba%28180%2C83%2C9%2C0.10%29'%20font-family='system-ui%2Csans-serif'%20font-size='18'%20font-weight='600'%3E%3Ctext%20x='6'%20y='210'%20transform='rotate%28-24%206%20210%29'%3EGuest%20Badges%20Operations%3C/text%3E%3Ctext%20x='216'%20y='95'%20transform='rotate%28-24%20216%2095%29'%3EGuest%20Badges%20Operations%3C/text%3E%3C/g%3E%3C/svg%3E");
+
   --sans: system-ui, 'Segoe UI', Roboto, sans-serif;
   --mono: ui-monospace, Consolas, monospace;
 
@@ -32,6 +36,9 @@
     --border: #2a2e37;
     --muted: #9ca3af;
     --accent: #60a5fa;
+    --op-wash: #191309;
+    --op-banner: #92400e;
+    --op-mark: url("data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20width='420'%20height='240'%3E%3Cg%20fill='rgba%28251%2C191%2C36%2C0.09%29'%20font-family='system-ui%2Csans-serif'%20font-size='18'%20font-weight='600'%3E%3Ctext%20x='6'%20y='210'%20transform='rotate%28-24%206%20210%29'%3EGuest%20Badges%20Operations%3C/text%3E%3Ctext%20x='216'%20y='95'%20transform='rotate%28-24%20216%2095%29'%3EGuest%20Badges%20Operations%3C/text%3E%3C/g%3E%3C/svg%3E");
     --ok-bg: rgba(16, 185, 129, 0.12);
     --ok-border: rgba(16, 185, 129, 0.4);
     --ok-text: #6ee7b7;
@@ -1442,5 +1449,43 @@ button.danger:disabled {
 }
 .tick-col input {
   margin: 0;
+  cursor: pointer;
+}
+
+/* --- operator access ---------------------------------------------------
+   Shown only when an operator is inside a customer's organization on
+   operator authority rather than a membership of their own. After the
+   cross-tenant widening the operator UI is identical to the customer's,
+   and the only thing distinguishing "my org" from "someone else's" is a
+   name in the corner — which is exactly the detail you stop seeing.
+
+   The wash does the work: a hue change registers before you have read a
+   word, and costs nothing in legibility because .card has no background
+   of its own, so everything sits directly on this colour. The wordmark
+   supplies the "this view is marked" character on top of it. */
+.admin.operating {
+  background-color: var(--op-wash);
+  background-image: var(--op-mark);
+}
+.op-banner {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 20px;
+  font-size: 0.9rem;
+  font-weight: 500;
+  background: var(--op-banner);
+  color: #fff;
+  flex-wrap: wrap;
+}
+.op-banner button {
+  margin-left: auto;
+  background: rgba(255, 255, 255, 0.16);
+  color: #fff;
+  border: 1px solid rgba(255, 255, 255, 0.4);
+  border-radius: 6px;
+  padding: 3px 10px;
+  font: inherit;
+  font-size: 0.85rem;
   cursor: pointer;
 }
