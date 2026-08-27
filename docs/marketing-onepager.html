@@ -1,0 +1,416 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Synagogue Name-Tag Kiosk</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700&family=Source+Sans+3:wght@400;500;600;700&display=swap" rel="stylesheet">
+
+<style>
+  :root {
+    --bg: #eef1f7;
+    --sheet: #ffffff;
+    --panel: #f4f6fb;
+    --panel-2: #eaeef7;
+    --ink: #1a2140;
+    --muted: #586181;
+    --line: #dde3ef;
+    --primary: #274a8c;
+    --primary-deep: #1d3a72;
+    --brand-fill: #274a8c;
+    --on-brand: #ffffff;
+    --accent: #a9752a;
+    --accent-soft: #f2e7d2;
+    --shadow: 0 18px 50px -24px rgba(23, 34, 71, .45);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #0c1120;
+      --sheet: #141b2e;
+      --panel: #1a2338;
+      --panel-2: #202b45;
+      --ink: #eef1f9;
+      --muted: #9aa4c6;
+      --line: #2a344e;
+      --primary: #8fb0ee;
+      --primary-deep: #a9c2f2;
+      --brand-fill: #2f5299;
+      --on-brand: #f6f9ff;
+      --accent: #d8ab55;
+      --accent-soft: #2b2414;
+      --shadow: 0 20px 60px -28px rgba(0, 0, 0, .7);
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #0c1120;
+    --sheet: #141b2e;
+    --panel: #1a2338;
+    --panel-2: #202b45;
+    --ink: #eef1f9;
+    --muted: #9aa4c6;
+    --line: #2a344e;
+    --primary: #8fb0ee;
+    --primary-deep: #a9c2f2;
+    --brand-fill: #2f5299;
+    --on-brand: #f6f9ff;
+    --accent: #d8ab55;
+    --accent-soft: #2b2414;
+    --shadow: 0 20px 60px -28px rgba(0, 0, 0, .7);
+  }
+
+  * { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--ink);
+    font-family: "Source Sans 3", system-ui, -apple-system, sans-serif;
+    font-size: 16px;
+    line-height: 1.5;
+    padding: 32px 20px 56px;
+  }
+
+  .sheet {
+    max-width: 940px;
+    margin: 0 auto;
+    background: var(--sheet);
+    border: 1px solid var(--line);
+    border-radius: 18px;
+    box-shadow: var(--shadow);
+    overflow: hidden;
+  }
+
+  .pad { padding: clamp(26px, 5vw, 52px); }
+
+  h1, h2, h3 {
+    font-family: "Fraunces", Georgia, "Times New Roman", serif;
+    color: var(--ink);
+    margin: 0;
+    text-wrap: balance;
+    font-weight: 600;
+  }
+
+  .eyebrow {
+    font-size: 12.5px;
+    font-weight: 700;
+    letter-spacing: .16em;
+    text-transform: uppercase;
+    color: var(--accent);
+    margin: 0 0 16px;
+  }
+
+  /* ---------- hero ---------- */
+  .hero { border-bottom: 1px solid var(--line); }
+  .hero h1 {
+    font-size: clamp(32px, 5.4vw, 52px);
+    line-height: 1.04;
+    letter-spacing: -0.01em;
+    max-width: 16ch;
+  }
+  .hero p.lede {
+    margin: 18px 0 0;
+    font-size: clamp(16.5px, 2vw, 19px);
+    color: var(--muted);
+    max-width: 62ch;
+  }
+
+  /* ---------- steps ---------- */
+  .steps {
+    background: var(--panel);
+    border-bottom: 1px solid var(--line);
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 0;
+  }
+  .step {
+    padding: clamp(20px, 3vw, 30px) clamp(16px, 2.4vw, 26px);
+    border-right: 1px solid var(--line);
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+  .step:last-child { border-right: 0; }
+  .step .num {
+    width: 34px; height: 34px;
+    display: grid; place-items: center;
+    border-radius: 50%;
+    background: var(--brand-fill);
+    color: var(--on-brand);
+    font-family: "Fraunces", serif;
+    font-weight: 600;
+    font-size: 17px;
+    font-variant-numeric: tabular-nums;
+  }
+  .step h3 { font-size: 17px; font-weight: 600; }
+  .step p { margin: 0; font-size: 14px; color: var(--muted); line-height: 1.4; }
+
+  /* ---------- body grid ---------- */
+  .body-grid {
+    display: grid;
+    grid-template-columns: 1.15fr 1fr;
+    gap: clamp(26px, 4vw, 44px);
+    align-items: start;
+  }
+  .section-label {
+    font-size: 12.5px; font-weight: 700; letter-spacing: .14em;
+    text-transform: uppercase; color: var(--primary);
+    margin: 0 0 18px;
+    padding-bottom: 8px; border-bottom: 2px solid var(--accent-soft);
+  }
+
+  .feature { margin-bottom: 20px; }
+  .feature h3 { font-size: 17.5px; margin-bottom: 5px; }
+  .feature ul { margin: 0; padding: 0; list-style: none; }
+  .feature li {
+    position: relative; padding-left: 20px; margin: 4px 0;
+    font-size: 14.5px; color: var(--ink);
+  }
+  .feature li::before {
+    content: ""; position: absolute; left: 3px; top: 8px;
+    width: 7px; height: 7px; border-radius: 2px;
+    background: var(--accent);
+  }
+  .feature li span { color: var(--muted); }
+
+  /* ---------- right rail ---------- */
+  .rail { display: flex; flex-direction: column; gap: 22px; }
+
+  .callout {
+    background: var(--panel-2);
+    border: 1px solid var(--line);
+    border-left: 4px solid var(--accent);
+    border-radius: 12px;
+    padding: 20px 22px;
+  }
+  .callout h3 { font-size: 19px; margin-bottom: 6px; }
+  .callout p { margin: 0; font-size: 14.5px; color: var(--muted); }
+
+  .bom {
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    overflow: hidden;
+  }
+  .bom-head {
+    background: var(--brand-fill);
+    color: var(--on-brand);
+    padding: 14px 20px;
+  }
+  .bom-head h3 { color: var(--on-brand); font-size: 18px; }
+  .bom-head p { margin: 2px 0 0; font-size: 12.5px; opacity: .82; }
+  table { width: 100%; border-collapse: collapse; }
+  .bom td {
+    padding: 11px 20px;
+    font-size: 14.5px;
+    border-bottom: 1px solid var(--line);
+  }
+  .bom td.price {
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+    font-weight: 600;
+    white-space: nowrap;
+  }
+  .bom td .sub { display: block; font-size: 12px; color: var(--muted); margin-top: 1px; }
+  .bom tr.group td {
+    background: var(--panel-2);
+    font-size: 11px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase;
+    color: var(--primary);
+    padding-top: 9px; padding-bottom: 9px;
+  }
+  .bom tr.subtotal td {
+    font-weight: 700;
+    background: var(--panel);
+  }
+  .bom tr.subtotal td.price {
+    font-family: "Fraunces", serif;
+    font-size: 17px;
+    color: var(--accent);
+  }
+  .bom tr:last-child td { border-bottom: 0; }
+  .bom-foot {
+    padding: 12px 20px 16px;
+    font-size: 12.5px;
+    color: var(--muted);
+    background: var(--panel);
+    border-top: 1px solid var(--line);
+  }
+
+  /* ---------- cta ---------- */
+  .cta {
+    background: var(--panel);
+    border-top: 1px solid var(--line);
+    display: flex; align-items: center; justify-content: space-between;
+    gap: 20px; flex-wrap: wrap;
+  }
+  .cta h2 { font-size: clamp(22px, 3vw, 28px); }
+  .cta p { margin: 4px 0 0; color: var(--muted); font-size: 15px; }
+  .cta .contact {
+    text-align: right; font-size: 14.5px; color: var(--muted);
+  }
+  .cta .contact strong { color: var(--ink); font-weight: 600; }
+  .cta .contact .fill { color: var(--primary); }
+
+  @media (max-width: 720px) {
+    .steps { grid-template-columns: repeat(2, 1fr); }
+    .step:nth-child(2) { border-right: 0; }
+    .step:nth-child(1), .step:nth-child(2) { border-bottom: 1px solid var(--line); }
+    .body-grid { grid-template-columns: 1fr; }
+    .cta { flex-direction: column; align-items: flex-start; }
+    .cta .contact { text-align: left; }
+  }
+
+  @media print {
+    :root {
+      --bg: #ffffff; --sheet: #ffffff; --panel: #f4f6fb; --panel-2: #eef1f8;
+      --ink: #1a2140; --muted: #566083; --line: #d3d9e6;
+      --primary: #274a8c; --brand-fill: #274a8c; --on-brand: #ffffff;
+      --accent: #9c6c26; --accent-soft: #efe4cf;
+      --shadow: none;
+    }
+    body { padding: 0; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    .sheet { border: 0; border-radius: 0; max-width: none; box-shadow: none; }
+  }
+</style>
+</head>
+<body>
+
+<main class="sheet">
+  <header class="hero pad">
+    <p class="eyebrow">Synagogue Name-Tag Printing System</p>
+    <h1>Welcome every member and guest, by name.</h1>
+    <p class="lede">
+      A self-service welcome kiosk for your lobby. Visitors and members scan a QR code,
+      type their name, and a printed name badge is ready in seconds — no volunteer at a
+      table, no app to download, no handwriting on sticky labels.
+    </p>
+  </header>
+
+  <section class="steps" aria-label="How it works">
+    <div class="step">
+      <span class="num">1</span>
+      <h3>Scan</h3>
+      <p>A QR code by the door opens the sign-in page on any phone.</p>
+    </div>
+    <div class="step">
+      <span class="num">2</span>
+      <h3>Member or guest</h3>
+      <p>One tap chooses the right flow — members just give a name.</p>
+    </div>
+    <div class="step">
+      <span class="num">3</span>
+      <h3>Enter name</h3>
+      <p>Name, and optional details like pronouns or a whole family.</p>
+    </div>
+    <div class="step">
+      <span class="num">4</span>
+      <h3>Badge prints</h3>
+      <p>A clean, professional name badge prints at the kiosk instantly.</p>
+    </div>
+  </section>
+
+  <section class="pad">
+    <div class="body-grid">
+      <div class="features">
+        <p class="section-label">What it does</p>
+
+        <div class="feature">
+          <h3>Simple and self-service</h3>
+          <ul>
+            <li>Works on any phone through a QR code — <span>nothing to install</span></li>
+            <li>Separate member and visitor flows, <span>each asking only what it needs</span></li>
+            <li>Family sign-in <span>prints a badge for everyone in the household at once</span></li>
+          </ul>
+        </div>
+
+        <div class="feature">
+          <h3>Warm and inclusive</h3>
+          <ul>
+            <li>Optional pronouns field <span>you can switch on for Pride or any event</span></li>
+            <li>Your congregation's logo and wording <span>on every badge</span></li>
+            <li>Optional guest photo capture <span>for a friendly welcome record</span></li>
+          </ul>
+        </div>
+
+        <div class="feature">
+          <h3>Easy for the office</h3>
+          <ul>
+            <li>Attendance log <span>with date filters and one-click Excel export</span></li>
+            <li>Reprint, test-print, and manage printers <span>from a simple admin console</span></li>
+            <li>Run several kiosks <span>— lobby, religious school, social hall</span></li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="rail">
+        <div class="callout">
+          <p class="section-label" style="border:0;padding:0;margin-bottom:10px;">Connects to your systems</p>
+          <h3>Integrates with your member-tracking software.</h3>
+          <p>
+            Already rolling out new membership or CRM software? Sign-ins can flow straight
+            into it through a simple integration, so your welcome desk and your member
+            records stay in step automatically.
+          </p>
+        </div>
+
+        <div class="bom">
+          <div class="bom-head">
+            <h3>Rough cost breakdown</h3>
+            <p>Indicative pricing (USD)</p>
+          </div>
+          <table>
+            <tbody>
+              <tr class="group"><td colspan="2">One-time infrastructure</td></tr>
+              <tr>
+                <td>Raspberry Pi print server<span class="sub">Drives the printer and connects to the app — shared by every kiosk</span></td>
+                <td class="price">$125</td>
+              </tr>
+
+              <tr class="group"><td colspan="2">Per kiosk</td></tr>
+              <tr>
+                <td>Brother label printer<span class="sub">QL-820NWB networked label printer</span></td>
+                <td class="price">$250</td>
+              </tr>
+              <tr>
+                <td>Wall-mount bracket<span class="sub">Tidy lobby installation</span></td>
+                <td class="price">$100</td>
+              </tr>
+              <tr class="subtotal">
+                <td>Subtotal per kiosk</td>
+                <td class="price">$350</td>
+              </tr>
+
+              <tr class="group"><td colspan="2">Ongoing (recurring)</td></tr>
+              <tr>
+                <td>Roll of name badges<span class="sub">250 die-cut badges per roll</span></td>
+                <td class="price">$25</td>
+              </tr>
+              <tr>
+                <td>Website hosting<span class="sub">Cloud hosting for the sign-in web app</span></td>
+                <td class="price">$10/mo</td>
+              </tr>
+            </tbody>
+          </table>
+          <div class="bom-foot">
+            The only recurring costs: name badges (about $25 per roll of 250) and cloud
+            hosting at roughly $10 a month.
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <footer class="cta pad">
+    <div>
+      <h2>Bring it to your congregation.</h2>
+      <p>A concept overview — happy to share how it works and help you set one up.</p>
+    </div>
+    <div class="contact">
+      <strong>Get in touch</strong><br>
+      <span class="fill">name@yourcongregation.org</span>
+    </div>
+  </footer>
+</main>
+
+</body>
+</html>
