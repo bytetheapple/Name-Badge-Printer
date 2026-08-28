@@ -1791,3 +1791,95 @@ button.danger:disabled {
   max-width: 68ch;
   margin: 4px 0 26px;
 }
+
+/* ---------------------------------------------------------------------------
+   The hero illustration. Colours live here rather than in the component so it
+   follows the palette in both themes — except the badge itself, which stays
+   white because that is what it is printed on.
+   --------------------------------------------------------------------------- */
+.mk-art {
+  width: 100%;
+  max-width: 520px;
+  height: auto;
+  display: block;
+}
+.mk-art-shadow {
+  fill: rgba(15, 23, 42, 0.07);
+}
+.mk-art-phone {
+  fill: var(--text-h);
+}
+.mk-art-screen {
+  fill: var(--bg);
+}
+.mk-art-muted {
+  fill: var(--border);
+}
+.mk-art-field {
+  fill: none;
+  stroke: var(--border);
+  stroke-width: 1.5;
+}
+.mk-art-h {
+  fill: var(--text-h);
+  font: 600 15px/1 var(--sans);
+}
+.mk-art-typed {
+  fill: var(--text);
+  font: 400 12px/1 var(--sans);
+}
+.mk-art-btn {
+  fill: var(--accent);
+}
+.mk-art-btn-label {
+  fill: #fff;
+  font: 550 10px/1 var(--sans);
+}
+.mk-art-badge {
+  fill: #fff;
+  stroke: rgba(15, 23, 42, 0.12);
+  stroke-width: 1;
+  filter: drop-shadow(0 14px 28px rgba(15, 23, 42, 0.16));
+}
+.mk-art-mark {
+  fill: var(--accent);
+}
+.mk-art-mark-bar {
+  fill: #cbd5e1;
+}
+.mk-art-rule {
+  stroke: #e2e8f0;
+  stroke-width: 1.5;
+}
+.mk-art-name {
+  fill: #0b1220;
+  font: 600 46px/1 var(--sans);
+  letter-spacing: -0.02em;
+}
+.mk-art-sub {
+  fill: #64748b;
+  font: 400 15px/1 var(--sans);
+}
+.mk-art-pronoun {
+  fill: #94a3b8;
+  font: 400 13px/1 var(--sans);
+}
+
+/* Side by side once there is room; stacked below the words on a phone, where
+   the words are what someone came for. */
+@media (min-width: 900px) {
+  .mk-hero-inner {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 0.95fr);
+    gap: 48px;
+    align-items: center;
+  }
+}
+.mk-hero-art {
+  margin-top: 36px;
+}
+@media (min-width: 900px) {
+  .mk-hero-art {
+    margin-top: 0;
+  }
+}

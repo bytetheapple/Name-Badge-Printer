@@ -1,4 +1,5 @@
 import { Link } from 'react-router-dom'
+import HeroArt from './HeroArt'
 import { SiteFooter, SiteHeader } from './SiteChrome'
 
 /**
@@ -21,6 +22,7 @@ export default function Landing() {
 
       <div className="mk-hero">
         <div className="mk-hero-inner">
+          <div>
           <p className="mk-eyebrow">Sign-in kiosk for congregations</p>
           <h1>Welcome everyone by name.</h1>
           <p className="mk-lede">
@@ -35,6 +37,10 @@ export default function Landing() {
             <a className="mk-btn ghost" href="mailto:support@guestbadges.com">
               Get in touch
             </a>
+          </div>
+          </div>
+          <div className="mk-hero-art">
+            <HeroArt />
           </div>
         </div>
       </div>
