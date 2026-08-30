@@ -1,7 +1,6 @@
 import { useState } from 'react'
 import { useOrg } from '../../lib/org'
 import ApiKeys from './ApiKeys'
-import DriveFolder from './DriveFolder'
 import Integrations, { CUSTOM_SPECS } from './Integrations'
 
 type Tab = 'drive' | 'api' | 'custom'
@@ -51,11 +50,11 @@ export default function IntegrationsPage() {
         {tab === 'drive' && (
           <>
             <p className="muted small">
-              Visitor selfies are uploaded to Google Drive. Whether one is asked for at all is
-              set under Settings → Selfie.
+              Connects a Google account so visitor photos can be stored. Whether a photo is asked
+              for, and which folder it goes in, are set under <strong>Settings → Selfie</strong> —
+              this page only makes the connection.
             </p>
             <Integrations />
-            <DriveFolder />
           </>
         )}
 

@@ -414,7 +414,15 @@ begin
   -- suite made only of refusals passes with the feature entirely broken.
   insert into public.integrations (org_id, kind, enabled, config)
   values (org, 'google_form', true, '{"response_url": "https://example.invalid/form"}');
+
+  -- Three separate things make Drive usable, and storing the key is only one:
+  -- set_integration_secret creates the row with enabled = false and an empty
+  -- config, so a private key on its own connects nothing.
   perform public.set_integration_secret(org, 'google_drive', 'a-fake-private-key');
+  update public.integrations
+     set enabled = true,
+         config = jsonb_build_object('sa_client_email', 'kiosk@example.iam.gserviceaccount.com')
+   where org_id = org and kind = 'google_drive';
   if not public.integration_has_secret(org, 'google_drive') then
     raise exception 'ROLE FAILURE: owner could not store an integration credential';
   end if;
@@ -430,6 +438,21 @@ begin
   end;
   insert into public._role_results (acting_as, check_name)
   values ('owner', 'cannot read a stored credential back');
+
+  -- The one fact about an integration that a non-owner may have: whether it
+  -- would work. It must be true only where it is actually configured — a
+  -- readiness check that says yes everywhere would gate nothing.
+  if not public.integration_ready(org, 'google_drive') then
+    raise exception 'ROLE FAILURE: google_drive is configured but reads as not ready';
+  end if;
+  if public.integration_ready(org, 'shulcloud') then
+    raise exception 'ROLE FAILURE: an unconfigured integration reads as ready';
+  end if;
+  if public.integration_ready('0a2b0000-0000-4000-8000-00000000000b', 'google_drive') then
+    raise exception 'ISOLATION FAILURE: another org''s integration reads as ready';
+  end if;
+  insert into public._role_results (acting_as, check_name)
+  values ('owner', 'integration_ready is true only where configured');
 
   -- API keys moved with them.
   insert into public.api_keys (org_id, name, key_hash, key_prefix)
