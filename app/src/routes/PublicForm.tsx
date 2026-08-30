@@ -26,19 +26,35 @@ export default function PublicForm() {
   const [phone, setPhone] = useState('')
   const [email, setEmail] = useState('')
   const [pronouns, setPronouns] = useState('')
-  const [people, setPeople] = useState<Array<{ first: string; last: string; pronouns: string }>>([])
+  const [people, setPeople] = useState<
+    Array<{ first: string; last: string; pronouns: string; relationship: string }>
+  >([])
   const [printCount, setPrintCount] = useState(1)
   const [message, setMessage] = useState<string | null>(null)
   const [selfieMode, setSelfieMode] = useState<SelfieMode>('off')
   const [pronounsEnabled, setPronounsEnabled] = useState(false)
+  //: Asked of visitors only, and named after the congregation — "learn more
+  //: about us" is a worse question than one with the name in it.
+  const [wantsFollowup, setWantsFollowup] = useState(false)
+  const [orgName, setOrgName] = useState<string | null>(null)
   const pollRef = useRef<number | null>(null)
 
   const MAX_PEOPLE = 8
+  //: One choice per person — someone cannot be both your child and your
+  //: parent. Kept here rather than in the database so the words can change
+  //: without a migration; the column is plain text.
+  const RELATIONSHIPS = ['Partner', 'Child', 'Parent', 'Other']
 
   function addPerson() {
-    setPeople((p) => (p.length >= MAX_PEOPLE ? p : [...p, { first: '', last: '', pronouns: '' }]))
+    setPeople((p) =>
+      p.length >= MAX_PEOPLE ? p : [...p, { first: '', last: '', pronouns: '', relationship: '' }],
+    )
   }
-  function updatePerson(i: number, field: 'first' | 'last' | 'pronouns', value: string) {
+  function updatePerson(
+    i: number,
+    field: 'first' | 'last' | 'pronouns' | 'relationship',
+    value: string,
+  ) {
     setPeople((p) => p.map((q, idx) => (idx === i ? { ...q, [field]: value } : q)))
   }
   function removePerson(i: number) {
@@ -57,6 +73,7 @@ export default function PublicForm() {
     void getPublicConfig(kiosk).then((c) => {
       setSelfieMode(c.selfie_mode)
       setPronounsEnabled(c.pronouns_enabled)
+      setOrgName(c.org_name ?? null)
     })
   }, [kiosk])
 
@@ -91,7 +108,12 @@ export default function PublicForm() {
       // Only include additional people with both names filled in.
       const additional = people
         .filter((p) => p.first.trim() && p.last.trim())
-        .map((p) => ({ first_name: p.first.trim(), last_name: p.last.trim(), pronouns: p.pronouns.trim() }))
+        .map((p) => ({
+          first_name: p.first.trim(),
+          last_name: p.last.trim(),
+          pronouns: p.pronouns.trim(),
+          relationship: p.relationship,
+        }))
       const { entry_id, job_ids } = await submitBadge({
         visitor_type: visitorType,
         first_name: firstName,
@@ -99,6 +121,7 @@ export default function PublicForm() {
         pronouns,
         phone,
         email,
+        wants_followup: wantsFollowup,
         ...kiosk,
         additional,
       })
@@ -168,7 +191,7 @@ export default function PublicForm() {
   if (stage === 'choose') {
     return (
       <main className="page">
-        <h1>Welcome to Shir Hadash</h1>
+        <h1>{orgName ? `Welcome to ${orgName}` : 'Welcome'}</h1>
         <p className="big">Are you a member or a visitor?</p>
         <div className="choice">
           <button className="choice-btn" onClick={() => choose('member')}>
@@ -186,6 +209,7 @@ export default function PublicForm() {
     return (
       <SelfieCapture
         optional={selfieMode === 'optional'}
+        orgName={orgName}
         onAccept={(img) => void doSubmit(img)}
         onSkip={() => void doSubmit()}
         onBack={() => setStage('form')}
@@ -196,7 +220,7 @@ export default function PublicForm() {
   if (stage === 'printing' || stage === 'submitting') {
     return (
       <main className="page">
-        <h1>Shir Hadash</h1>
+        <h1>{orgName ?? 'Guest Badges'}</h1>
         <div className="spinner" />
         <p className="big">{printCount > 1 ? `Printing ${printCount} badges…` : 'Printing your badge…'}</p>
         <p className="muted">
@@ -209,7 +233,7 @@ export default function PublicForm() {
   if (stage === 'done') {
     return (
       <main className="page">
-        <h1>Shir Hadash</h1>
+        <h1>{orgName ?? 'Guest Badges'}</h1>
         <p className="status-icon">✓</p>
         <p className="big">{printCount > 1 ? `${printCount} badges are printing!` : 'Your badge is printing!'}</p>
         <p className="muted">
@@ -223,7 +247,7 @@ export default function PublicForm() {
   if (stage === 'error') {
     return (
       <main className="page">
-        <h1>Shir Hadash</h1>
+        <h1>{orgName ?? 'Guest Badges'}</h1>
         <p className="status-icon">⚠️</p>
         <p className="big">{message ?? 'Something went wrong.'}</p>
         <button onClick={reset}>Try again</button>
@@ -235,7 +259,9 @@ export default function PublicForm() {
   const badgeCount = 1 + people.filter((p) => p.first.trim() && p.last.trim()).length
   return (
     <main className="page">
-      <h1>Welcome to Shir Hadash</h1>
+      {/* The congregation's own name, not the one this was first built for.
+          Falls back to a bare welcome rather than guessing. */}
+      <h1>{orgName ? `Welcome to ${orgName}` : 'Welcome'}</h1>
       <p className="muted">
         Signing in as <strong>{visitorType === 'member' ? 'Member' : 'Visitor'}</strong> ·{' '}
         <button type="button" className="linklike" onClick={() => setStage('choose')}>
@@ -311,6 +337,20 @@ export default function PublicForm() {
           />
         </label>
 
+        {/* Visitors only: a member has already said yes to hearing from their
+            own congregation. Unticked is a no rather than an unknown, which is
+            why nothing about it is required. */}
+        {visitorType === 'visitor' && (
+          <label className="checkline">
+            <input
+              type="checkbox"
+              checked={wantsFollowup}
+              onChange={(e) => setWantsFollowup(e.target.checked)}
+            />
+            <span>I want to learn more about {orgName ?? 'this congregation'}</span>
+          </label>
+        )}
+
         <div className="family">
           <p className="family-head muted">
             Signing in as a couple or family? Add a badge for each person — only your
@@ -343,6 +383,20 @@ export default function PublicForm() {
                   required
                   autoComplete="off"
                 />
+              </label>
+              <label>
+                Relationship to you (optional)
+                <select
+                  value={p.relationship}
+                  onChange={(e) => updatePerson(i, 'relationship', e.target.value)}
+                >
+                  <option value="">Prefer not to say</option>
+                  {RELATIONSHIPS.map((r) => (
+                    <option key={r} value={r}>
+                      {r}
+                    </option>
+                  ))}
+                </select>
               </label>
               {pronounsEnabled && (
                 <label>

@@ -56,19 +56,35 @@ Deno.serve(async (req) => {
   const email = String(body.email ?? "").trim();
   const pronouns = String(body.pronouns ?? "").trim().slice(0, 40);
   const visitorType = String(body.visitor_type ?? "").trim();
+  // A visitor asking to hear more. Coerced rather than trusted: an absent box
+  // and an unticked box are the same answer, and that answer is no.
+  const wantsFollowup = body.wants_followup === true && visitorType === "visitor";
 
   // Additional family/party members: name-only, no contact, no selfie, no sync.
-  const additional: Array<{ first_name: string; last_name: string; pronouns: string | null }> = [];
+  const additional: Array<{
+    first_name: string;
+    last_name: string;
+    pronouns: string | null;
+    relationship: string | null;
+  }> = [];
   for (const p of Array.isArray(body.additional) ? body.additional : []) {
     const f = String((p as Record<string, unknown>)?.first_name ?? "").trim();
     const l = String((p as Record<string, unknown>)?.last_name ?? "").trim();
     const pr = String((p as Record<string, unknown>)?.pronouns ?? "").trim().slice(0, 40);
+    // Free text, capped. The option list lives in the sign-in form so a
+    // congregation can be offered different words without a deploy here.
+    const rel = String((p as Record<string, unknown>)?.relationship ?? "").trim().slice(0, 40);
     if (!f && !l) continue; // ignore blank rows
     if (!f || !l) {
       return json({ ok: false, error: "Please enter a first and last name for each person." });
     }
     if (f.length > 60 || l.length > 60) return json({ ok: false, error: "That name is too long." });
-    additional.push({ first_name: f, last_name: l, pronouns: pr || null });
+    additional.push({
+      first_name: f,
+      last_name: l,
+      pronouns: pr || null,
+      relationship: rel || null,
+    });
   }
   if (additional.length > 12) {
     return json({ ok: false, error: "Too many people in one sign-in." });
@@ -125,6 +141,7 @@ Deno.serve(async (req) => {
       email: email || null,
       pronouns: pronouns || null,
       visitor_type: visitorType,
+      wants_followup: wantsFollowup,
       printer_id: printerId,
       party_id: partyId,
       is_primary: true,
@@ -164,6 +181,7 @@ Deno.serve(async (req) => {
       first_name: p.first_name,
       last_name: p.last_name,
       pronouns: p.pronouns,
+      relationship: p.relationship,
       phone: null,
       email: null,
       visitor_type: visitorType,

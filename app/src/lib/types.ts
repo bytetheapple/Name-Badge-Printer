@@ -240,6 +240,12 @@ export interface FormEntry {
   printer?: { name: string } | null
   party_id: string | null
   is_primary: boolean
+  /** The visitor asked to hear more from this congregation. False for members,
+   *  and false for an untouched box — which is a no, not an unknown. */
+  wants_followup: boolean
+  /** How an additional badge relates to whoever signed the family in. Null on
+   *  the primary row and on a lone sign-in. */
+  relationship: string | null
   source_ip: string | null
   google_sync_status: 'pending' | 'sent' | 'failed' | 'skipped'
   /** Recorded since August, and until now never shown anywhere. */

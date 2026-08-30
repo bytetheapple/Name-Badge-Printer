@@ -1883,3 +1883,36 @@ button.danger:disabled {
     margin-top: 0;
   }
 }
+
+/* A checkbox and its wording on one line, rather than the stacked label the
+   rest of the form uses — a tick box whose label sits above it reads as a
+   heading for the next field instead of a question about itself. */
+.checkline {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  text-align: left;
+  font-weight: 400;
+  cursor: pointer;
+}
+.checkline input[type='checkbox'] {
+  width: 20px;
+  height: 20px;
+  margin: 2px 0 0;
+  flex: 0 0 auto;
+  accent-color: var(--accent);
+}
+
+/* "wants follow-up", under the visitor's type in Entries. Coloured, because it
+   is the one thing on that row somebody has to act on. */
+.followup-flag {
+  display: inline-block;
+  margin-top: 3px;
+  padding: 1px 7px;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  background: var(--ok-bg);
+  border: 1px solid var(--ok-border);
+  color: var(--ok-text);
+  white-space: nowrap;
+}

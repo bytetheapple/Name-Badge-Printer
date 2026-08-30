@@ -5,7 +5,7 @@
 import { corsHeaders, json } from "../_shared/cors.ts";
 import { REST, resolveKiosk, restHeaders } from "../_shared/kiosk.ts";
 
-const DEFAULTS = { selfie_mode: "off", pronouns_enabled: false };
+const DEFAULTS = { selfie_mode: "off", pronouns_enabled: false, org_name: null };
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
@@ -23,15 +23,26 @@ Deno.serve(async (req) => {
     // submit call is where an unusable link is reported to the visitor.
     if (!kiosk) return json({ ok: true, ...DEFAULTS });
 
-    const res = await fetch(
-      `${REST}/app_settings?org_id=eq.${kiosk.org_id}&select=selfie_mode,pronouns_enabled`,
-      { headers: restHeaders },
-    );
+    // The organization's name, because the form asks visitors whether they want
+    // to hear more "about <this congregation>" and a generic phrasing of that
+    // question is a worse question. Only the display name — nothing else about
+    // the organization is public.
+    const [res, orgRes] = await Promise.all([
+      fetch(
+        `${REST}/app_settings?org_id=eq.${kiosk.org_id}&select=selfie_mode,pronouns_enabled`,
+        { headers: restHeaders },
+      ),
+      fetch(`${REST}/organizations?id=eq.${kiosk.org_id}&select=name`, {
+        headers: restHeaders,
+      }),
+    ]);
     const rows = res.ok ? await res.json() : [];
+    const orgRows = orgRes.ok ? await orgRes.json() : [];
     return json({
       ok: true,
       selfie_mode: rows[0]?.selfie_mode ?? DEFAULTS.selfie_mode,
       pronouns_enabled: rows[0]?.pronouns_enabled ?? DEFAULTS.pronouns_enabled,
+      org_name: orgRows[0]?.name ?? DEFAULTS.org_name,
       printer_name: kiosk.printer_name,
     });
   } catch {

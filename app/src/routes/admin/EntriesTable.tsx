@@ -10,8 +10,13 @@ type DisplayItem =
 const familyLabel = (primary: FormEntry) =>
   `Family of ${primary.last_name ?? primary.first_name}`
 
-const personName = (e: FormEntry) =>
-  `${e.first_name} ${e.last_name ?? ''}`.trim() + (e.pronouns ? ` (${e.pronouns})` : '')
+// Pronouns and relationship both go in the roster line rather than becoming
+// columns: a family collapses to one row here, and the table is already nine
+// columns wide before either of them.
+const personName = (e: FormEntry) => {
+  const notes = [e.pronouns, e.relationship].filter(Boolean).join(', ')
+  return `${e.first_name} ${e.last_name ?? ''}`.trim() + (notes ? ` (${notes})` : '')
+}
 
 type SyncStatus = 'pending' | 'sent' | 'failed' | 'skipped'
 
@@ -228,10 +233,15 @@ export default function EntriesTable() {
       'Last name': r.last_name ?? '',
       Pronouns: r.pronouns ?? '',
       Party: r.party_id ? (partyLabel.get(r.party_id) ?? 'Family') : '',
+      Relationship: r.relationship ?? '',
       Type: r.visitor_type === 'member' ? 'Member' : 'Visitor',
       Printer: r.printer?.name ?? '',
       Phone: r.phone ?? '',
       Email: r.email ?? '',
+      // The column the office actually works from: who said yes to being
+      // contacted. Spelled out rather than TRUE/FALSE, because this export
+      // gets opened by people, not parsers.
+      'Wants follow-up': r.wants_followup ? 'Yes' : '',
       Submitted: new Date(r.created_at).toLocaleString(),
       'Google sync': r.google_sync_status,
       'ShulCloud sync': r.shulcloud_sync_status,
@@ -334,7 +344,17 @@ export default function EntriesTable() {
                     </td>
                     <td>{it.kind === 'party' ? `${it.roster.length} people` : r.last_name ?? '—'}</td>
                     <td>{it.kind === 'party' ? '—' : r.pronouns ?? '—'}</td>
-                    <td>{r.visitor_type === 'member' ? 'Member' : 'Visitor'}</td>
+                    <td>
+                      {r.visitor_type === 'member' ? 'Member' : 'Visitor'}
+                      {/* The reason the question is asked at all: this is the
+                          list the office works from. In the Type cell rather
+                          than a tenth column. */}
+                      {r.wants_followup && (
+                        <div className="followup-flag" title="Asked to hear more">
+                          wants follow-up
+                        </div>
+                      )}
+                    </td>
                     <td>
                       <div className="sync-cell">
                         <SyncPill

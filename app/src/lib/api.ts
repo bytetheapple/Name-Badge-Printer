@@ -20,6 +20,9 @@ export interface AdditionalPerson {
   first_name: string
   last_name: string
   pronouns: string
+  /** How they relate to whoever is signing the family in. Empty when the
+   *  visitor chose not to say — the field is optional on purpose. */
+  relationship?: string
 }
 
 /** Submit the public badge form via the submit-badge Edge Function. */
@@ -30,6 +33,7 @@ export async function submitBadge(input: {
   pronouns: string
   phone: string
   email: string
+  wants_followup?: boolean
   additional?: AdditionalPerson[]
 } & KioskRef): Promise<SubmitResult> {
   const { data, error } = await supabase.functions.invoke('submit-badge', { body: input })
@@ -44,15 +48,20 @@ export type SelfieMode = 'off' | 'optional' | 'required'
 export async function getPublicConfig(kiosk: KioskRef): Promise<{
   selfie_mode: SelfieMode
   pronouns_enabled: boolean
+  /** The congregation's display name, for the wording of the follow-up
+   *  question. Null when the kiosk could not be resolved, in which case the
+   *  form falls back to naming nobody rather than guessing. */
+  org_name: string | null
 }> {
   try {
     const { data } = await supabase.functions.invoke('public-config', { body: kiosk })
     return {
       selfie_mode: (data?.selfie_mode ?? 'off') as SelfieMode,
       pronouns_enabled: Boolean(data?.pronouns_enabled),
+      org_name: (data?.org_name as string | null) ?? null,
     }
   } catch {
-    return { selfie_mode: 'off', pronouns_enabled: false }
+    return { selfie_mode: 'off', pronouns_enabled: false, org_name: null }
   }
 }
 

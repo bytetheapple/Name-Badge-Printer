@@ -3,11 +3,15 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 /** Live front-camera capture. Calls onAccept with a JPEG data URL. */
 export function SelfieCapture({
   optional,
+  orgName,
   onAccept,
   onSkip,
   onBack,
 }: {
   optional: boolean
+  /** The congregation this kiosk belongs to. Null when it could not be
+   *  resolved, in which case nobody is named rather than the wrong body. */
+  orgName: string | null
   onAccept: (image: string) => void
   onSkip: () => void
   onBack: () => void
@@ -64,7 +68,7 @@ export function SelfieCapture({
 
   return (
     <main className="page">
-      <h1>Shir Hadash</h1>
+      <h1>{orgName ?? 'Guest Badges'}</h1>
       <p className="big">Take a selfie</p>
 
       {error ? (
@@ -113,7 +117,9 @@ export function SelfieCapture({
         </>
       )}
 
-      <p className="muted small">Your photo will be saved by Shir Hadash.</p>
+      <p className="muted small">
+        Your photo will be saved by {orgName ?? 'this congregation'}.
+      </p>
     </main>
   )
 }

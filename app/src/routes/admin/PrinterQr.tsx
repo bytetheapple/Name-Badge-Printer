@@ -27,7 +27,7 @@ export default function PrinterQr({
   const [notice, setNotice] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
-  const { orgId } = useOrg()
+  const { orgId, org } = useOrg()
   const [orgLogo, setOrgLogo] = useState<string | null>(null)
 
   const url = kioskUrl(printer.kiosk_token)
@@ -128,7 +128,9 @@ export default function PrinterQr({
     doc.setFont('helvetica', 'bold')
     doc.setFontSize(20)
     doc.text('Welcome to', cx, boxY + 0.6, { align: 'center' })
-    doc.text('Shir Hadash', cx, boxY + 0.95, { align: 'center' })
+    // The congregation whose lobby this poster is going up in — printed for
+    // every tenant, so it must not be the name of the first one.
+    doc.text(org?.organization.name ?? 'Guest Badges', cx, boxY + 0.95, { align: 'center' })
 
     const qrSize = 2.1
     doc.addImage(canvas.toDataURL('image/png'), 'PNG', (pageW - qrSize) / 2, boxY + 1.35, qrSize, qrSize)
