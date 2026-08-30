@@ -167,7 +167,17 @@ export default function Settings() {
               collected. Asking for it up front is asking for something that
               may never be used. */}
           {driveConnected && selfieMode !== 'off' && (
-            <label className="field" style={{ marginTop: 12 }}>
+            <>
+            {/* Before the field, not after it: this explains why the box is
+                there at all, and someone who has never done it needs to know
+                they must go and make a folder first. */}
+            <p className="muted small" style={{ marginTop: 12 }}>
+              You need to choose where the photos are kept. Make a folder in your congregation's
+              Google Drive for visitor photos — or pick an existing one — and put its ID below.
+              Every selfie taken at a kiosk is filed there, and nothing else is written to your
+              Drive.
+            </p>
+            <label className="field">
               Google Drive folder
               <input
                 value={folderId}
@@ -179,6 +189,7 @@ export default function Settings() {
                 the service account under Integrations, or Drive will refuse the uploads.
               </span>
             </label>
+            </>
           )}
 
           {/* Already asking for photos, and Drive has gone away underneath it.
