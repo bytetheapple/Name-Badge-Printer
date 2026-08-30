@@ -348,9 +348,9 @@ const org = (await q(`select id from public.organizations order by created_at li
 // Written the way the admin UI writes it: as the signed-in admin, through the
 // setter — which is the only path that exists.
 await db.exec(asUser(ADMIN, `
-  insert into public.integrations (org_id, kind, enabled, config)
-  values ('${org}', 'google_form', true, '{"response_url":"https://example.invalid/f"}')
-  on conflict (org_id, kind) do update set enabled = true;
+  insert into public.integrations (org_id, kind, name, enabled, config)
+  values ('${org}', 'google_form', 'Google Form', true, '{"response_url":"https://example.invalid/f"}')
+  on conflict (org_id, lower(btrim(name))) do update set enabled = true;
   select public.set_integration_secret('${org}'::uuid, 'google_drive', 'the-private-key');`))
 try {
   const got = await q(`
