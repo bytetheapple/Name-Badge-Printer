@@ -377,6 +377,72 @@ const orphan = await q(`select count(*) as n from vault.secrets where secret = '
 if (Number(orphan.n) === 0) ok('deleting an org takes its credentials with it')
 else bad(`a deleted org left ${orphan.n} credential(s) behind in the vault`)
 
+console.log('— routing: which destinations one sign-in reaches —')
+// The whole point of the rework: many destinations per kind, and a printer
+// that can differ from the default. Seeded directly rather than through the
+// admin, because these are the rows the sync path reads, not the ones a person
+// types.
+{
+  const printer = (await q(`select id from public.printers order by created_at limit 1`)).id
+  const entry = (await q(
+    `select id from public.form_entries where printer_id = '${printer}' order by created_at limit 1`))?.id
+  if (!entry) bad('routing: no seeded entry with a printer to test against')
+  else {
+    await db.exec(`
+      insert into public.integrations (org_id, kind, name, enabled, default_enabled, config) values
+        ('${org}', 'shulcloud', 'Main office',  true, true,  '{"form_url":"https://a.invalid"}'),
+        ('${org}', 'shulcloud', 'Youth group',  true, true,  '{"form_url":"https://b.invalid"}'),
+        ('${org}', 'shulcloud', 'Off by default', true, false, '{"form_url":"https://c.invalid"}'),
+        ('${org}', 'shulcloud', 'Switched off', false, true,  '{"form_url":"https://d.invalid"}');`)
+
+    const names = async () =>
+      (await db.query(
+        `select name from public.integration_targets('${entry}'::uuid, 'shulcloud') order by name`))
+        .rows.map((r) => r.name)
+
+    // Both defaults-on instances, and neither the disabled one nor the one
+    // that is off by default.
+    let got = await names()
+    if (JSON.stringify(got) === JSON.stringify(['Main office', 'Youth group'])) {
+      ok(`two destinations of one kind, defaults respected: ${got.join(', ')}`)
+    } else bad(`routing returned ${JSON.stringify(got)}`)
+
+    // A printer exception overrides the default in both directions at once.
+    await db.exec(`
+      insert into public.printer_integrations (printer_id, integration_id, org_id, enabled)
+      select '${printer}', i.id, '${org}', (i.name = 'Off by default')
+      from public.integrations i
+      where i.org_id = '${org}' and i.name in ('Youth group', 'Off by default');`)
+    got = await names()
+    if (JSON.stringify(got) === JSON.stringify(['Main office', 'Off by default'])) {
+      ok(`a printer exception overrides the default both ways: ${got.join(', ')}`)
+    } else bad(`routing with overrides returned ${JSON.stringify(got)}`)
+
+    // Resetting a printer to the default is a delete, and puts it back.
+    await db.exec(
+      `delete from public.printer_integrations where printer_id = '${printer}';`)
+    got = await names()
+    if (JSON.stringify(got) === JSON.stringify(['Main office', 'Youth group'])) {
+      ok('deleting the exceptions restores the defaults')
+    } else bad(`routing after reset returned ${JSON.stringify(got)}`)
+
+    // A delivery per destination, and a retry updates rather than duplicates.
+    const target = (await q(
+      `select id from public.integration_targets('${entry}'::uuid, 'shulcloud') order by name limit 1`)).id
+    await db.exec(`select public.record_delivery('${entry}'::uuid, '${target}'::uuid, 'failed', 'first try');`)
+    await db.exec(`select public.record_delivery('${entry}'::uuid, '${target}'::uuid, 'sent', null);`)
+    const d = await q(`
+      select count(*)::int as n, max(status) as status
+      from public.entry_deliveries where entry_id = '${entry}' and integration_id = '${target}'`)
+    if (d.n === 1 && d.status === 'sent') ok('a retry updates the delivery rather than adding one')
+    else bad(`delivery rows: ${JSON.stringify(d)}`)
+
+    await db.exec(`
+      delete from public.entry_deliveries where entry_id = '${entry}';
+      delete from public.integrations where org_id = '${org}' and kind = 'shulcloud';`)
+  }
+}
+
 console.log('— discovered_printers, retained but no longer written (B2) —')
 const scanOrg = (await q(`select id from public.organizations order by created_at limit 1`)).id
 

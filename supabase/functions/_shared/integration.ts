@@ -75,3 +75,84 @@ export async function resolveSettings(
   if (!own?.enabled) return null;
   return { config: own.config, secret: own.secret, source: "org" };
 }
+
+/** One destination a sign-in should reach, with its credential. */
+export interface Target {
+  id: string;
+  name: string;
+  config: Record<string, unknown>;
+  secret: string | null;
+}
+
+/**
+ * Every destination of one kind that this sign-in should be sent to.
+ *
+ * The routing lives in SQL (integration_targets) rather than here, so the
+ * three sync functions cannot drift apart on what "enabled for this printer"
+ * means. Pass `only` to address a single destination — that is what a resend
+ * from one row of the expanded pill does.
+ */
+export async function targetsFor(
+  entryId: string,
+  kind: IntegrationKind,
+  only?: string | null,
+): Promise<Target[]> {
+  const res = await fetch(`${SUPABASE_URL}/rest/v1/rpc/integration_targets`, {
+    method: "POST",
+    headers: restHeaders,
+    body: JSON.stringify({ p_entry: entryId, p_kind: kind }),
+  });
+  if (!res.ok) {
+    console.error(`integration_targets failed: ${res.status} ${(await res.text()).slice(0, 200)}`);
+    return [];
+  }
+  const rows = (await res.json()) as Target[];
+  return only ? rows.filter((r) => r.id === only) : rows;
+}
+
+/** What happened at one destination. Upserts, so a retry replaces the attempt. */
+export async function recordDelivery(
+  entryId: string,
+  integrationId: string,
+  status: "pending" | "sent" | "failed" | "skipped",
+  error?: string | null,
+): Promise<void> {
+  const res = await fetch(`${SUPABASE_URL}/rest/v1/rpc/record_delivery`, {
+    method: "POST",
+    headers: restHeaders,
+    body: JSON.stringify({
+      p_entry: entryId,
+      p_integration: integrationId,
+      p_status: status,
+      p_error: error ?? null,
+    }),
+  });
+  if (!res.ok) {
+    // Best effort: failing to record must not turn a delivered sign-in into a
+    // failed one. It goes to the log, where it is a bug rather than an outage.
+    console.error(`record_delivery failed: ${res.status} ${(await res.text()).slice(0, 200)}`);
+  }
+}
+
+/**
+ * The single status the Entries table still reads, rolled up from what
+ * actually happened at each destination.
+ *
+ * Kept until the expandable pill ships and the per-kind columns come out. The
+ * rule is deliberately pessimistic: anything short of "every destination took
+ * it" is not "sent", because a green pill hiding one failed destination is
+ * worse than no pill.
+ */
+export function rollUp(
+  results: Array<{ ok: boolean; error?: string }>,
+): { status: "sent" | "failed" | "pending"; error: string | null } {
+  if (!results.length) return { status: "pending", error: null };
+  const failed = results.filter((r) => !r.ok);
+  if (!failed.length) return { status: "sent", error: null };
+  return {
+    status: "failed",
+    error: `${failed.length} of ${results.length} failed: ${
+      failed.map((f) => f.error).filter(Boolean).join("; ")
+    }`.slice(0, 500),
+  };
+}

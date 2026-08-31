@@ -8,7 +8,7 @@
 // Folder id comes from app_settings.selfie_drive_folder_id (set in the admin),
 // which is already per-organization — it is a setting, not a credential.
 import { corsHeaders, json } from "../_shared/cors.ts";
-import { orgOfEntry, resolveSettings } from "../_shared/integration.ts";
+import { orgOfEntry, recordDelivery, targetsFor } from "../_shared/integration.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_ROLE = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -124,7 +124,23 @@ Deno.serve(async (req) => {
   const orgId = entryRes.ok ? (await entryRes.json())[0]?.org_id : null;
   if (!orgId) return json({ ok: false, error: "Unknown sign-in" }, 404);
 
-  const settings = await resolveSettings(orgId, "google_drive");
+  // One destination today — a congregation has one Drive account — but routed
+  // the same way as the others, so selfies appear in the same delivery history
+  // and a printer can be excluded from uploading them like anything else.
+  // Choosing between several Drive accounts is a later change; the first is
+  // taken until the selfie setting can name one.
+  const driveTargets = await targetsFor(entryId, "google_drive");
+  const target = driveTargets[0] ?? null;
+  if (!target) {
+    // Skipped, not failed. Nothing is broken: this organization has no Drive
+    // account connected, or has switched it off for this printer, and a red
+    // failure for a deliberate choice is a false alarm someone has to chase.
+    const why = "No Google Drive destination for this sign-in";
+    await noteSelfie(entryId, "skipped", why);
+    return json({ ok: false, error: why });
+  }
+
+  const settings = { config: target.config, secret: target.secret };
   const SA_EMAIL = String(settings?.config.sa_client_email ?? "");
   // Out of Vault. Unescaped because a key pasted from the service account's
   // JSON carries literal \n sequences rather than real newlines — both forms
@@ -134,6 +150,7 @@ Deno.serve(async (req) => {
   if (!SA_EMAIL || !SA_KEY) {
     const err = "Google service account is not configured for this organization";
     await noteSelfie(entryId, "failed", err);
+    await recordDelivery(entryId, target.id, "failed", err);
     return json({ ok: false, error: err });
   }
 
@@ -145,6 +162,7 @@ Deno.serve(async (req) => {
   if (!folderId) {
     const err = "No Drive folder configured";
     await noteSelfie(entryId, "failed", err);
+    await recordDelivery(entryId, target.id, "failed", err);
     return json({ ok: false, error: err });
   }
 
@@ -186,6 +204,7 @@ Deno.serve(async (req) => {
     if (!up.ok) {
       console.error("upload-selfie: Drive upload failed:", JSON.stringify(upData));
       await noteSelfie(entryId, "failed", `Drive upload failed: ${JSON.stringify(upData)}`);
+      await recordDelivery(entryId, target.id, "failed", `Drive upload failed`);
       return json({ ok: false, error: `Drive upload failed: ${JSON.stringify(upData)}` }, 500);
     }
 
@@ -199,6 +218,7 @@ Deno.serve(async (req) => {
           selfie_error: null,
         }),
       });
+      await recordDelivery(entryId, target.id, "sent");
     }
     return json({ ok: true, file_id: upData.id, link: upData.webViewLink ?? null });
   } catch (e) {
@@ -207,6 +227,7 @@ Deno.serve(async (req) => {
     // pemToPkcs8, which is a service-account key with a stray character —
     // usually the quotes it was copied with out of the JSON file.
     await noteSelfie(entryId, "failed", String(e));
+    await recordDelivery(entryId, target.id, "failed", String(e).slice(0, 300));
     return json({ ok: false, error: String(e).slice(0, 300) }, 500);
   }
 });

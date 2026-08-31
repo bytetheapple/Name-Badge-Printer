@@ -6,7 +6,7 @@
 // (integrations, kind 'shulcloud'), and from nowhere else. An org that has not
 // configured it syncs nowhere rather than posting into anyone's CRM.
 import { corsHeaders, json } from "../_shared/cors.ts";
-import { orgOfEntry, resolveSettings } from "../_shared/integration.ts";
+import { recordDelivery, rollUp, targetsFor, type Target } from "../_shared/integration.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_ROLE = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -56,19 +56,7 @@ Deno.serve(async (req) => {
   const entryId = String(body.entry_id ?? "");
   if (!entryId) return json({ ok: false, error: "entry_id required" }, 400);
 
-  const orgId = await orgOfEntry(entryId);
-  const settings = await resolveSettings(orgId, "shulcloud");
-
-  const FORM_URL = String(settings?.config.form_url ?? "");
-  const F_FIRST = String(settings?.config.field_first ?? "");
-  const F_LAST = String(settings?.config.field_last ?? "");
-  const F_EMAIL = String(settings?.config.field_email ?? "");
-  const F_PHONE = String(settings?.config.field_phone ?? "");
-  const SUCCESS_TEXT = String(settings?.config.success_text || DEFAULT_SUCCESS_TEXT);
-
-  if (!FORM_URL || !F_FIRST) {
-    return json({ ok: false, error: "ShulCloud sync is not configured for this organization" });
-  }
+  const only = body.integration_id ? String(body.integration_id) : null;
 
   const eRes = await fetch(`${SUPABASE_URL}/rest/v1/form_entries?id=eq.${entryId}&select=*`, {
     headers: restHeaders,
@@ -76,14 +64,36 @@ Deno.serve(async (req) => {
   const entry = (await eRes.json())[0];
   if (!entry) return json({ ok: false, error: "entry not found" }, 404);
 
-  try {
+  const targets = await targetsFor(entryId, "shulcloud", only);
+  if (!targets.length) {
+    // Left pending rather than failed: nothing is wrong, there is simply
+    // nowhere to send it, and the admin's resync relies on pending.
+    return json({ ok: false, error: "No ShulCloud destinations for this sign-in" });
+  }
+
+  /**
+   * One submission to one ShulCloud form.
+   *
+   * Each destination is a separate session: the CSRF token and PHPSESSID come
+   * from that form's own GET, so they cannot be fetched once and reused across
+   * forms even when both live on the same ShulCloud site.
+   */
+  async function deliver(t: Target): Promise<{ ok: boolean; error?: string }> {
+    const FORM_URL = String(t.config.form_url ?? "");
+    const F_FIRST = String(t.config.field_first ?? "");
+    const F_LAST = String(t.config.field_last ?? "");
+    const F_EMAIL = String(t.config.field_email ?? "");
+    const F_PHONE = String(t.config.field_phone ?? "");
+    const SUCCESS_TEXT = String(t.config.success_text || DEFAULT_SUCCESS_TEXT);
+
+    if (!FORM_URL || !F_FIRST) {
+      return { ok: false, error: "Form URL or first-name field is not set" };
+    }
+
     // 1. GET the form for the session cookie, CSRF token, and hidden fields.
     const getRes = await fetch(FORM_URL, { headers: BROWSER });
-    if (!getRes.ok) {
-      const err = `GET form failed: HTTP ${getRes.status}`;
-      await setStatus(entryId, { shulcloud_sync_status: "failed", shulcloud_error: err });
-      return json({ ok: false, error: err });
-    }
+    if (!getRes.ok) return { ok: false, error: `GET form failed: HTTP ${getRes.status}` };
+
     const cookie = getRes.headers
       .getSetCookie()
       .map((c) => c.split(";")[0])
@@ -94,16 +104,16 @@ Deno.serve(async (req) => {
     // collect its hidden inputs (form_id, form_name, sccsrf, …).
     let formInner = html;
     for (const seg of html.split(/<form\b/i).slice(1)) {
-      const s = "<form" + seg;
-      if (s.includes(F_FIRST)) {
-        formInner = s.split(/<\/form>/i)[0];
+      const s2 = "<form" + seg;
+      if (s2.includes(F_FIRST)) {
+        formInner = s2.split(/<\/form>/i)[0];
         break;
       }
     }
     const fields: Record<string, string> = {};
-    for (const m of formInner.matchAll(/<input[^>]*type=["']hidden["'][^>]*>/gi)) {
-      const nm = m[0].match(/name=["']([^"']*)["']/);
-      const vl = m[0].match(/value=["']([^"']*)["']/);
+    for (const m of formInner.matchAll(/<input[^>]*type=["\']hidden["\'][^>]*>/gi)) {
+      const nm = m[0].match(/name=["\']([^"\']*)["\']/);
+      const vl = m[0].match(/value=["\']([^"\']*)["\']/);
       if (nm && nm[1]) fields[nm[1]] = vl ? htmlDecode(vl[1]) : "";
     }
 
@@ -125,18 +135,39 @@ Deno.serve(async (req) => {
     });
     const respText = await postRes.text();
 
-    if (postRes.ok && respText.includes(SUCCESS_TEXT)) {
-      await setStatus(entryId, { shulcloud_sync_status: "sent", shulcloud_error: null });
-      return json({ ok: true });
-    }
-    const err = `Unexpected response (HTTP ${postRes.status})`;
-    console.error("shulcloud-sync:", err);
-    await setStatus(entryId, { shulcloud_sync_status: "failed", shulcloud_error: err });
-    return json({ ok: false, error: err });
-  } catch (e) {
-    const err = String(e).slice(0, 300);
-    console.error("shulcloud-sync error:", err);
-    await setStatus(entryId, { shulcloud_sync_status: "failed", shulcloud_error: err });
-    return json({ ok: false, error: err });
+    if (postRes.ok && respText.includes(SUCCESS_TEXT)) return { ok: true };
+    return { ok: false, error: `Unexpected response (HTTP ${postRes.status})` };
   }
+
+  const results: Array<{ ok: boolean; error?: string }> = [];
+  for (const t of targets) {
+    let outcome: { ok: boolean; error?: string };
+    try {
+      outcome = await deliver(t);
+    } catch (e) {
+      outcome = { ok: false, error: String(e).slice(0, 300) };
+    }
+    if (!outcome.ok) console.error(`shulcloud-sync ${t.name}:`, outcome.error);
+    await recordDelivery(entryId, t.id, outcome.ok ? "sent" : "failed", outcome.error);
+    results.push(outcome.ok ? { ok: true } : { ok: false, error: `${t.name}: ${outcome.error}` });
+  }
+
+  // The old single column, still written until the expandable pill ships. Not
+  // written for a single-destination resend, which would otherwise report the
+  // whole entry on one destination's result.
+  if (!only) {
+    const rolled = rollUp(results);
+    await setStatus(entryId, {
+      shulcloud_sync_status: rolled.status,
+      shulcloud_error: rolled.error,
+    });
+  }
+
+  const failed = results.filter((r) => !r.ok);
+  return json({
+    ok: failed.length === 0,
+    sent: results.length - failed.length,
+    total: results.length,
+    error: failed.length ? failed.map((f) => f.error).join("; ") : undefined,
+  });
 });

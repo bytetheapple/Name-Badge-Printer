@@ -1,11 +1,18 @@
-// Pushes a form entry into a Google Form by POSTing to its public formResponse
-// endpoint, and updates the entry's google_sync_status.
+// Pushes a sign-in into every Google Form the entry's printer is set to feed,
+// by POSTing to each form's public formResponse endpoint.
 //
-// The form URL and field ids come from the entry's own organization
-// (integrations, kind 'google_form'), and from nowhere else. An org that has
-// not configured it syncs nowhere rather than inheriting anyone's form.
+// No Google credential is involved: a form response is an unauthenticated POST,
+// which is why this works for a congregation that has connected no Google
+// account at all. Only selfies need an account.
+//
+// Destinations come from the entry's own organization and printer and from
+// nowhere else. An org that has configured none syncs nowhere rather than
+// inheriting anyone's form.
+//
+// Body: { entry_id, integration_id? }. With integration_id, only that
+// destination is attempted — a resend from one row of the expanded pill.
 import { corsHeaders, json } from "../_shared/cors.ts";
-import { orgOfEntry, resolveSettings } from "../_shared/integration.ts";
+import { recordDelivery, rollUp, targetsFor } from "../_shared/integration.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_ROLE = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -35,22 +42,7 @@ Deno.serve(async (req) => {
   }
   const entryId = String(body.entry_id ?? "");
   if (!entryId) return json({ ok: false, error: "entry_id required" }, 400);
-
-  const orgId = await orgOfEntry(entryId);
-  const settings = await resolveSettings(orgId, "google_form");
-
-  const FORM_URL = String(settings?.config.response_url ?? "");
-  const F_FIRST = String(settings?.config.entry_first ?? "");
-  const F_LAST = String(settings?.config.entry_last ?? "");
-  const F_PHONE = String(settings?.config.entry_phone ?? "");
-  const COLLECT_EMAIL = Boolean(settings?.config.collect_email);
-  const EXTRA_FIELDS = (settings?.config.extra_fields ?? {}) as Record<string, string>;
-
-  if (!FORM_URL || !F_FIRST) {
-    // Not configured for this org — leave the entry pending rather than marking
-    // it failed, which is what the admin's "resync" button relies on.
-    return json({ ok: false, error: "Google sync is not configured for this organization" });
-  }
+  const only = body.integration_id ? String(body.integration_id) : null;
 
   const res = await fetch(
     `${SUPABASE_URL}/rest/v1/form_entries?id=eq.${entryId}&select=*`,
@@ -60,33 +52,77 @@ Deno.serve(async (req) => {
   if (!rows.length) return json({ ok: false, error: "entry not found" }, 404);
   const entry = rows[0];
 
-  const form = new URLSearchParams();
-  form.set(F_FIRST, entry.first_name ?? "");
-  if (F_LAST && entry.last_name) form.set(F_LAST, entry.last_name);
-  if (F_PHONE && entry.phone) form.set(F_PHONE, entry.phone);
-  if (COLLECT_EMAIL && entry.email) form.set("emailAddress", entry.email);
-  for (const [key, value] of Object.entries(EXTRA_FIELDS)) form.set(key, String(value));
-
-  try {
-    const gres = await fetch(FORM_URL, {
-      method: "POST",
-      headers: { "Content-Type": "application/x-www-form-urlencoded" },
-      body: form.toString(),
-    });
-    if (gres.ok) {
-      await setStatus(entryId, {
-        google_sync_status: "sent",
-        google_synced_at: new Date().toISOString(),
-        google_error: null,
-      });
-      return json({ ok: true, status: "sent" });
-    }
-    const err = `Google returned HTTP ${gres.status}`;
-    await setStatus(entryId, { google_sync_status: "failed", google_error: err });
-    return json({ ok: false, error: err });
-  } catch (e) {
-    const err = String(e).slice(0, 300);
-    await setStatus(entryId, { google_sync_status: "failed", google_error: err });
-    return json({ ok: false, error: err });
+  const targets = await targetsFor(entryId, "google_form", only);
+  if (!targets.length) {
+    // Left pending rather than marked failed: nothing has gone wrong, there is
+    // simply nowhere to send it, and the admin's resync relies on pending.
+    return json({ ok: false, error: "No Google Form destinations for this sign-in" });
   }
+
+  const results: Array<{ ok: boolean; error?: string }> = [];
+
+  for (const t of targets) {
+    const FORM_URL = String(t.config.response_url ?? "");
+    const F_FIRST = String(t.config.entry_first ?? "");
+    const F_LAST = String(t.config.entry_last ?? "");
+    const F_PHONE = String(t.config.entry_phone ?? "");
+    const COLLECT_EMAIL = Boolean(t.config.collect_email);
+    const EXTRA_FIELDS = (t.config.extra_fields ?? {}) as Record<string, string>;
+
+    // Half-configured is this destination's problem, not the others'. Recorded
+    // against it so the pill says which one needs attention.
+    if (!FORM_URL || !F_FIRST) {
+      const err = "Form URL or first-name field is not set";
+      await recordDelivery(entryId, t.id, "failed", err);
+      results.push({ ok: false, error: `${t.name}: ${err}` });
+      continue;
+    }
+
+    const form = new URLSearchParams();
+    form.set(F_FIRST, entry.first_name ?? "");
+    if (F_LAST && entry.last_name) form.set(F_LAST, entry.last_name);
+    if (F_PHONE && entry.phone) form.set(F_PHONE, entry.phone);
+    if (COLLECT_EMAIL && entry.email) form.set("emailAddress", entry.email);
+    for (const [key, value] of Object.entries(EXTRA_FIELDS)) form.set(key, String(value));
+
+    try {
+      const gres = await fetch(FORM_URL, {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body: form.toString(),
+      });
+      if (gres.ok) {
+        await recordDelivery(entryId, t.id, "sent");
+        results.push({ ok: true });
+      } else {
+        const err = `Google returned HTTP ${gres.status}`;
+        await recordDelivery(entryId, t.id, "failed", err);
+        results.push({ ok: false, error: `${t.name}: ${err}` });
+      }
+    } catch (e) {
+      const err = String(e).slice(0, 300);
+      await recordDelivery(entryId, t.id, "failed", err);
+      results.push({ ok: false, error: `${t.name}: ${err}` });
+    }
+  }
+
+  // The old single column, still written until the expandable pill ships and
+  // it can be dropped. Not written at all for a single-destination resend,
+  // which would otherwise report the whole entry on one destination's result.
+  if (!only) {
+    const rolled = rollUp(results);
+    await setStatus(entryId, {
+      google_sync_status: rolled.status,
+      google_synced_at: rolled.status === "sent" ? new Date().toISOString() : null,
+      google_error: rolled.error,
+    });
+  }
+
+  const failed = results.filter((r) => !r.ok);
+  return json({
+    ok: failed.length === 0,
+    sent: results.length - failed.length,
+    total: results.length,
+    error: failed.length ? failed.map((f) => f.error).join("; ") : undefined,
+  });
 });
