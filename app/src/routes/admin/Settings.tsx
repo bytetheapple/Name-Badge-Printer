@@ -262,9 +262,12 @@ export default function Settings() {
           Show an optional pronouns field on the sign-in form
         </label>
       </section>
-      </div>
 
+      {/* In the column too. Outside it the name mark ran to the full width of
+          the page against two narrower panes, and picked up none of the
+          column's spacing, so it sat tight under Pronouns. */}
       <OrgLogo />
+      </div>
 
     </>
   )
