@@ -31,6 +31,10 @@ export interface TokenRow {
   name: string | null;
   printer_ids: string[] | null;
   first_used_at: string | null;
+  /** The token this one replaced. Null only for the value written at imaging
+   *  time, which is what makes it the way to tell a bootstrap credential from
+   *  a replacement — both are unused at the moment they first authenticate. */
+  replaces: string | null;
   superseded_at: string | null;
   superseded_by: string | null;
   created_at: string;
@@ -38,7 +42,8 @@ export interface TokenRow {
 }
 
 const COLUMNS =
-  "id,org_id,name,printer_ids,first_used_at,superseded_at,superseded_by,created_at,rotation_failed_at";
+  "id,org_id,name,printer_ids,first_used_at,superseded_at,superseded_by,replaces," +
+  "created_at,rotation_failed_at";
 
 /** Fetch the full row for an authenticated bridge. */
 export async function tokenRow(id: string): Promise<TokenRow | null> {
@@ -67,7 +72,12 @@ export function rotationDue(row: TokenRow, now: number): boolean {
   if (row.rotation_failed_at && now - Date.parse(row.rotation_failed_at) < RETRY_AFTER_MS) {
     return false;
   }
-  if (!row.first_used_at) return true;
+  // Unused AND never issued by a rotation: the value someone typed while
+  // imaging the card. `replaces` is what separates the two — a replacement is
+  // also unused at the moment it first authenticates, and testing only
+  // first_used_at rotated on every single poll, for ever, minting a new
+  // credential every few seconds for as long as the device stayed online.
+  if (!row.first_used_at && !row.replaces) return true;
   return now - Date.parse(row.created_at) > MAX_AGE_MS;
 }
 
