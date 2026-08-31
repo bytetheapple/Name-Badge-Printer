@@ -237,8 +237,12 @@ export default function Settings() {
           </label>
         </section>
 
+        {/* One label, whatever the state. It said "Saved" when there was
+            nothing to save, which reads as a status parked in a control and
+            makes a dim button look like something you failed to press. Being
+            dim is the whole message. */}
         <button type="submit" disabled={saving || !dirty}>
-          {saving ? 'Saving…' : dirty ? 'Save settings' : 'Saved'}
+          {saving ? 'Saving…' : 'Save settings'}
         </button>
       </form>
 
