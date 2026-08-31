@@ -132,6 +132,11 @@ export default function Integrations({ specs = PLATFORM_SPECS }: { specs?: Spec[
   const dirty = (row: Integration) =>
     loaded[row.id] !== undefined &&
     loaded[row.id] !== JSON.stringify({ name: row.name, config: row.config ?? {} })
+
+  /** Anything for Save to do. A typed-but-unsaved credential counts even
+   *  though it never appears in `dirty` — it is write-only and is not part of
+   *  the row we compare against. */
+  const pending = (row: Integration) => dirty(row) || Boolean(secretInput[row.id]?.trim())
   const specOf = (kind: IntegrationKind) => specs.find((s) => s.kind === kind)
 
   const load = useCallback(async () => {
@@ -353,24 +358,6 @@ export default function Integrations({ specs = PLATFORM_SPECS }: { specs?: Spec[
               </span>
             </label>
 
-            {/* Both take effect on click. */}
-            <label className="check">
-              <input
-                type="checkbox"
-                checked={Boolean(row.enabled)}
-                onChange={(e) => void toggleNow(row, 'enabled', e.target.checked)}
-              />
-              Enabled
-            </label>
-            <label className="check">
-              <input
-                type="checkbox"
-                checked={Boolean(row.default_enabled)}
-                onChange={(e) => void toggleNow(row, 'default_enabled', e.target.checked)}
-              />
-              On by default for printers
-            </label>
-
             <div className="grid2" style={{ marginTop: 12 }}>
               {spec.fields.map((f) =>
                 f.type === 'checkbox' ? (
@@ -428,7 +415,7 @@ export default function Integrations({ specs = PLATFORM_SPECS }: { specs?: Spec[
 
             {/* The switches are already live, so this can only ever be about the
                 text fields — which is why it names them. */}
-            {dirty(row) && (
+            {pending(row) && (
               <p className="muted small" style={{ marginTop: 10 }}>
                 The settings above have been edited and not saved yet.
               </p>
@@ -443,16 +430,47 @@ export default function Integrations({ specs = PLATFORM_SPECS }: { specs?: Spec[
               >
                 Delete
               </button>
+              {/* Dim until there is text to save. The switches below write
+                  themselves, so an enabled card with nothing typed has
+                  genuinely nothing for this button to do. */}
               <button
                 type="button"
-                className="secondary btn-sm"
+                disabled={busy === row.id || !pending(row)}
+                onClick={() => void save(row)}
+              >
+                {busy === row.id ? 'Saving…' : 'Save'}
+              </button>
+            </div>
+
+            {/* Below the buttons on purpose: these are live switches rather
+                than part of the form above them, and grouping them with the
+                fields implied they were saved alongside. */}
+            <div className="switch-row">
+              <label className="check">
+                <input
+                  type="checkbox"
+                  checked={Boolean(row.enabled)}
+                  onChange={(e) => void toggleNow(row, 'enabled', e.target.checked)}
+                />
+                Enabled
+              </label>
+            </div>
+            <div className="switch-row">
+              <label className="check">
+                <input
+                  type="checkbox"
+                  checked={Boolean(row.default_enabled)}
+                  onChange={(e) => void toggleNow(row, 'default_enabled', e.target.checked)}
+                />
+                On by default for printers
+              </label>
+              <button
+                type="button"
+                className="linkish"
                 disabled={busy === row.id}
                 onClick={() => void resetPrinters(row)}
               >
                 Reset all printers to the default
-              </button>
-              <button type="button" disabled={busy === row.id} onClick={() => void save(row)}>
-                {busy === row.id ? 'Saving…' : dirty(row) ? 'Save changes' : 'Save'}
               </button>
             </div>
           </section>

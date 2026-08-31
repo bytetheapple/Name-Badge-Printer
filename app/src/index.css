@@ -2088,3 +2088,23 @@ button.danger:disabled {
   flex: 1 1 auto;
   font-size: 0.9em;
 }
+
+/* A live switch and, beside it, the action that resets what it is the default
+   for. Below the card's buttons rather than among its fields: these write
+   themselves on click, and sitting them with the text implied they were saved
+   along with it. */
+.switch-row {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex-wrap: wrap;
+  font-size: 14px;
+  margin-top: 10px;
+}
+.switch-row .linkish {
+  color: var(--muted);
+  text-decoration-color: var(--border);
+}
+.switch-row .linkish:hover:not(:disabled) {
+  color: var(--accent);
+}
