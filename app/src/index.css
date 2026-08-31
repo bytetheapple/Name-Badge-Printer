@@ -2009,3 +2009,38 @@ button.danger:disabled {
     }
   }
 }
+
+/* Where one sign-in went. A disclosure rather than a modal: the answer is
+   usually one line long, and opening it should not cover the row it explains. */
+.delivery > summary {
+  cursor: pointer;
+  list-style: none;
+}
+.delivery > summary::-webkit-details-marker {
+  display: none;
+}
+.delivery > summary::after {
+  content: ' ▸';
+  color: var(--muted);
+  font-size: 0.8em;
+}
+.delivery[open] > summary::after {
+  content: ' ▾';
+}
+.delivery-detail {
+  margin-top: 6px;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  min-width: 240px;
+}
+.delivery-row {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 3px 0;
+}
+.delivery-name {
+  flex: 1 1 auto;
+  font-size: 0.9em;
+}

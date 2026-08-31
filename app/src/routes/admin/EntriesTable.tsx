@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { supabase } from '../../lib/supabase'
+import DeliveryPill, { type Delivery } from './DeliveryPill'
 import { useOrg } from '../../lib/org'
 import type { FormEntry } from '../../lib/types'
 
@@ -151,6 +152,10 @@ export default function EntriesTable() {
   const [resyncing, setResyncing] = useState<string | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
 
+  //: Where each sign-in went, keyed by entry. Empty until the deliveries
+  //: migration is applied, which is what the fallback below is for.
+  const [deliveries, setDeliveries] = useState<Record<string, Delivery[]>>({})
+
   const load = useCallback(async () => {
     if (!orgId) return
     setLoading(true)
@@ -165,6 +170,22 @@ export default function EntriesTable() {
     const { data, error } = await q
     if (error) setError(error.message)
     else setRows((data ?? []) as FormEntry[])
+
+    // One call for the whole page rather than one per row. If the function is
+    // not there yet — the migration is applied by hand and the app deploys on
+    // its own — this comes back empty and each row falls back to the old
+    // per-kind pills, so the table keeps working either way.
+    const ids = ((data ?? []) as FormEntry[]).map((r) => r.id)
+    if (ids.length) {
+      const { data: d } = await supabase.rpc('deliveries_for_entries', { p_entries: ids })
+      const byEntry: Record<string, Delivery[]> = {}
+      for (const row of (d ?? []) as Delivery[]) {
+        ;(byEntry[row.entry_id] ??= []).push(row)
+      }
+      setDeliveries(byEntry)
+    } else {
+      setDeliveries({})
+    }
     setLoading(false)
   }, [orgId, from, to])
 
@@ -357,22 +378,35 @@ export default function EntriesTable() {
                     </td>
                     <td>
                       <div className="sync-cell">
-                        <SyncPill
-                          label="Google"
-                          status={r.google_sync_status}
-                          busy={resyncing === `google:${r.id}`}
-                          onResync={() => resync(r, 'google-sync')}
-                        />
-                        <SyncPill
-                          label="ShulCloud"
-                          status={r.shulcloud_sync_status}
-                          busy={resyncing === `shulcloud:${r.id}`}
-                          onResync={() => resync(r, 'shulcloud-sync')}
-                        />
-                        {/* No resync: the photo only exists in the kiosk's
-                            browser at capture time, so it cannot be sent
-                            again from here. */}
-                        <SyncPill label="Photo" status={r.selfie_status} title={r.selfie_error} />
+                        {deliveries[r.id]?.length ? (
+                          <DeliveryPill rows={deliveries[r.id]} onChanged={load} />
+                        ) : (
+                          <>
+                            {/* Before the deliveries migration is applied there
+                                is nothing to expand, so the old per-kind pills
+                                stand in rather than the column going blank. */}
+                            <SyncPill
+                              label="Google"
+                              status={r.google_sync_status}
+                              busy={resyncing === `google:${r.id}`}
+                              onResync={() => resync(r, 'google-sync')}
+                            />
+                            <SyncPill
+                              label="ShulCloud"
+                              status={r.shulcloud_sync_status}
+                              busy={resyncing === `shulcloud:${r.id}`}
+                              onResync={() => resync(r, 'shulcloud-sync')}
+                            />
+                            {/* No resync: the photo only exists in the kiosk's
+                                browser at capture time, so it cannot be sent
+                                again from here. */}
+                            <SyncPill
+                              label="Photo"
+                              status={r.selfie_status}
+                              title={r.selfie_error}
+                            />
+                          </>
+                        )}
                       </div>
                     </td>
                     <td>{r.printer?.name ?? '—'}</td>
