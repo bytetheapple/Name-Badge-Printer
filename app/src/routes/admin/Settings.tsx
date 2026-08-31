@@ -223,12 +223,6 @@ export default function Settings() {
               to store.
             </p>
           )}
-
-          {driveConnected && selfieMode !== 'off' && hasFolder && (
-            <p className="muted small" style={{ marginTop: 8 }}>
-              Photos are filed as First_Last_Date_Time in that folder.
-            </p>
-          )}
         </section>
 
         <section className="card">
@@ -241,9 +235,6 @@ export default function Settings() {
             />
             Show an optional pronouns field on the sign-in form
           </label>
-          <p className="muted small" style={{ marginTop: 8 }}>
-            When on, people can add pronouns, which print under their name on the badge.
-          </p>
         </section>
 
         <button type="submit" disabled={saving || !dirty}>
