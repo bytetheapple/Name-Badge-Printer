@@ -65,6 +65,7 @@ Deno.serve(async (req) => {
     const FORM_URL = String(t.config.response_url ?? "");
     const F_FIRST = String(t.config.entry_first ?? "");
     const F_LAST = String(t.config.entry_last ?? "");
+    const F_EMAIL = String(t.config.entry_email ?? "");
     const F_PHONE = String(t.config.entry_phone ?? "");
     const COLLECT_EMAIL = Boolean(t.config.collect_email);
     const EXTRA_FIELDS = (t.config.extra_fields ?? {}) as Record<string, string>;
@@ -81,7 +82,12 @@ Deno.serve(async (req) => {
     const form = new URLSearchParams();
     form.set(F_FIRST, entry.first_name ?? "");
     if (F_LAST && entry.last_name) form.set(F_LAST, entry.last_name);
+    if (F_EMAIL && entry.email) form.set(F_EMAIL, entry.email);
     if (F_PHONE && entry.phone) form.set(F_PHONE, entry.phone);
+    // Google's built-in capture is a reserved parameter rather than a numbered
+    // field, which is why it is a flag and not a mapping. A form can have both
+    // — an ordinary email question and the built-in box — and then both are
+    // sent, which is what having configured both asks for.
     if (COLLECT_EMAIL && entry.email) form.set("emailAddress", entry.email);
     for (const [key, value] of Object.entries(EXTRA_FIELDS)) form.set(key, String(value));
 

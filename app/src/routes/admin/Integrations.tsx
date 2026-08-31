@@ -44,12 +44,16 @@ const CUSTOM_SPECS: Spec[] = [
       },
       { key: 'entry_first', label: 'First name field', placeholder: 'entry.123456' },
       { key: 'entry_last', label: 'Last name field', placeholder: 'entry.123456' },
+      { key: 'entry_email', label: 'Email field', placeholder: 'entry.123456' },
       { key: 'entry_phone', label: 'Phone field', placeholder: 'entry.123456' },
       {
         key: 'collect_email',
         label: "Use Google's built-in email capture",
         type: 'checkbox',
-        hint: 'Turn on if the form has "Collect email addresses" set to Responder input.',
+        hint:
+          'For a form with "Collect email addresses" set to Responder input — that box has no ' +
+          'entry id, so it cannot be mapped above. If the form asks for email as an ordinary ' +
+          'question, leave this off and fill in the Email field instead.',
       },
       {
         key: 'extra_fields',
