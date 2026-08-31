@@ -200,11 +200,6 @@ export default function Integrations({ specs = PLATFORM_SPECS }: { specs?: Spec[
       setError(error.message)
       return
     }
-    setNotice(
-      key === 'enabled'
-        ? `${row.name} ${value ? 'enabled' : 'disabled'}.`
-        : `${row.name} is now ${value ? 'on' : 'off'} by default for printers.`,
-    )
   }
 
   function setField(id: string, key: string, value: unknown) {
@@ -236,7 +231,6 @@ export default function Integrations({ specs = PLATFORM_SPECS }: { specs?: Spec[
     }
     setAddKind('')
     setAddName('')
-    setNotice(`${name} added. Fill in its settings, then switch it on.`)
     await load()
   }
 
@@ -259,7 +253,6 @@ export default function Integrations({ specs = PLATFORM_SPECS }: { specs?: Spec[
       setBusy(null)
       return
     }
-    setNotice(`${row.name} saved.`)
 
     const pending = secretInput[row.id]?.trim()
     if (spec?.secret && pending) {
@@ -268,10 +261,7 @@ export default function Integrations({ specs = PLATFORM_SPECS }: { specs?: Spec[
         p_secret: pending,
       })
       if (secretError) setError(secretError.message)
-      else {
-        setSecretInput((p) => ({ ...p, [row.id]: '' }))
-        setNotice(`${row.name} saved, including the credential.`)
-      }
+      else setSecretInput((p) => ({ ...p, [row.id]: '' }))
     }
     setBusy(null)
     await load()
@@ -304,6 +294,9 @@ export default function Integrations({ specs = PLATFORM_SPECS }: { specs?: Spec[
       .delete()
       .eq('integration_id', row.id)
     setBusy(null)
+    // The only message kept. Everything else on this page shows its own
+    // result — a switch moves, a card appears or disappears, Save goes dim —
+    // but this one changes rows on the Printers tab and leaves no trace here.
     if (error) setError(error.message)
     else setNotice(`Every printer now follows the default for ${row.name}.`)
   }
@@ -321,7 +314,6 @@ export default function Integrations({ specs = PLATFORM_SPECS }: { specs?: Spec[
     const { error } = await supabase.from('integrations').delete().eq('id', row.id)
     setBusy(null)
     if (error) setError(error.message)
-    else setNotice(`${row.name} deleted.`)
     await load()
   }
 
