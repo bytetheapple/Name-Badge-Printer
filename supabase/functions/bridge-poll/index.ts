@@ -202,7 +202,7 @@ Deno.serve(async (req) => {
   if (job && job.type !== "test" && !job.first_name && job.entry_id) {
     const entryRes = await fetch(
       `${REST}/form_entries?id=eq.${job.entry_id}&org_id=eq.${bridge.org_id}` +
-        `&select=first_name,last_name,pronouns`,
+        `&select=first_name,last_name,pronouns,visitor_type`,
       { headers: restHeaders },
     );
     const entry = entryRes.ok ? (await entryRes.json())[0] : null;
@@ -212,6 +212,10 @@ Deno.serve(async (req) => {
         first_name: entry.first_name,
         last_name: entry.last_name,
         pronouns: job.pronouns ?? entry.pronouns,
+        // Decides whether the badge prints its header inverted. A reprint
+        // carries only entry_id, so it comes through here too and gets the
+        // same badge the visitor was handed the first time.
+        visitor_type: entry.visitor_type,
       };
     }
   }

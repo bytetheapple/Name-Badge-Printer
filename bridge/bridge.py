@@ -135,10 +135,19 @@ def handle_job(client, job: dict, cfg: dict, printers: list):
             first = job.get("first_name")
             last = job.get("last_name")
             pronouns = job.get("pronouns")
+            # Absent on an API job, which has no sign-in behind it and so no
+            # way to be a visitor. Absent is a member: the ordinary badge is
+            # the safe thing to print when we do not know.
+            visitor = job.get("visitor_type") == "visitor"
             if not first:
                 raise RuntimeError("no name or form entry for this job")
             image = render_badge(
-                first or "", last or "", template, label, pronouns=pronouns or ""
+                first or "",
+                last or "",
+                template,
+                label,
+                pronouns=pronouns or "",
+                visitor=visitor,
             )
 
         printer.print_image(

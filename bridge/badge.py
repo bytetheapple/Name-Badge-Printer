@@ -30,6 +30,23 @@ def _load_header_image(name: str):
         return None
 
 
+def _white_mark(logo):
+    """The same artwork in white, for printing on a dark banner.
+
+    Composited over white first so a transparent PNG and a JPEG with a white
+    background reduce to the same thing — dark ink on white — and then the dark
+    pixels become the mask. That is what makes it work for both kinds of logo a
+    congregation might upload, without asking them for a second one.
+    """
+    flat = Image.new("RGB", logo.size, "white")
+    flat.paste(logo, (0, 0), logo if logo.mode == "RGBA" else None)
+    # A hard threshold rather than a gradient: this prints on a thermal head at
+    # one bit per dot, so anything in between is decided for us anyway, and
+    # deciding it here keeps the edges where the artwork put them.
+    mask = flat.convert("L").point(lambda v: 255 if v < 140 else 0, mode="L")
+    return Image.new("RGB", logo.size, "white"), mask
+
+
 _LABELS = {label.identifier: label for label in ALL_LABELS}
 
 
@@ -108,7 +125,15 @@ def render_badge(
     template: dict | None = None,
     label: str = "62",
     pronouns: str = "",
+    visitor: bool = False,
 ) -> Image.Image:
+    """Render one badge.
+
+    `visitor` inverts the header into a dark banner with the logo or wording in
+    white and "Visitor" in the corner, so the two kinds of badge are told apart
+    across a room rather than by reading them. Members are unchanged: the
+    ordinary badge is the one most people get, and it stays the quiet one.
+    """
     t = template or {}
     header = t.get("header", "WELCOME")
     subtitle = t.get("subtitle", "Shir Hadash")
@@ -128,21 +153,55 @@ def render_badge(
 
     # Header: a logo image (if header_image is set and found) takes priority over
     # the text header. Either advances `top` so the name sits below it.
+    #
+    # For a visitor the whole header sits on a black band running edge to edge,
+    # with the mark or the wording knocked out in white. The band is measured
+    # from the header's own height rather than being a fixed depth, so a logo
+    # and a line of text each get a banner that fits them.
     header_image = t.get("header_image")
     logo = _load_header_image(str(header_image)) if header_image else None
+    ink = "white" if visitor else "black"
+    banner_h = 0
+
     if logo is not None:
         target_h = round(height * float(t.get("header_image_frac", 0.28)))
         logo_w = round(target_h * logo.width / logo.height)
         if logo_w > inner:
             logo_w = inner
             target_h = round(logo_w * logo.height / logo.width)
+        banner_h = top + target_h + round(2.5 * MM)
+        if visitor:
+            draw.rectangle([0, 0, width, banner_h], fill="black")
         logo_r = logo.resize((logo_w, target_h), Image.LANCZOS)
-        img.paste(logo_r, ((width - logo_w) // 2, top), logo_r)
+        if visitor:
+            mark, mask = _white_mark(logo_r)
+            img.paste(mark, ((width - logo_w) // 2, top), mask)
+        else:
+            img.paste(logo_r, ((width - logo_w) // 2, top), logo_r)
         top += target_h + round(4 * MM)
     elif header:
         hf = _load_font(round(float(t.get("header_mm", 4)) * MM), bold=True)
-        draw.text((width / 2, top), str(header).upper(), font=hf, fill="black", anchor="ma")
-        top += hf.getbbox(str(header).upper())[3] + round(2.5 * MM)
+        text = str(header).upper()
+        banner_h = top + hf.getbbox(text)[3] + round(2.5 * MM)
+        if visitor:
+            draw.rectangle([0, 0, width, banner_h], fill="black")
+        draw.text((width / 2, top), text, font=hf, fill=ink, anchor="ma")
+        top += hf.getbbox(text)[3] + round(2.5 * MM)
+
+    # The word itself, in the corner of the band. Small, because the inversion
+    # is what carries across a room and this is what confirms it up close.
+    if visitor and banner_h:
+        # Smaller than the header wording: the inversion is what reads across a
+        # room, and this only has to confirm it once someone is close enough to
+        # shake a hand.
+        vf = _load_font(round(float(t.get("visitor_mm", 2.4)) * MM), bold=True)
+        draw.text(
+            (width - margin, round(2 * MM)),
+            str(t.get("visitor_label", "Visitor")),
+            font=vf,
+            fill="white",
+            anchor="ra",
+        )
 
     if subtitle:
         sf = _load_font(round(float(t.get("subtitle_mm", 6)) * MM), bold=False)
