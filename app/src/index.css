@@ -1941,7 +1941,15 @@ button.danger:disabled {
    Applied to every table: a short one is under the cap and behaves exactly as
    it did before. */
 .table-wrap {
-  max-height: 70vh;
+  /* Eight rows, the header, and the horizontal bar. 70vh was the first go and
+     was too tall on a laptop — a viewport fraction gives a different number of
+     rows on every screen, and rows are the unit that actually matters here.
+
+     A row measures 42px and the header 41.5px at the default 17px root, so
+     this is expressed in rem: it follows the reader's font size instead of
+     pinning to the one I measured on. */
+  --table-row: 2.47rem;
+  max-height: calc(var(--table-row) * 9 + 12px);
   overflow: auto;
 }
 
