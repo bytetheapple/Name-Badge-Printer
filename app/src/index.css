@@ -2111,3 +2111,24 @@ button.danger:disabled {
 .switch-row .linkish:hover:not(:disabled) {
   color: var(--accent);
 }
+
+/* An integration's own name, with its kind behind it. The kind is set back
+   deliberately: once an organization has three ShulCloud forms, what tells
+   them apart is the name they chose, not the vendor they all share. */
+.integration-title {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-bottom: 12px;
+}
+.integration-kind {
+  font-size: 0.72rem;
+  font-weight: 500;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 1px 8px;
+}

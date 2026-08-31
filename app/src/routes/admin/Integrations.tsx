@@ -3,7 +3,7 @@ import { supabase } from '../../lib/supabase'
 import { useOrg } from '../../lib/org'
 import type { Integration, IntegrationKind } from '../../lib/types'
 
-export { CUSTOM_SPECS }
+export { CUSTOM_SPECS, PLATFORM_SPECS }
 
 const COLUMNS =
   'id, org_id, kind, name, enabled, default_enabled, config, updated_at, created_at'
@@ -346,6 +346,13 @@ export default function Integrations({ specs = PLATFORM_SPECS }: { specs?: Spec[
         const config = (row.config ?? {}) as Record<string, unknown>
         return (
           <section className="card" key={row.id}>
+            {/* The name, as typed, with what it is behind it. Live rather than
+                from the last save, so renaming shows here as you type. */}
+            <h2 className="integration-title">
+              {row.name.trim() || spec.title}
+              <span className="integration-kind">{spec.title}</span>
+            </h2>
+
             {/* First, not last. Both write on click, so this is the state of
                 the thing rather than part of the form below it — and someone
                 who saves settings without scrolling to the foot of the card
@@ -392,9 +399,7 @@ export default function Integrations({ specs = PLATFORM_SPECS }: { specs?: Spec[
                 onChange={(e) => patch(row.id, { name: e.target.value })}
                 placeholder={spec.title}
               />
-              <span className="muted small">
-                {spec.title}. {spec.blurb}
-              </span>
+              <span className="muted small">{spec.blurb}</span>
             </label>
 
             <div className="grid2" style={{ marginTop: 12 }}>
