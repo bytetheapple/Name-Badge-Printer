@@ -5,7 +5,8 @@ import type { Integration, IntegrationKind } from '../../lib/types'
 
 export { CUSTOM_SPECS }
 
-const COLUMNS = 'id, org_id, kind, enabled, config, updated_at, created_at'
+const COLUMNS =
+  'id, org_id, kind, name, enabled, default_enabled, config, updated_at, created_at'
 
 type Field = {
   key: string
@@ -98,22 +99,31 @@ const PLATFORM_SPECS: Spec[] = [
 ]
 
 /**
- * Per-organization integration settings.
+ * An organization's integrations, of which there may be several of a kind.
  *
- * Config is ordinary data the org's admins own. The one real credential — the
+ * A congregation might feed two ShulCloud forms for two audiences, or add a
+ * second Google Form for one event, so an integration is an instance with a
+ * name rather than a slot per vendor.
+ *
+ * Config is ordinary data the org's owners own. The one real credential — a
  * Drive service-account key — is written through a database function into
- * Vault, and there is no route that reads it back, so the field shows only
- * whether one is stored.
+ * Vault, and no route reads it back, so the field shows only whether one is
+ * stored.
  */
 export default function Integrations({ specs = PLATFORM_SPECS }: { specs?: Spec[] } = {}) {
-  const { orgId, isAdmin } = useOrg()
-  const [rows, setRows] = useState<Record<string, Integration>>({})
+  const { orgId, isOwner } = useOrg()
+  const [list, setList] = useState<Integration[]>([])
   const [hasSecret, setHasSecret] = useState<Record<string, boolean>>({})
+  const [secretInput, setSecretInput] = useState<Record<string, string>>({})
   const [loading, setLoading] = useState(true)
   const [busy, setBusy] = useState<string | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
-  const [secretInput, setSecretInput] = useState<Record<string, string>>({})
+  const [addKind, setAddKind] = useState<IntegrationKind | ''>('')
+  const [addName, setAddName] = useState('')
+
+  const kinds = specs.map((s) => s.kind)
+  const specOf = (kind: IntegrationKind) => specs.find((s) => s.kind === kind)
 
   const load = useCallback(async () => {
     if (!orgId) return
@@ -122,86 +132,152 @@ export default function Integrations({ specs = PLATFORM_SPECS }: { specs?: Spec[
       .from('integrations')
       .select(COLUMNS)
       .eq('org_id', orgId)
+      .order('kind')
+      .order('name')
     if (error) setError(error.message)
-    const byKind: Record<string, Integration> = {}
-    for (const r of (data ?? []) as Integration[]) byKind[r.kind] = r
-    setRows(byKind)
+    const mine = ((data ?? []) as Integration[]).filter((r) => kinds.includes(r.kind))
+    setList(mine)
 
+    // Per instance, not per kind: two Drive accounts can differ in whether a
+    // key has been stored.
     const flags: Record<string, boolean> = {}
-    for (const spec of specs.filter((s) => s.secret)) {
-      const { data: has } = await supabase.rpc('integration_has_secret', {
-        p_org: orgId,
-        p_kind: spec.kind,
-      })
-      flags[spec.kind] = Boolean(has)
+    for (const row of mine.filter((r) => specOf(r.kind)?.secret)) {
+      const { data: has } = await supabase.rpc('integration_has_secret', { p_integration: row.id })
+      flags[row.id] = Boolean(has)
     }
     setHasSecret(flags)
     setLoading(false)
+    // kinds is derived from specs, which is a stable module constant
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [orgId, specs])
 
   useEffect(() => {
     void load()
   }, [load])
 
-  function setField(kind: IntegrationKind, key: string, value: unknown) {
-    setRows((prev) => {
-      const existing = prev[kind]
-      const config = { ...(existing?.config ?? {}), [key]: value }
-      return { ...prev, [kind]: { ...(existing ?? ({} as Integration)), kind, config } }
-    })
+  function patch(id: string, changes: Partial<Integration>) {
+    setList((prev) => prev.map((r) => (r.id === id ? { ...r, ...changes } : r)))
   }
 
-  function setEnabled(kind: IntegrationKind, enabled: boolean) {
-    setRows((prev) => ({ ...prev, [kind]: { ...(prev[kind] ?? ({} as Integration)), kind, enabled } }))
+  function setField(id: string, key: string, value: unknown) {
+    setList((prev) =>
+      prev.map((r) => (r.id === id ? { ...r, config: { ...(r.config ?? {}), [key]: value } } : r)),
+    )
   }
 
-  async function save(spec: Spec) {
-    if (!orgId) return
-    setBusy(spec.kind)
+  async function create() {
+    if (!orgId || !addKind) return
+    const spec = specOf(addKind)
+    const name = addName.trim() || spec?.title || addKind
+    setBusy('add')
     setNotice(null)
     setError(null)
-    const row = rows[spec.kind]
-    const payload = { enabled: Boolean(row?.enabled), config: row?.config ?? {} }
+    // Switched off on creation: an integration with no configuration yet would
+    // otherwise start failing against every sign-in the moment it is added.
+    const { error } = await supabase
+      .from('integrations')
+      .insert({ org_id: orgId, kind: addKind, name, enabled: false, default_enabled: true, config: {} })
+    setBusy(null)
+    if (error) {
+      setError(
+        error.message.includes('integrations_org_name_key')
+          ? `You already have an integration called "${name}".`
+          : error.message,
+      )
+      return
+    }
+    setAddKind('')
+    setAddName('')
+    setNotice(`${name} added. Fill in its settings, then switch it on.`)
+    await load()
+  }
 
-    // Update or insert explicitly rather than upserting: org_id and kind are
-    // insert-only columns, and an upsert would try to write them on conflict.
-    const { error } = row?.id
-      ? await supabase.from('integrations').update(payload).eq('id', row.id)
-      : await supabase.from('integrations').insert({ org_id: orgId, kind: spec.kind, ...payload })
+  async function save(row: Integration) {
+    const spec = specOf(row.kind)
+    setBusy(row.id)
+    setNotice(null)
+    setError(null)
+    const { error } = await supabase
+      .from('integrations')
+      .update({
+        name: row.name.trim(),
+        enabled: row.enabled,
+        default_enabled: row.default_enabled,
+        config: row.config ?? {},
+      })
+      .eq('id', row.id)
+    if (error) {
+      setError(error.message)
+      setBusy(null)
+      return
+    }
+    setNotice(`${row.name} saved.`)
 
-    if (error) setError(error.message)
-    else setNotice(`${spec.title} saved.`)
-
-    const pending = secretInput[spec.kind]?.trim()
-    if (!error && spec.secret && pending) {
+    const pending = secretInput[row.id]?.trim()
+    if (spec?.secret && pending) {
       const { error: secretError } = await supabase.rpc('set_integration_secret', {
-        p_org: orgId,
-        p_kind: spec.kind,
+        p_integration: row.id,
         p_secret: pending,
       })
       if (secretError) setError(secretError.message)
       else {
-        setSecretInput((p) => ({ ...p, [spec.kind]: '' }))
-        setNotice(`${spec.title} saved, including the credential.`)
+        setSecretInput((p) => ({ ...p, [row.id]: '' }))
+        setNotice(`${row.name} saved, including the credential.`)
       }
     }
     setBusy(null)
     await load()
   }
 
-  async function clearSecret(spec: Spec) {
-    if (!orgId || !window.confirm(`Remove the stored ${spec.secret?.label.toLowerCase()}?`)) return
-    setBusy(spec.kind)
-    const { error } = await supabase.rpc('clear_integration_secret', {
-      p_org: orgId,
-      p_kind: spec.kind,
-    })
+  async function clearSecret(row: Integration) {
+    if (!window.confirm(`Remove the stored credential for ${row.name}?`)) return
+    setBusy(row.id)
+    const { error } = await supabase.rpc('clear_integration_secret', { p_integration: row.id })
     if (error) setError(error.message)
     setBusy(null)
     await load()
   }
 
-  if (!isAdmin) return null
+  async function resetPrinters(row: Integration) {
+    if (
+      !window.confirm(
+        `Put every printer back to the default for ${row.name} ` +
+          `(${row.default_enabled ? 'on' : 'off'})? Any printer set differently loses that.`,
+      )
+    ) {
+      return
+    }
+    setBusy(row.id)
+    setNotice(null)
+    setError(null)
+    // Exceptions only live in this table, so clearing them *is* the reset.
+    const { error } = await supabase
+      .from('printer_integrations')
+      .delete()
+      .eq('integration_id', row.id)
+    setBusy(null)
+    if (error) setError(error.message)
+    else setNotice(`Every printer now follows the default for ${row.name}.`)
+  }
+
+  async function remove(row: Integration) {
+    if (
+      !window.confirm(
+        `Delete ${row.name}? Sign-ins already sent to it keep their history, but ` +
+          `nothing further will be sent there.`,
+      )
+    ) {
+      return
+    }
+    setBusy(row.id)
+    const { error } = await supabase.from('integrations').delete().eq('id', row.id)
+    setBusy(null)
+    if (error) setError(error.message)
+    else setNotice(`${row.name} deleted.`)
+    await load()
+  }
+
+  if (!isOwner) return null
   if (loading) return <p className="muted">Loading integrations…</p>
 
   return (
@@ -209,21 +285,46 @@ export default function Integrations({ specs = PLATFORM_SPECS }: { specs?: Spec[
       {notice && <div className="notice">{notice}</div>}
       {error && <div className="error">{error}</div>}
 
-      {specs.map((spec) => {
-        const row = rows[spec.kind]
-        const config = (row?.config ?? {}) as Record<string, unknown>
+      <p className="muted small">
+        Each of these is a place the details from a visitor's badge can be sent. You can have more
+        than one of a kind — two ShulCloud forms for two audiences, say. Whether a given kiosk
+        actually feeds one is set per printer under <strong>Printers</strong>; the switch here is
+        only the default for printers that have not been told otherwise.
+      </p>
+
+      {list.map((row) => {
+        const spec = specOf(row.kind)
+        if (!spec) return null
+        const config = (row.config ?? {}) as Record<string, unknown>
         return (
-          <section className="card" key={spec.kind}>
-            <h2>{spec.title}</h2>
-            <p className="muted small">{spec.blurb}</p>
+          <section className="card" key={row.id}>
+            <label className="field">
+              Name
+              <input
+                value={row.name}
+                onChange={(e) => patch(row.id, { name: e.target.value })}
+                placeholder={spec.title}
+              />
+              <span className="muted small">
+                {spec.title}. {spec.blurb}
+              </span>
+            </label>
 
             <label className="check">
               <input
                 type="checkbox"
-                checked={Boolean(row?.enabled)}
-                onChange={(e) => setEnabled(spec.kind, e.target.checked)}
+                checked={Boolean(row.enabled)}
+                onChange={(e) => patch(row.id, { enabled: e.target.checked })}
               />
-              Use this organization's own settings
+              Enabled
+            </label>
+            <label className="check">
+              <input
+                type="checkbox"
+                checked={Boolean(row.default_enabled)}
+                onChange={(e) => patch(row.id, { default_enabled: e.target.checked })}
+              />
+              On by default for printers
             </label>
 
             <div className="grid2" style={{ marginTop: 12 }}>
@@ -233,7 +334,7 @@ export default function Integrations({ specs = PLATFORM_SPECS }: { specs?: Spec[
                     <input
                       type="checkbox"
                       checked={Boolean(config[f.key])}
-                      onChange={(e) => setField(spec.kind, f.key, e.target.checked)}
+                      onChange={(e) => setField(row.id, f.key, e.target.checked)}
                     />
                     {f.label}
                   </label>
@@ -249,13 +350,7 @@ export default function Integrations({ specs = PLATFORM_SPECS }: { specs?: Spec[
                           : ((config[f.key] as string) ?? '')
                       }
                       placeholder={f.placeholder}
-                      onChange={(e) =>
-                        setField(
-                          spec.kind,
-                          f.key,
-                          f.type === 'json' ? safeJson(e.target.value) : e.target.value,
-                        )
-                      }
+                      onChange={(e) => setField(row.id, f.key, e.target.value)}
                     />
                     {f.hint && <span className="muted small">{f.hint}</span>}
                   </label>
@@ -264,49 +359,91 @@ export default function Integrations({ specs = PLATFORM_SPECS }: { specs?: Spec[
             </div>
 
             {spec.secret && (
-              <div style={{ marginTop: 12 }}>
-                <label className="field">
-                  {spec.secret.label}
-                  <textarea
-                    rows={3}
-                    value={secretInput[spec.kind] ?? ''}
-                    placeholder={
-                      hasSecret[spec.kind]
-                        ? 'A key is stored. Paste a new one to replace it.'
-                        : '-----BEGIN PRIVATE KEY-----…'
-                    }
-                    onChange={(e) =>
-                      setSecretInput((p) => ({ ...p, [spec.kind]: e.target.value }))
-                    }
-                  />
-                  <span className="muted small">{spec.secret.hint}</span>
-                </label>
-                {hasSecret[spec.kind] && (
-                  <p className="muted small">
-                    A key is stored for this organization.{' '}
-                    <button className="linklike" onClick={() => void clearSecret(spec)}>
-                      Remove it
-                    </button>
-                  </p>
+              <label className="field" style={{ marginTop: 12 }}>
+                {spec.secret.label}
+                <input
+                  type="password"
+                  autoComplete="off"
+                  value={secretInput[row.id] ?? ''}
+                  placeholder={hasSecret[row.id] ? '•••••••• stored' : 'not set'}
+                  onChange={(e) => setSecretInput((p) => ({ ...p, [row.id]: e.target.value }))}
+                />
+                <span className="muted small">{spec.secret.hint}</span>
+                {hasSecret[row.id] && (
+                  <button
+                    type="button"
+                    className="secondary btn-sm"
+                    style={{ marginTop: 6, alignSelf: 'flex-start' }}
+                    onClick={() => void clearSecret(row)}
+                  >
+                    Remove stored credential
+                  </button>
                 )}
-              </div>
+              </label>
             )}
 
-            <button type="button" onClick={() => void save(spec)} disabled={busy === spec.kind}>
-              {busy === spec.kind ? 'Saving…' : `Save ${spec.title}`}
-            </button>
+            <div className="modal-actions" style={{ marginTop: 14 }}>
+              <button
+                type="button"
+                className="secondary btn-sm danger"
+                disabled={busy === row.id}
+                onClick={() => void remove(row)}
+              >
+                Delete
+              </button>
+              <button
+                type="button"
+                className="secondary btn-sm"
+                disabled={busy === row.id}
+                onClick={() => void resetPrinters(row)}
+              >
+                Reset all printers to the default
+              </button>
+              <button type="button" disabled={busy === row.id} onClick={() => void save(row)}>
+                {busy === row.id ? 'Saving…' : 'Save'}
+              </button>
+            </div>
           </section>
         )
       })}
+
+      <section className="card">
+        <h2>Add an integration</h2>
+        <p className="muted small">
+          Choose what kind of place this is, and what to call it. It arrives switched off so you
+          can fill in its settings before anything is sent.
+        </p>
+        <div className="grid2">
+          <label className="field">
+            Kind
+            <select
+              value={addKind}
+              onChange={(e) => setAddKind(e.target.value as IntegrationKind | '')}
+            >
+              <option value="">Choose…</option>
+              {specs.map((s) => (
+                <option key={s.kind} value={s.kind}>
+                  {s.title}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="field">
+            Name
+            <input
+              value={addName}
+              onChange={(e) => setAddName(e.target.value)}
+              placeholder={addKind ? specOf(addKind as IntegrationKind)?.title : 'Main office'}
+            />
+            <span className="muted small">
+              How you will tell it apart from the others. Shown against every sign-in sent there.
+            </span>
+          </label>
+        </div>
+        <button type="button" disabled={!addKind || busy === 'add'} onClick={() => void create()}>
+          {busy === 'add' ? 'Adding…' : 'Add'}
+        </button>
+      </section>
     </>
   )
-}
-
-/** Keep whatever was typed if it is not valid JSON yet, so editing is possible. */
-function safeJson(text: string): unknown {
-  try {
-    return JSON.parse(text)
-  } catch {
-    return text
-  }
 }

@@ -59,10 +59,27 @@ export interface Integration {
   id: string
   org_id: string
   kind: IntegrationKind
+  /** What this one is called. An organization may have several of a kind — two
+   *  ShulCloud forms for two audiences — so the name is how they are told
+   *  apart. Resolved when a row is rendered, so renaming updates history. */
+  name: string
   enabled: boolean
+  /** Whether a printer that says nothing about this uses it. Per-printer
+   *  exceptions live in printer_integrations and override this. */
+  default_enabled: boolean
   config: Record<string, unknown>
   updated_at: string
   created_at: string
+}
+
+/** What happened when one sign-in was sent to one destination. */
+export interface EntryDelivery {
+  id: number
+  entry_id: string
+  integration_id: string | null
+  status: 'pending' | 'sent' | 'failed' | 'skipped'
+  error: string | null
+  attempted_at: string | null
 }
 
 /** A printer the bridge saw on the local network. A cache of a scan, not a

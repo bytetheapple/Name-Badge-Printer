@@ -4,6 +4,7 @@ import { useOrg } from '../../lib/org'
 import BadgeDesign from './BadgeDesign'
 import ProvisionWizard from './ProvisionWizard'
 import PrinterQr from './PrinterQr'
+import PrinterIntegrations from './PrinterIntegrations'
 import type { Printer } from '../../lib/types'
 
 /** One printer's tab: its name, and whether the bridge can currently reach it. */
@@ -335,6 +336,9 @@ export default function PrinterConfig() {
 
             <h2>Sign-in QR code</h2>
             <PrinterQr printer={current} onChanged={loadPrinters} />
+
+            <h2>Where sign-ins go</h2>
+            <PrinterIntegrations printer={current} />
           </>
         )}
       </div>
