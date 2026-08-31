@@ -1,6 +1,7 @@
 import { useEffect, useState, type FormEvent } from 'react'
 import { supabase } from '../../lib/supabase'
 import { useOrg } from '../../lib/org'
+import { driveFolderId } from '../../lib/drive'
 import OrgLogo from './OrgLogo'
 
 type SelfieMode = 'off' | 'optional' | 'required'
@@ -80,12 +81,23 @@ export default function Settings() {
       setError('Choose a Google Drive folder before asking visitors for a photo.')
       return
     }
+    // Stored as an id whatever was pasted. Refused rather than saved when a
+    // link turns out not to name a folder — a link to a file looks right and
+    // fails at the first upload, in front of a visitor.
+    const folder = driveFolderId(folderId)
+    if (folderId.trim() && !folder) {
+      setError(
+        'That does not look like a Google Drive folder. Open the folder in Drive and copy the ' +
+          'address from your browser.',
+      )
+      return
+    }
     setSaving(true)
     const { error } = await supabase
       .from('app_settings')
       .update({
         selfie_mode: selfieMode,
-        selfie_drive_folder_id: folderId.trim() || null,
+        selfie_drive_folder_id: folder || null,
         pronouns_enabled: pronounsEnabled,
       })
       .eq('org_id', orgId)
@@ -93,7 +105,8 @@ export default function Settings() {
     if (error) {
       setError(error.message)
     } else {
-      setSaved({ selfieMode, folderId: folderId.trim(), pronounsEnabled })
+      setFolderId(folder)
+      setSaved({ selfieMode, folderId: folder, pronounsEnabled })
       setMsg('Saved.')
     }
   }
@@ -168,26 +181,27 @@ export default function Settings() {
               may never be used. */}
           {driveConnected && selfieMode !== 'off' && (
             <>
-            {/* Before the field, not after it: this explains why the box is
-                there at all, and someone who has never done it needs to know
-                they must go and make a folder first. */}
+            {/* Before the field, not after it: it explains why the box is
+                there at all. */}
             <p className="muted small" style={{ marginTop: 12 }}>
-              You need to choose where the photos are kept. Make a folder in your congregation's
-              Google Drive for visitor photos — or pick an existing one — and put its ID below.
-              Every selfie taken at a kiosk is filed there, and nothing else is written to your
-              Drive.
+              Selfies are stored in your Google Drive, in the folder you specify below. Paste the
+              URL for the Google Drive folder you want to use.
             </p>
             <label className="field">
               Google Drive folder
               <input
                 value={folderId}
                 onChange={(e) => setFolderId(e.target.value)}
-                placeholder="folder id from the Drive URL"
+                onBlur={(e) => {
+                  // Reduced to the id when they leave the box rather than as
+                  // they type: a field that rewrites itself under the cursor is
+                  // unusable, and seeing the id appear on blur is what confirms
+                  // the link was understood.
+                  const id = driveFolderId(e.target.value)
+                  if (id) setFolderId(id)
+                }}
+                placeholder="https://drive.google.com/drive/folders/…"
               />
-              <span className="muted small">
-                The part after <code>/folders/</code> in the folder's URL. Share that folder with
-                the service account under Integrations, or Drive will refuse the uploads.
-              </span>
             </label>
             </>
           )}
