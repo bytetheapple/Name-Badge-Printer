@@ -394,7 +394,7 @@ export default function Integrations({ specs = PLATFORM_SPECS }: { specs?: Spec[
               <span className="muted small">{spec.blurb}</span>
             </label>
 
-            <div className="grid2" style={{ marginTop: 12 }}>
+            <div className="grid2">
               {spec.fields.map((f) =>
                 f.type === 'checkbox' ? (
                   <label className="check" key={f.key}>
@@ -426,7 +426,7 @@ export default function Integrations({ specs = PLATFORM_SPECS }: { specs?: Spec[
             </div>
 
             {spec.secret && (
-              <label className="field" style={{ marginTop: 12 }}>
+              <label className="field" style={{ marginTop: 18 }}>
                 {spec.secret.label}
                 <input
                   type="password"
@@ -457,7 +457,7 @@ export default function Integrations({ specs = PLATFORM_SPECS }: { specs?: Spec[
               </p>
             )}
 
-            <div className="modal-actions" style={{ marginTop: 14 }}>
+            <div className="modal-actions" style={{ marginTop: 20 }}>
               <button
                 type="button"
                 className="secondary btn-sm danger"

@@ -1234,13 +1234,32 @@ td.actions-cell {
   font-weight: 600;
   border-bottom: 1px solid var(--bg);
 }
+/* The panel is a column with air in it. Cards carry no margin of their own,
+   so before this they stacked edge to edge and a page of five integrations
+   read as one tall form with rules through it. */
 .subtab-panel {
   padding-top: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
 }
 .subtab-panel > .muted.small:first-child {
   margin-top: 0;
-  margin-bottom: 16px;
+  /* The gap does this now; leaving the margin as well doubled it. */
+  margin-bottom: 0;
   max-width: 68ch;
+}
+
+/* A little more room inside an integration card than the admin's default.
+   These are read one at a time and decided on, rather than scanned, and they
+   carry more separate ideas than a card usually does: what it is called,
+   whether it is on, where it points, and the credential behind it. */
+.subtab-panel .card .grid2 {
+  gap: 18px;
+}
+.subtab-panel .card > .field + .field,
+.subtab-panel .card > .grid2 {
+  margin-top: 18px;
 }
 
 /* Naming a printer's address by hand — the way past a scan that cannot see it. */
