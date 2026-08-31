@@ -2048,37 +2048,6 @@ button.danger:disabled {
   }
 }
 
-/* 3. How far down the page you are. The tables scroll sideways; the page
-      itself scrolls down, and on a long Entries list there is nothing saying
-      whether you are near the end.
-
-      Scroll-driven CSS animation, so there is no listener and no re-render on
-      every scroll event. Guarded by @supports: where it is unavailable the
-      element simply has no styling and is invisible, rather than sitting at
-      full width pretending to be a progress bar. */
-@supports (animation-timeline: scroll()) {
-  .scroll-progress {
-    position: fixed;
-    top: 0;
-    left: 0;
-    z-index: 60;
-    width: 100%;
-    height: 3px;
-    background: var(--accent);
-    transform-origin: 0 50%;
-    animation: scroll-progress linear both;
-    animation-timeline: scroll(root block);
-  }
-  @keyframes scroll-progress {
-    from {
-      transform: scaleX(0);
-    }
-    to {
-      transform: scaleX(1);
-    }
-  }
-}
-
 /* Where one sign-in went. A disclosure rather than a modal: the answer is
    usually one line long, and opening it should not cover the row it explains. */
 .delivery > summary {

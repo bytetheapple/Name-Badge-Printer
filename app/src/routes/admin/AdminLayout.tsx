@@ -87,9 +87,6 @@ export default function AdminLayout() {
 
   return (
     <div className={`admin${operating ? ' operating' : ''}`}>
-      {/* How far down the page you are. Decorative, and invisible where
-          scroll-driven animation is unavailable. */}
-      <div className="scroll-progress" aria-hidden="true" />
       {operating && (
         <div className="op-banner">
           ⚠ You are in <strong>{org?.organization.name}</strong> as Guest Badges operations. Changes
