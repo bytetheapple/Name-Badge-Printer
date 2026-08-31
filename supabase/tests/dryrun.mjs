@@ -443,6 +443,80 @@ console.log('— routing: which destinations one sign-in reaches —')
   }
 }
 
+console.log('— reflashing a print server revokes what the old card holds —')
+// The claim code is the visible half. The half that matters is that every
+// credential the device ever held stops working, including the ones it rotated
+// to after being claimed — otherwise the SD card in a drawer still
+// authenticates for that congregation.
+{
+  await db.exec(`
+    -- Reissuing is an operator's job and the harness's ADMIN is only an org
+    -- owner, so give it operator standing for the length of this block.
+    insert into public.platform_admins (user_id, role) values ('${ADMIN}', 'owner')
+      on conflict (user_id) do nothing;
+
+    insert into public.pi_devices (serial, org_id, customer, claim_hash, claim_prefix)
+    values ('GuestBadgesServerTEST', '${org}', 'Test Congregation', 'hash-test', 'gbc_test');
+
+    -- Issued, then rotated twice, which is where a device that has been in
+    -- service for a few months actually sits.
+    insert into public.bridge_tokens (id, org_id, name, token_hash, token_prefix, first_used_at)
+    values ('11110000-0000-4000-8000-000000000001', '${org}', 'issued',  'h1', 'nbk_1', now());
+    insert into public.bridge_tokens (id, org_id, name, token_hash, token_prefix, replaces, first_used_at)
+    values ('11110000-0000-4000-8000-000000000002', '${org}', 'rotated', 'h2', 'nbk_2',
+            '11110000-0000-4000-8000-000000000001', now());
+    insert into public.bridge_tokens (id, org_id, name, token_hash, token_prefix, replaces)
+    values ('11110000-0000-4000-8000-000000000003', '${org}', 'current', 'h3', 'nbk_3',
+            '11110000-0000-4000-8000-000000000002');
+
+    update public.pi_devices
+       set bridge_token_id = '11110000-0000-4000-8000-000000000001',
+           claimed_at = now(), last_seen = now(), running_ref = 'abc1234'
+     where serial = 'GuestBadgesServerTEST';`)
+
+  const res = await db.exec(asUser(ADMIN,
+    `select public.reissue_pi_device('GuestBadgesServerTEST') as r;`))
+  const out = res.filter((r) => r.rows?.length).pop()?.rows?.[0]?.r
+
+  if (out?.claim_code?.startsWith('gbc_')) ok('a fresh claim code is returned')
+  else bad(`reissue returned ${JSON.stringify(out)}`)
+
+  const live = await q(`
+    select count(*)::int as n from public.bridge_tokens
+    where id in ('11110000-0000-4000-8000-000000000001',
+                 '11110000-0000-4000-8000-000000000002',
+                 '11110000-0000-4000-8000-000000000003')
+      and revoked_at is null`)
+  if (live.n === 0) ok('every credential along the rotation chain is revoked')
+  else bad(`${live.n} credential(s) still live after a reissue`)
+
+  const dev = await q(`
+    select claimed_at, bridge_token_id, last_seen, running_ref, claim_prefix
+    from public.pi_devices where serial = 'GuestBadgesServerTEST'`)
+  if (!dev.claimed_at && !dev.bridge_token_id && !dev.last_seen && !dev.running_ref) {
+    ok('the device reads as unclaimed again, with no stale heartbeat')
+  } else bad(`device not reset: ${JSON.stringify(dev)}`)
+  if (dev.claim_prefix !== 'gbc_test') ok('the old claim code no longer opens it')
+  else bad('the claim code was not replaced')
+
+  // Moving it to another organization tells both sides.
+  await db.exec(asUser(ADMIN,
+    `select public.reissue_pi_device('GuestBadgesServerTEST',
+       '${org}'::uuid, 'Second Congregation');`))
+  const logged = await q(`
+    select count(*)::int as n from public.activity_log
+    where action = 'device.reissue' and subject = 'GuestBadgesServerTEST'`)
+  if (logged.n >= 2) ok('each reissue is on the record')
+  else bad(`reissue logged ${logged.n} row(s)`)
+
+  await db.exec(`
+    delete from public.pi_devices where serial = 'GuestBadgesServerTEST';
+    delete from public.bridge_tokens where token_prefix in ('nbk_1','nbk_2','nbk_3');
+    delete from public.activity_log where subject = 'GuestBadgesServerTEST';
+    delete from public.platform_admins where user_id = '${ADMIN}';
+    delete from public.activity_log where action like 'operator.%';`)
+}
+
 console.log('— discovered_printers, retained but no longer written (B2) —')
 const scanOrg = (await q(`select id from public.organizations order by created_at limit 1`)).id
 

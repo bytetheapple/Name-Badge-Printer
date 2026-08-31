@@ -26,6 +26,13 @@ export default function Fleet() {
   const [notice, setNotice] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [building, setBuilding] = useState(false)
+  //: The device being reflashed, and the organization it should belong to
+  //: afterwards. Held together so the dialog cannot outlive its row.
+  const [reflash, setReflash] = useState<{ device: PiDevice; org: string } | null>(null)
+  //: Shown once. The claim code is not stored anywhere we can read it back.
+  const [reissued, setReissued] = useState<
+    { serial: string; claim_code: string; revoked: number } | null
+  >(null)
   const [release, setRelease] = useState<{ ref: string | null; notes: string | null } | null>(null)
   const [refDraft, setRefDraft] = useState('')
   //: Which devices the version actions apply to, by serial.
@@ -167,6 +174,30 @@ export default function Fleet() {
     })
   }
 
+  async function doReflash() {
+    if (!reflash) return
+    setBusy(reflash.device.id)
+    setNotice(null)
+    setError(null)
+    const { data, error } = await supabase.rpc('reissue_pi_device', {
+      p_serial: reflash.device.serial,
+      p_org: reflash.org || null,
+    })
+    setBusy(null)
+    if (error || !data) {
+      setError(error?.message ?? 'Nothing came back.')
+      return
+    }
+    const out = data as { serial: string; claim_code: string; revoked_credentials: number }
+    setReflash(null)
+    setReissued({
+      serial: out.serial,
+      claim_code: out.claim_code,
+      revoked: out.revoked_credentials,
+    })
+    await load()
+  }
+
   if (loading) return <p className="muted">Loading…</p>
 
   return (
@@ -294,6 +325,7 @@ export default function Fleet() {
               <th>Version</th>
               <th>Claimed</th>
               <th>Notes</th>
+              <th />
             </tr>
           </thead>
           <tbody>
@@ -342,11 +374,20 @@ export default function Fleet() {
                   )}
                 </td>
                 <td className="muted small">{d.notes ?? ''}</td>
+                <td className="actions-cell">
+                  <button
+                    className="secondary btn-sm"
+                    disabled={busy === d.id}
+                    onClick={() => setReflash({ device: d, org: d.org_id ?? '' })}
+                  >
+                    Reflash
+                  </button>
+                </td>
               </tr>
             ))}
             {!devices.length && (
               <tr>
-                <td colSpan={6} className="muted">
+                <td colSpan={7} className="muted">
                   No print servers built yet.
                 </td>
               </tr>
@@ -354,6 +395,84 @@ export default function Fleet() {
           </tbody>
         </table>
       </div>
+
+      {reflash && (
+        <div className="modal-backdrop" onClick={() => setReflash(null)}>
+          <div className="modal" onClick={(e) => e.stopPropagation()}>
+            <h2>Reflash {reflash.device.serial}?</h2>
+            <p className="muted small">
+              Every credential this server holds stops working immediately, including the ones it
+              rotated to since it was built — so the card currently in it cannot come back. It
+              will show as never connected until someone writes a new card and runs the install
+              command.
+            </p>
+
+            <label className="field">
+              Belongs to
+              <select
+                value={reflash.org}
+                onChange={(e) => setReflash({ ...reflash, org: e.target.value })}
+              >
+                <option value="">Unassigned (a spare)</option>
+                {orgs.map((o) => (
+                  <option key={o.org_id} value={o.org_id}>
+                    {o.name}
+                  </option>
+                ))}
+              </select>
+              <span className="muted small">
+                Leave it where it is to rebuild the same server, or choose another organization to
+                move it. Either way it has to be claimed again.
+              </span>
+            </label>
+
+            <div className="modal-actions">
+              <button className="secondary" onClick={() => setReflash(null)}>
+                Cancel
+              </button>
+              <button
+                className="danger"
+                disabled={busy === reflash.device.id}
+                onClick={() => void doReflash()}
+              >
+                {busy === reflash.device.id ? 'Working…' : 'Reflash it'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {reissued && (
+        <div className="modal-backdrop" onClick={() => setReissued(null)}>
+          <div className="modal" onClick={(e) => e.stopPropagation()}>
+            <h2>{reissued.serial}</h2>
+            <p className="muted small">
+              {reissued.revoked === 0
+                ? 'It held no live credential, so nothing had to be revoked.'
+                : `${reissued.revoked} credential${reissued.revoked === 1 ? '' : 's'} revoked. ` +
+                  'The old card is now inert.'}{' '}
+              Write a new card with this serial as the hostname, then run this on it. The claim
+              code is shown once.
+            </p>
+            <pre className="token-secret">
+              curl -sSL https://guestbadges.com/pi.sh | sudo bash -s -- {reissued.claim_code}
+            </pre>
+            <button
+              className="secondary btn-sm"
+              onClick={() =>
+                void navigator.clipboard?.writeText(
+                  `curl -sSL https://guestbadges.com/pi.sh | sudo bash -s -- ${reissued.claim_code}`,
+                )
+              }
+            >
+              Copy the command
+            </button>
+            <div className="modal-actions">
+              <button onClick={() => setReissued(null)}>Done</button>
+            </div>
+          </div>
+        </div>
+      )}
 
       <div className="add-by-hand">
         {building ? (
