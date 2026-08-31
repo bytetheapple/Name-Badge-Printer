@@ -2112,15 +2112,34 @@ button.danger:disabled {
   color: var(--accent);
 }
 
-/* An integration's own name, with its kind behind it. The kind is set back
-   deliberately: once an organization has three ShulCloud forms, what tells
-   them apart is the name they chose, not the vendor they all share. */
-.integration-title {
+/* An integration's own name on a banner, with its kind beside it.
+
+   The colour is per kind rather than one house colour, which is what makes it
+   worth having: an organization with three ShulCloud forms and two Drive
+   accounts can find the one it wants by colour instead of reading every title.
+   It is reinforcement, never the only signal — the kind is also written out,
+   so nothing depends on telling teal from violet.
+
+   Tints rather than saturated bands. This admin is otherwise all borders and
+   muted text, and a row of full-strength colour would be the loudest thing on
+   a page whose job is quiet. */
+.integration-head {
+  /* Bleeds to the card's edges: .card carries 16px of padding and a 10px
+     radius, so the inner corner is 9px. */
+  margin: -16px -16px 16px;
+  padding: 13px 16px;
+  border-radius: 9px 9px 0 0;
+  border-bottom: 1px solid var(--border);
   display: flex;
   align-items: baseline;
-  gap: 10px;
+  gap: 12px;
   flex-wrap: wrap;
-  margin-bottom: 12px;
+  background: var(--mk-panel);
+}
+.integration-title {
+  margin: 0;
+  font-size: 1.16rem;
+  letter-spacing: -0.01em;
 }
 .integration-kind {
   font-size: 0.72rem;
@@ -2131,4 +2150,34 @@ button.danger:disabled {
   border: 1px solid var(--border);
   border-radius: 999px;
   padding: 1px 8px;
+  background: var(--bg);
+}
+
+/* One hue per kind, roughly where each vendor already sits, so the mapping is
+   guessable rather than arbitrary. */
+.integration-head[data-kind='google_drive'] {
+  background: #e8f4ee;
+  border-bottom-color: #bcdcc9;
+}
+.integration-head[data-kind='google_form'] {
+  background: #efeafa;
+  border-bottom-color: #d0c2ef;
+}
+.integration-head[data-kind='shulcloud'] {
+  background: #e7f0fb;
+  border-bottom-color: #bed6f2;
+}
+@media (prefers-color-scheme: dark) {
+  .integration-head[data-kind='google_drive'] {
+    background: #14251c;
+    border-bottom-color: #24503a;
+  }
+  .integration-head[data-kind='google_form'] {
+    background: #1d1830;
+    border-bottom-color: #3b2f66;
+  }
+  .integration-head[data-kind='shulcloud'] {
+    background: #131f31;
+    border-bottom-color: #274468;
+  }
 }

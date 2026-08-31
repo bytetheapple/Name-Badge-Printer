@@ -348,10 +348,10 @@ export default function Integrations({ specs = PLATFORM_SPECS }: { specs?: Spec[
           <section className="card" key={row.id}>
             {/* The name, as typed, with what it is behind it. Live rather than
                 from the last save, so renaming shows here as you type. */}
-            <h2 className="integration-title">
-              {row.name.trim() || spec.title}
+            <div className="integration-head" data-kind={row.kind}>
+              <h2 className="integration-title">{row.name.trim() || spec.title}</h2>
               <span className="integration-kind">{spec.title}</span>
-            </h2>
+            </div>
 
             {/* First, not last. Both write on click, so this is the state of
                 the thing rather than part of the form below it — and someone
