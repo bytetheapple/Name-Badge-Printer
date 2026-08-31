@@ -1926,10 +1926,34 @@ button.danger:disabled {
    --------------------------------------------------------------------------- */
 
 /* 1. The bar stays visible rather than appearing only once you have already
-      discovered the problem. */
+      discovered the problem — and sits at the TOP of the table.
+
+   The Entries list grows rather than scrolling, so a horizontal scrollbar at
+   the bottom of a two-thousand-pixel-tall element is one nobody ever sees.
+   That is the bar that matters, because it is the one hiding the actions
+   column.
+
+   Flipping the scroll container and flipping its contents back puts the bar
+   above the table with the content the right way up. It works because the
+   scrollbar belongs to the container and is not a child, so it does not get
+   flipped a second time. Checked before doing it: no sticky headers here, and
+   both modals render as siblings of the table rather than inside it — a
+   transform would otherwise become the containing block for their fixed
+   positioning and strand them. */
 .table-wrap {
-  scrollbar-width: thin;
-  scrollbar-color: var(--border) transparent;
+  /* Deliberately NOT `scrollbar-width: thin`. Chromium ignores every
+     ::-webkit-scrollbar rule as soon as that standard property is set, which
+     left the bar as a fading overlay taking no layout space — the exact thing
+     this is meant to fix. The pseudo-elements below give a bar that is always
+     drawn and always occupies its own strip. Firefox, which has no
+     ::-webkit-scrollbar, falls back to its ordinary scrollbar: unstyled, but
+     present and in the right place, which is what matters. */
+  transform: rotateX(180deg);
+}
+/* Every child, not just <table>: a wrapper that also holds a caption or a note
+   would otherwise be left upside down. */
+.table-wrap > * {
+  transform: rotateX(180deg);
 }
 .table-wrap::-webkit-scrollbar {
   -webkit-appearance: none;
