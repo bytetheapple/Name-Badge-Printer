@@ -113,6 +113,10 @@ const PLATFORM_SPECS: Spec[] = [
 export default function Integrations({ specs = PLATFORM_SPECS }: { specs?: Spec[] } = {}) {
   const { orgId, isOwner } = useOrg()
   const [list, setList] = useState<Integration[]>([])
+  //: What the server last told us, so the card can say when the text fields
+  //: have been edited but not saved. The switches never appear here as
+  //: pending, because they are written the moment they are clicked.
+  const [loaded, setLoaded] = useState<Record<string, string>>({})
   const [hasSecret, setHasSecret] = useState<Record<string, boolean>>({})
   const [secretInput, setSecretInput] = useState<Record<string, string>>({})
   const [loading, setLoading] = useState(true)
@@ -123,6 +127,11 @@ export default function Integrations({ specs = PLATFORM_SPECS }: { specs?: Spec[
   const [addName, setAddName] = useState('')
 
   const kinds = specs.map((s) => s.kind)
+  /** Whether the text fields differ from what the server last returned. The
+   *  switches are excluded on purpose: they are never pending. */
+  const dirty = (row: Integration) =>
+    loaded[row.id] !== undefined &&
+    loaded[row.id] !== JSON.stringify({ name: row.name, config: row.config ?? {} })
   const specOf = (kind: IntegrationKind) => specs.find((s) => s.kind === kind)
 
   const load = useCallback(async () => {
@@ -137,6 +146,11 @@ export default function Integrations({ specs = PLATFORM_SPECS }: { specs?: Spec[
     if (error) setError(error.message)
     const mine = ((data ?? []) as Integration[]).filter((r) => kinds.includes(r.kind))
     setList(mine)
+    setLoaded(
+      Object.fromEntries(
+        mine.map((r) => [r.id, JSON.stringify({ name: r.name, config: r.config ?? {} })]),
+      ),
+    )
 
     // Per instance, not per kind: two Drive accounts can differ in whether a
     // key has been stored.
@@ -157,6 +171,35 @@ export default function Integrations({ specs = PLATFORM_SPECS }: { specs?: Spec[
 
   function patch(id: string, changes: Partial<Integration>) {
     setList((prev) => prev.map((r) => (r.id === id ? { ...r, ...changes } : r)))
+  }
+
+  /**
+   * A switch that takes effect on click, rather than waiting for Save.
+   *
+   * Only this one column is written, so a half-typed form URL sitting in the
+   * text fields is not dragged live along with it — those still need Save,
+   * and the card says so while they differ.
+   */
+  async function toggleNow(row: Integration, key: 'enabled' | 'default_enabled', value: boolean) {
+    const before = row[key]
+    patch(row.id, { [key]: value } as Partial<Integration>)
+    setError(null)
+    const { error } = await supabase
+      .from('integrations')
+      .update({ [key]: value })
+      .eq('id', row.id)
+    if (error) {
+      // Put the switch back where it was: leaving it showing a state the
+      // database does not hold is worse than the failure itself.
+      patch(row.id, { [key]: before } as Partial<Integration>)
+      setError(error.message)
+      return
+    }
+    setNotice(
+      key === 'enabled'
+        ? `${row.name} ${value ? 'enabled' : 'disabled'}.`
+        : `${row.name} is now ${value ? 'on' : 'off'} by default for printers.`,
+    )
   }
 
   function setField(id: string, key: string, value: unknown) {
@@ -310,11 +353,12 @@ export default function Integrations({ specs = PLATFORM_SPECS }: { specs?: Spec[
               </span>
             </label>
 
+            {/* Both take effect on click. */}
             <label className="check">
               <input
                 type="checkbox"
                 checked={Boolean(row.enabled)}
-                onChange={(e) => patch(row.id, { enabled: e.target.checked })}
+                onChange={(e) => void toggleNow(row, 'enabled', e.target.checked)}
               />
               Enabled
             </label>
@@ -322,7 +366,7 @@ export default function Integrations({ specs = PLATFORM_SPECS }: { specs?: Spec[
               <input
                 type="checkbox"
                 checked={Boolean(row.default_enabled)}
-                onChange={(e) => patch(row.id, { default_enabled: e.target.checked })}
+                onChange={(e) => void toggleNow(row, 'default_enabled', e.target.checked)}
               />
               On by default for printers
             </label>
@@ -382,6 +426,14 @@ export default function Integrations({ specs = PLATFORM_SPECS }: { specs?: Spec[
               </label>
             )}
 
+            {/* The switches are already live, so this can only ever be about the
+                text fields — which is why it names them. */}
+            {dirty(row) && (
+              <p className="muted small" style={{ marginTop: 10 }}>
+                The settings above have been edited and not saved yet.
+              </p>
+            )}
+
             <div className="modal-actions" style={{ marginTop: 14 }}>
               <button
                 type="button"
@@ -400,7 +452,7 @@ export default function Integrations({ specs = PLATFORM_SPECS }: { specs?: Spec[
                 Reset all printers to the default
               </button>
               <button type="button" disabled={busy === row.id} onClick={() => void save(row)}>
-                {busy === row.id ? 'Saving…' : 'Save'}
+                {busy === row.id ? 'Saving…' : dirty(row) ? 'Save changes' : 'Save'}
               </button>
             </div>
           </section>
