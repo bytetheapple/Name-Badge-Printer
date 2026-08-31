@@ -509,6 +509,36 @@ console.log('— reflashing a print server revokes what the old card holds —')
   if (logged.n >= 2) ok('each reissue is on the record')
   else bad(`reissue logged ${logged.n} row(s)`)
 
+  // Description is editable; the guarded fields are not reachable from here.
+  await db.exec(asUser(ADMIN,
+    `select public.update_pi_device('GuestBadgesServerTEST', 'Renamed Congregation', 'shelf 3');`))
+  const edited = await q(`
+    select customer, notes from public.pi_devices where serial = 'GuestBadgesServerTEST'`)
+  if (edited.customer === 'Renamed Congregation' && edited.notes === 'shelf 3') {
+    ok('customer and notes can be corrected')
+  } else bad(`edit produced ${JSON.stringify(edited)}`)
+
+  // A claimed device is kept. This one was just reissued, so it is unclaimed —
+  // claim it back to prove the guard, then leave it unclaimed for the delete.
+  await db.exec(
+    `update public.pi_devices set claimed_at = now() where serial = 'GuestBadgesServerTEST';`)
+  let refused = false
+  try {
+    await db.exec(asUser(ADMIN, `select public.delete_pi_device('GuestBadgesServerTEST');`))
+  } catch (e) {
+    refused = String(e.message).includes('has been claimed')
+  }
+  if (refused) ok('a claimed device cannot be deleted, only reflashed')
+  else bad('a claimed device was deleted')
+
+  await db.exec(
+    `update public.pi_devices set claimed_at = null where serial = 'GuestBadgesServerTEST';`)
+  await db.exec(asUser(ADMIN, `select public.delete_pi_device('GuestBadgesServerTEST');`))
+  const gone = await q(
+    `select count(*)::int as n from public.pi_devices where serial = 'GuestBadgesServerTEST'`)
+  if (gone.n === 0) ok('a build clicked by mistake can be removed')
+  else bad('the unclaimed device survived deletion')
+
   // A cycle in the rotation graph. It should not be possible, but the walk has
   // to end whether or not that holds — unbounded, this recursed until the
   // statement timeout killed it, which is how it was found.

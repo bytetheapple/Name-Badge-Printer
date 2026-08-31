@@ -26,6 +26,12 @@ export default function Fleet() {
   const [notice, setNotice] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [building, setBuilding] = useState(false)
+  //: The device whose description is being corrected. Customer and notes
+  //: only — everything else on the row is state the claim, rotation and
+  //: update paths maintain.
+  const [editing, setEditing] = useState<
+    { device: PiDevice; customer: string; notes: string } | null
+  >(null)
   //: The device being reflashed, and the organization it should belong to
   //: afterwards. Held together so the dialog cannot outlive its row.
   const [reflash, setReflash] = useState<{ device: PiDevice; org: string } | null>(null)
@@ -172,6 +178,41 @@ export default function Fleet() {
       else next.add(serial)
       return next
     })
+  }
+
+  async function saveEdit() {
+    if (!editing) return
+    setBusy(editing.device.id)
+    setError(null)
+    const { error } = await supabase.rpc('update_pi_device', {
+      p_serial: editing.device.serial,
+      p_customer: editing.customer,
+      p_notes: editing.notes,
+    })
+    setBusy(null)
+    if (error) {
+      setError(error.message)
+      return
+    }
+    setEditing(null)
+    await load()
+  }
+
+  async function removeDevice(d: PiDevice) {
+    if (
+      !window.confirm(
+        `Remove ${d.serial}? It was never claimed, so there is nothing to keep. ` +
+          `The serial is not reused.`,
+      )
+    ) {
+      return
+    }
+    setBusy(d.id)
+    setError(null)
+    const { error } = await supabase.rpc('delete_pi_device', { p_serial: d.serial })
+    setBusy(null)
+    if (error) setError(error.message)
+    await load()
   }
 
   async function doReflash() {
@@ -378,10 +419,31 @@ export default function Fleet() {
                   <button
                     className="secondary btn-sm"
                     disabled={busy === d.id}
+                    onClick={() =>
+                      setEditing({ device: d, customer: d.customer ?? '', notes: d.notes ?? '' })
+                    }
+                  >
+                    Edit
+                  </button>{' '}
+                  <button
+                    className="secondary btn-sm"
+                    disabled={busy === d.id}
                     onClick={() => setReflash({ device: d, org: d.org_id ?? '' })}
                   >
                     Reflash
-                  </button>
+                  </button>{' '}
+                  {/* Only while it has never been claimed. After that its row
+                      is the record of what was shipped, and reflashing is how
+                      a device is retired. */}
+                  {!d.claimed_at && (
+                    <button
+                      className="secondary btn-sm danger"
+                      disabled={busy === d.id}
+                      onClick={() => void removeDevice(d)}
+                    >
+                      Remove
+                    </button>
+                  )}
                 </td>
               </tr>
             ))}
@@ -395,6 +457,42 @@ export default function Fleet() {
           </tbody>
         </table>
       </div>
+
+      {editing && (
+        <div className="modal-backdrop" onClick={() => setEditing(null)}>
+          <div className="modal" onClick={(e) => e.stopPropagation()}>
+            <h2>{editing.device.serial}</h2>
+            <label className="field">
+              Built for
+              <input
+                value={editing.customer}
+                onChange={(e) => setEditing({ ...editing, customer: e.target.value })}
+                placeholder="the congregation's name"
+              />
+              <span className="muted small">
+                Kept even if the organization is later renamed or deleted — "what did I ship
+                them" outlives both.
+              </span>
+            </label>
+            <label className="field">
+              Notes
+              <input
+                value={editing.notes}
+                onChange={(e) => setEditing({ ...editing, notes: e.target.value })}
+                placeholder="optional"
+              />
+            </label>
+            <div className="modal-actions">
+              <button className="secondary" onClick={() => setEditing(null)}>
+                Cancel
+              </button>
+              <button disabled={busy === editing.device.id} onClick={() => void saveEdit()}>
+                {busy === editing.device.id ? 'Saving…' : 'Save'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {reflash && (
         <div className="modal-backdrop" onClick={() => setReflash(null)}>

@@ -68,6 +68,10 @@ export function describeActivity(e: ActivityEntry): string {
       return `issued a print-server credential (${d.prefix}…)`
     case 'bridge.revoke':
       return `revoked a print-server credential (${d.prefix}…)`
+    case 'device.edit':
+      return `corrected the details for ${who}`
+    case 'device.delete':
+      return `removed ${who}, which had never been claimed`
     case 'device.reissue':
       return `reflashed ${who}${d.moved ? ', moving it here' : ''} — ${d.revoked_credentials} credential(s) revoked`
     case 'device.released':
