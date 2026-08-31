@@ -120,7 +120,13 @@ install -m 644 "$TARGET/bridge/systemd/name-badge-update.timer" \
   /etc/systemd/system/name-badge-update.timer
 
 systemctl daemon-reload
-systemctl enable --quiet --now "$SERVICE"
+# enable, then restart. `--now` starts a service that is stopped and does
+# nothing to one that is already running — so on a device being upgraded in
+# place, the reload updated the unit on disk while the old process carried on
+# out of the old directory with the old credential, and the install looked
+# like it had worked. Restarting is the only way to replace a running one.
+systemctl enable --quiet "$SERVICE"
+systemctl restart "$SERVICE"
 systemctl enable --quiet --now name-badge-update.timer
 
 say "Checking it started"
