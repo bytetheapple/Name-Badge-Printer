@@ -4,5 +4,10 @@
 # `brother_ql`, so no code changes are needed.
 requests>=2.31,<3
 Pillow>=11
-brother-ql-next>=0.12
+# Pinned at the floor that knows the DK-1234 die-cut label (60x86). Below
+# this, that identifier is missing and badge.py falls back to 62 mm
+# continuous — badges still come out looking almost right, because the printer
+# positions to the physical label whatever it is sent, so the only symptom is
+# a geometry nobody chose. A dev machine sat on an older build for weeks.
+brother-ql-next>=0.13
 python-dotenv>=1.0,<2

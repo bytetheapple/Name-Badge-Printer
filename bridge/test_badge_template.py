@@ -74,6 +74,20 @@ from PIL import Image
 
 TPL = {"header": "WELCOME", "subtitle": "Beth Shalom"}
 
+# The label production actually prints on. Asserted rather than assumed: the
+# renderer falls back to 62 mm continuous for an unknown label, so a stale
+# brother_ql would have these tests quietly measuring a geometry no printer
+# ever sees. This machine did exactly that until 2026-08-31.
+LABEL = "60x86"
+from brother_ql.labels import ALL_LABELS
+
+check(f"{LABEL} is a label this brother_ql knows",
+      LABEL in {l.identifier for l in ALL_LABELS},
+      "stale brother-ql-next; pip install -U brother-ql-next")
+check("it renders at the die-cut size, not the continuous fallback",
+      badge_mod._label_render_size(LABEL, 90) == (954, 672),
+      str(badge_mod._label_render_size(LABEL, 90)))
+
 
 def _band_darkness(img):
     """Fraction of dark pixels across the top 10% of the badge."""
@@ -82,8 +96,8 @@ def _band_darkness(img):
     return sum(1 for v in px if v < 128) / len(px)
 
 
-member = badge_mod.render_badge("Miriam", "Rosenbaum", TPL, "62")
-visitor = badge_mod.render_badge("Miriam", "Rosenbaum", TPL, "62", visitor=True)
+member = badge_mod.render_badge("Miriam", "Rosenbaum", TPL, LABEL)
+visitor = badge_mod.render_badge("Miriam", "Rosenbaum", TPL, LABEL, visitor=True)
 
 check("a member's header band is mostly white", _band_darkness(member) < 0.1,
       f"{_band_darkness(member):.2f}")

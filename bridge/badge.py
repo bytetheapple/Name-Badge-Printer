@@ -6,6 +6,7 @@ text come from the badge_template JSON stored in printer_config (with sensible
 defaults), so the look can be tuned from the admin console without code changes.
 """
 import os
+import sys
 from datetime import datetime
 
 from PIL import Image, ImageDraw, ImageFont
@@ -48,6 +49,8 @@ def _white_mark(logo):
 
 
 _LABELS = {label.identifier: label for label in ALL_LABELS}
+#: Unknown labels already reported, so a misconfiguration is said once.
+_WARNED_LABELS: set = set()
 
 
 def _label_render_size(label: str, length_mm: float) -> tuple[int, int]:
@@ -59,6 +62,18 @@ def _label_render_size(label: str, length_mm: float) -> tuple[int, int]:
     """
     spec = _LABELS.get(label)
     if spec is None:
+        # Falling back silently means badges render at a size nobody chose and
+        # come out looking almost right, because the printer positions to the
+        # physical label whatever we send. Said once per unknown label rather
+        # than once per badge.
+        if label not in _WARNED_LABELS:
+            _WARNED_LABELS.add(label)
+            print(
+                f"[badge] unknown label '{label}' — rendering as 62 mm continuous. "
+                f"Known: {', '.join(sorted(_LABELS))}",
+                file=sys.stderr,
+                flush=True,
+            )
         return round(length_mm * MM), 696  # fallback: 62 mm continuous
     head_px, feed_px = spec.dots_printable
     if "ENDLESS" in str(spec.form_factor):
