@@ -36,6 +36,33 @@ export function describeActivity(e: ActivityEntry): string {
     case 'org.delete':
       return `deleted ${who} — ${d.members} member(s), ${d.entries} sign-in(s), permanently`
 
+    // --- where the data goes
+    case 'integration.create':
+      return `added ${who} as a destination`
+    case 'integration.enabled':
+      return `${d.to ? 'switched on' : 'switched off'} ${who}`
+    case 'integration.default':
+      return `made ${who} ${d.to ? 'on' : 'off'} by default for printers`
+    case 'integration.rename':
+      return `renamed ${d.from} to ${who}`
+    case 'integration.update': {
+      // Names what moved, not the values. The whole configuration before and
+      // after is on the row for anyone who needs it; a row of form field ids
+      // is not something to read in a table.
+      const keys = Array.isArray(d.changed) ? (d.changed as string[]) : []
+      return keys.length
+        ? `changed ${keys.join(', ')} on ${who}`
+        : `changed the settings for ${who}`
+    }
+    case 'integration.credential':
+      return `${d.action === 'cleared' ? 'removed' : d.action === 'replaced' ? 'replaced' : 'stored'} the credential for ${who}`
+    case 'integration.delete':
+      return `deleted the destination ${who}`
+    case 'printer.destination':
+      return d.to === 'default'
+        ? `put ${d.printer} back to the default for ${who}`
+        : `switched ${who} ${d.to} for ${d.printer}`
+
     // --- print servers
     case 'bridge.issue':
       return `issued a print-server credential (${d.prefix}…)`

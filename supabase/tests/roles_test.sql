@@ -454,6 +454,49 @@ begin
   insert into public._role_results (acting_as, check_name)
   values ('owner', 'integration_ready is true only where configured');
 
+  -- Where a congregation's visitor data goes is the part of this log that
+  -- matters most, so each shape of change is asserted rather than assumed.
+  select count(*) into n from public.activity_log
+   where org_id = org and action = 'integration.create';
+  if n < 1 then raise exception 'ROLE FAILURE: creating an integration was not logged'; end if;
+
+  update public.integrations set enabled = false where org_id = org and kind = 'google_drive';
+  -- By the transition, not the action: this suite switched the same
+  -- integration on earlier, and that is correctly on the record too.
+  select count(*) into n from public.activity_log
+   where org_id = org and action = 'integration.enabled' and detail ->> 'to' = 'false';
+  if n <> 1 then raise exception 'ROLE FAILURE: switching one off logged % row(s)', n; end if;
+
+  update public.integrations
+     set config = config || '{"sa_client_email": "changed@example.iam.gserviceaccount.com"}'
+   where org_id = org and kind = 'google_drive';
+  select count(*) into n from public.activity_log
+   where org_id = org and action = 'integration.update'
+     and detail -> 'changed' ? 'sa_client_email'
+     and detail -> 'from' ->> 'sa_client_email' = 'kiosk@example.iam.gserviceaccount.com';
+  if n <> 1 then
+    raise exception 'ROLE FAILURE: a config change logged % row(s) naming the old value', n;
+  end if;
+  insert into public._role_results (acting_as, check_name)
+  values ('owner', 'integration changes are logged, with both sides');
+
+  -- Replacing a credential updates the Vault secret without touching the row,
+  -- so the trigger cannot see it and the function has to say so itself.
+  perform public.set_integration_secret(
+    (select id from public.integrations where org_id = org and kind = 'google_drive'),
+    'a-different-private-key');
+  select count(*) into n from public.activity_log
+   where org_id = org and action = 'integration.credential'
+     and detail ->> 'action' = 'replaced';
+  if n <> 1 then raise exception 'ROLE FAILURE: replacing a credential logged % row(s)', n; end if;
+
+  -- And never the credential itself, by any route.
+  select count(*) into n from public.activity_log
+   where org_id = org and detail::text like '%private-key%';
+  if n <> 0 then raise exception 'LEAK: % activity row(s) contain the credential', n; end if;
+  insert into public._role_results (acting_as, check_name)
+  values ('owner', 'a credential is an event, never a value');
+
   -- API keys moved with them.
   insert into public.api_keys (org_id, name, key_hash, key_prefix)
   values (org, 'owner key', 'hash-owner-000000', 'nbk_own');
