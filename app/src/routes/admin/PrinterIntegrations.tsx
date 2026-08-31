@@ -41,7 +41,11 @@ export default function PrinterIntegrations({ printer }: { printer: Printer }) {
     // the credentials behind them.
     const { data: rows, error: e1 } = await supabase.rpc('integrations_brief', { p_org: orgId })
     if (e1) setError(e1.message)
-    const list = (rows ?? []) as IntegrationBrief[]
+    // Only the ones that are switched on. A disabled integration cannot
+    // receive anything, so offering On/Off for it here would be offering a
+    // choice with no effect — and showing it as "On" would be a plain
+    // contradiction of what the Integrations tab says.
+    const list = ((rows ?? []) as IntegrationBrief[]).filter((r) => r.enabled)
     setIntegrations(list)
 
     const { data: overrides } = await supabase
@@ -95,8 +99,8 @@ export default function PrinterIntegrations({ printer }: { printer: Printer }) {
   if (!integrations.length) {
     return (
       <p className="muted small">
-        No integrations are set up yet. An owner can add them under Integrations, and this kiosk
-        will follow whatever default they choose.
+        Nothing is switched on to send sign-ins to. An owner can add and enable integrations
+        under Integrations, and this kiosk will then follow whatever default they choose.
       </p>
     )
   }
@@ -121,12 +125,7 @@ export default function PrinterIntegrations({ printer }: { printer: Printer }) {
           <tbody>
             {integrations.map((row) => (
               <tr key={row.id}>
-                <td>
-                  {row.name}
-                  {/* Switched off entirely is worth saying here: the per-kiosk
-                      choice is real but has nothing to act on. */}
-                  {!row.enabled && <span className="muted small"> · switched off</span>}
-                </td>
+                <td>{row.name}</td>
                 <td className="muted small">{row.default_enabled ? 'On' : 'Off'}</td>
                 <td>
                   <select

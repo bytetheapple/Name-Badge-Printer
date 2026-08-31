@@ -2089,17 +2089,20 @@ button.danger:disabled {
   font-size: 0.9em;
 }
 
-/* A live switch and, beside it, the action that resets what it is the default
-   for. Below the card's buttons rather than among its fields: these write
-   themselves on click, and sitting them with the text implied they were saved
-   along with it. */
+/* The live switches, and beside them the action that resets what they are the
+   default for. At the head of the card rather than among its fields: these
+   write themselves on click, so they are the state of the thing rather than
+   part of the form, and the one that decides whether anything is sent at all
+   should not be somewhere you have to scroll to find. */
 .switch-row {
   display: flex;
   align-items: center;
-  gap: 14px;
+  gap: 16px;
   flex-wrap: wrap;
   font-size: 14px;
-  margin-top: 10px;
+  margin-bottom: 14px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--border);
 }
 .switch-row .linkish {
   color: var(--muted);

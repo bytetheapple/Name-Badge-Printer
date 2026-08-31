@@ -346,6 +346,45 @@ export default function Integrations({ specs = PLATFORM_SPECS }: { specs?: Spec[
         const config = (row.config ?? {}) as Record<string, unknown>
         return (
           <section className="card" key={row.id}>
+            {/* First, not last. Both write on click, so this is the state of
+                the thing rather than part of the form below it — and someone
+                who saves settings without scrolling to the foot of the card
+                should not be left wondering why nothing is being sent. */}
+            <div className="switch-row">
+              <label className="check">
+                <input
+                  type="checkbox"
+                  checked={Boolean(row.enabled)}
+                  onChange={(e) => void toggleNow(row, 'enabled', e.target.checked)}
+                />
+                Enabled
+              </label>
+
+              {/* Only once it is enabled. "On by default" for something
+                  switched off describes a state no printer can be in, and the
+                  Printers tab would show it as On while nothing was sent. */}
+              {row.enabled && (
+                <>
+                  <label className="check">
+                    <input
+                      type="checkbox"
+                      checked={Boolean(row.default_enabled)}
+                      onChange={(e) => void toggleNow(row, 'default_enabled', e.target.checked)}
+                    />
+                    On by default for printers
+                  </label>
+                  <button
+                    type="button"
+                    className="linkish"
+                    disabled={busy === row.id}
+                    onClick={() => void resetPrinters(row)}
+                  >
+                    Reset all printers to the default
+                  </button>
+                </>
+              )}
+            </div>
+
             <label className="field">
               Name
               <input
@@ -442,37 +481,6 @@ export default function Integrations({ specs = PLATFORM_SPECS }: { specs?: Spec[
               </button>
             </div>
 
-            {/* Below the buttons on purpose: these are live switches rather
-                than part of the form above them, and grouping them with the
-                fields implied they were saved alongside. */}
-            <div className="switch-row">
-              <label className="check">
-                <input
-                  type="checkbox"
-                  checked={Boolean(row.enabled)}
-                  onChange={(e) => void toggleNow(row, 'enabled', e.target.checked)}
-                />
-                Enabled
-              </label>
-            </div>
-            <div className="switch-row">
-              <label className="check">
-                <input
-                  type="checkbox"
-                  checked={Boolean(row.default_enabled)}
-                  onChange={(e) => void toggleNow(row, 'default_enabled', e.target.checked)}
-                />
-                On by default for printers
-              </label>
-              <button
-                type="button"
-                className="linkish"
-                disabled={busy === row.id}
-                onClick={() => void resetPrinters(row)}
-              >
-                Reset all printers to the default
-              </button>
-            </div>
           </section>
         )
       })}
