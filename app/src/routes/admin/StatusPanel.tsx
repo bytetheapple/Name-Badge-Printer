@@ -103,9 +103,16 @@ export default function StatusPanel() {
               <div className="status-value">
                 {p.reachable === true ? 'Ready' : p.reachable === false ? 'Unreachable' : 'Not checked'}
               </div>
-              {/* What is loaded, because the commonest reason a badge does not
-                  come out is the wrong roll rather than the printer being off. */}
-              <div className="muted small">{media || 'Media unknown'}</div>
+              {/* What is loaded, when the printer will say — the commonest
+                  reason a badge does not come out is the wrong roll rather
+                  than the printer being off.
+
+                  Omitted rather than shown as unknown: the QL-820NWB does not
+                  answer status requests at all (see the recon doc), so on
+                  every printer we currently ship this line would permanently
+                  read "Media unknown", which is not information and teaches
+                  people to stop reading the card. */}
+              {media && <div className="muted small">{media}</div>}
               <div className="muted small">
                 {p.last_checked ? `Checked ${lastSeenLabel(p.last_checked, null)}` : 'Never checked'}
               </div>
