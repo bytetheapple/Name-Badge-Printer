@@ -428,6 +428,12 @@ td.actions-cell {
   align-items: flex-start;
   max-width: 640px;
 }
+/* A <form> inside the column is a wrapper around one pane, not a pane itself —
+   without this it shrinks to its content and its card stops lining up with the
+   ones beside it. */
+.config-form > form {
+  width: 100%;
+}
 .card {
   width: 100%;
   border: 1px solid var(--border);

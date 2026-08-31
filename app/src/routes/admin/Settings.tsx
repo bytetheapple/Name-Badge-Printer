@@ -27,13 +27,10 @@ export default function Settings() {
   })
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
-  const [msg, setMsg] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
 
-  const dirty =
-    selfieMode !== saved.selfieMode ||
-    folderId.trim() !== saved.folderId ||
-    pronounsEnabled !== saved.pronounsEnabled
+  //: Pronouns is excluded: it writes itself, so it is never pending.
+  const dirty = selfieMode !== saved.selfieMode || folderId.trim() !== saved.folderId
 
   // Asking for a photo with nowhere to put it can only fail at upload time,
   // in front of a visitor. Both halves have to be true before it is offered:
@@ -71,9 +68,28 @@ export default function Settings() {
     })()
   }, [orgId])
 
+  /** Written on click. Nothing else depends on it, so there is nothing for a
+   *  Save button to coordinate — only a change to lose by walking away. */
+  async function togglePronouns(value: boolean) {
+    const before = pronounsEnabled
+    setPronounsEnabled(value)
+    setError(null)
+    const { error } = await supabase
+      .from('app_settings')
+      .update({ pronouns_enabled: value })
+      .eq('org_id', orgId)
+    if (error) {
+      // Back where it was: a switch showing a state the database does not
+      // hold is worse than the failure.
+      setPronounsEnabled(before)
+      setError(error.message)
+      return
+    }
+    setSaved((p) => ({ ...p, pronounsEnabled: value }))
+  }
+
   async function save(e: FormEvent) {
     e.preventDefault()
-    setMsg(null)
     setError(null)
     // Refused rather than saved-and-broken: this is exactly the state where a
     // visitor is asked for a photo that cannot be stored.
@@ -95,11 +111,7 @@ export default function Settings() {
     setSaving(true)
     const { error } = await supabase
       .from('app_settings')
-      .update({
-        selfie_mode: selfieMode,
-        selfie_drive_folder_id: folder || null,
-        pronouns_enabled: pronounsEnabled,
-      })
+      .update({ selfie_mode: selfieMode, selfie_drive_folder_id: folder || null })
       .eq('org_id', orgId)
     setSaving(false)
     if (error) {
@@ -107,7 +119,6 @@ export default function Settings() {
     } else {
       setFolderId(folder)
       setSaved({ selfieMode, folderId: folder, pronounsEnabled })
-      setMsg('Saved.')
     }
   }
 
@@ -124,10 +135,12 @@ export default function Settings() {
   return (
     <>
       <h1>Settings</h1>
-      {msg && !dirty && <div className="notice">{msg}</div>}
       {error && <div className="error">{error}</div>}
 
-      <form onSubmit={save} className="config-form">
+      {/* The column, so the panes line up whether or not they are part of the
+          form. The selfie settings are; pronouns writes itself. */}
+      <div className="config-form">
+      <form onSubmit={save}>
         <section className="card">
           <h2>Selfie (visitors only)</h2>
           {/* Said before the control rather than after it, because it is the
@@ -223,28 +236,33 @@ export default function Settings() {
               to store.
             </p>
           )}
-        </section>
 
-        <section className="card">
-          <h2>Pronouns</h2>
-          <label className="check">
-            <input
-              type="checkbox"
-              checked={pronounsEnabled}
-              onChange={(e) => setPronounsEnabled(e.target.checked)}
-            />
-            Show an optional pronouns field on the sign-in form
-          </label>
+          {/* Inside the pane it applies to. It used to sit below every card,
+              between Pronouns and the name mark, which made it look like it
+              saved those too — it saves neither. The mode and the folder stay
+              behind it together on purpose: saving a mode with no folder is
+              the one broken state this pane exists to prevent. */}
+          <button type="submit" disabled={saving || !dirty} style={{ marginTop: 16 }}>
+            {saving ? 'Saving…' : 'Save selfie settings'}
+          </button>
         </section>
-
-        {/* One label, whatever the state. It said "Saved" when there was
-            nothing to save, which reads as a status parked in a control and
-            makes a dim button look like something you failed to press. Being
-            dim is the whole message. */}
-        <button type="submit" disabled={saving || !dirty}>
-          {saving ? 'Saving…' : 'Save settings'}
-        </button>
       </form>
+
+      <section className="card">
+        <h2>Pronouns</h2>
+        {/* Takes effect on click, like the integration switches. There is
+            nothing to coordinate it with, so making someone press Save for one
+            checkbox was only ever a way to lose the change. */}
+        <label className="check">
+          <input
+            type="checkbox"
+            checked={pronounsEnabled}
+            onChange={(e) => void togglePronouns(e.target.checked)}
+          />
+          Show an optional pronouns field on the sign-in form
+        </label>
+      </section>
+      </div>
 
       <OrgLogo />
 
