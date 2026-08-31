@@ -509,7 +509,36 @@ console.log('— reflashing a print server revokes what the old card holds —')
   if (logged.n >= 2) ok('each reissue is on the record')
   else bad(`reissue logged ${logged.n} row(s)`)
 
+  // A cycle in the rotation graph. It should not be possible, but the walk has
+  // to end whether or not that holds — unbounded, this recursed until the
+  // statement timeout killed it, which is how it was found.
   await db.exec(`
+    insert into public.pi_devices (serial, org_id, customer, claim_hash, claim_prefix)
+    values ('GuestBadgesServerLOOP', '${org}', 'Loop', 'hash-loop', 'gbc_loop');
+    insert into public.bridge_tokens (id, org_id, name, token_hash, token_prefix)
+    values ('22220000-0000-4000-8000-000000000001', '${org}', 'a', 'ha', 'nbk_a'),
+           ('22220000-0000-4000-8000-000000000002', '${org}', 'b', 'hb', 'nbk_b');
+    update public.bridge_tokens set replaces = '22220000-0000-4000-8000-000000000002'
+      where id = '22220000-0000-4000-8000-000000000001';
+    update public.bridge_tokens set replaces = '22220000-0000-4000-8000-000000000001'
+      where id = '22220000-0000-4000-8000-000000000002';
+    update public.pi_devices set bridge_token_id = '22220000-0000-4000-8000-000000000001',
+           claimed_at = now()
+     where serial = 'GuestBadgesServerLOOP';`)
+
+  const began = Date.now()
+  await db.exec(asUser(ADMIN, `select public.reissue_pi_device('GuestBadgesServerLOOP');`))
+  const took = Date.now() - began
+  const loop = await q(`
+    select count(*)::int as n from public.bridge_tokens
+    where token_prefix in ('nbk_a','nbk_b') and revoked_at is null`)
+  if (loop.n === 0 && took < 5000) ok(`a cycle in the chain still terminates (${took}ms)`)
+  else bad(`cycle case: ${loop.n} live token(s) after ${took}ms`)
+
+  await db.exec(`
+    delete from public.pi_devices where serial = 'GuestBadgesServerLOOP';
+    delete from public.bridge_tokens where token_prefix in ('nbk_a','nbk_b');
+    delete from public.activity_log where subject = 'GuestBadgesServerLOOP';
     delete from public.pi_devices where serial = 'GuestBadgesServerTEST';
     delete from public.bridge_tokens where token_prefix in ('nbk_1','nbk_2','nbk_3');
     delete from public.activity_log where subject = 'GuestBadgesServerTEST';
