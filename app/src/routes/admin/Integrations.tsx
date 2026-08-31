@@ -325,13 +325,6 @@ export default function Integrations({ specs = PLATFORM_SPECS }: { specs?: Spec[
       {notice && <div className="notice">{notice}</div>}
       {error && <div className="error">{error}</div>}
 
-      <p className="muted small">
-        Each of these is a place the details from a visitor's badge can be sent. You can have more
-        than one of a kind — two ShulCloud forms for two audiences, say. Whether a given kiosk
-        actually feeds one is set per printer under <strong>Printers</strong>; the switch here is
-        only the default for printers that have not been told otherwise.
-      </p>
-
       {list.map((row) => {
         const spec = specOf(row.kind)
         if (!spec) return null

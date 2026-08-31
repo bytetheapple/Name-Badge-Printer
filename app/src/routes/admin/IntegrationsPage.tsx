@@ -53,9 +53,8 @@ export default function IntegrationsPage() {
         {tab === 'destinations' && (
           <>
             <p className="muted small">
-              Where the details from a visitor's badge are sent. Google Drive stores their photo —
-              whether one is asked for, and which folder it goes in, are set under{' '}
-              <strong>Settings → Selfie</strong>; this page only makes the connection.
+              Where the details from a visitor's badge (other than selfies) are sent. Can be
+              multiple destinations.
             </p>
             <Integrations
               specs={
