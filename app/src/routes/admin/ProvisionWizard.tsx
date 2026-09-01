@@ -743,10 +743,13 @@ function ManualAddress({
 /**
  * The code out of what someone typed off the label.
  *
- * The label reads "Pwd: aguQreSK", so that is what gets typed — copying only
- * the second half is a thing you do once you know it matters. Rejecting it
- * would be pedantry, and worse, the failure would arrive minutes later as a
- * refused login.
+ * The label prints "Pwd:" and then the code, so the whole line is what gets
+ * typed — copying only the part after the colon is a thing you do once you
+ * know it matters. Rejecting that would be pedantry, and worse, the failure
+ * would arrive minutes later as a refused login.
+ *
+ * No real code as an example here, deliberately: one belonging to an actual
+ * printer was used once and lived in this comment for a while.
  *
  * The colon is required before anything is stripped. Without that guard a code
  * that happened to begin with those three letters would be quietly mangled,
@@ -799,8 +802,11 @@ function PrinterPassword({
         {session.model ? ` — ${session.model}` : ''}.
       </p>
       <p className="muted small">
-        Look on the back of the printer. Below the bar code, look for &ldquo;Pwd: xxxxxxxx&rdquo; and
-        enter what comes after &ldquo;Pwd:&nbsp;&rdquo;.
+        Look on the back of the printer. Below the bar code, find the line starting
+        &ldquo;Pwd:&rdquo; and enter everything after it. The code is eight characters and
+        mixes capitals, small letters, digits and symbols such as{' '}
+        <code>#</code>, <code>%</code> and <code>-</code>. If it begins with{' '}
+        <code>#</code>, that character is part of the code — type it too.
       </p>
 
       {error && <div className="error">{error}</div>}
