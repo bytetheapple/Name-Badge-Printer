@@ -27,6 +27,25 @@ log() { printf '%s update: %s\n' "$(date -Is)" "$*"; }
 [ "$(id -u)" -eq 0 ] || { log "must run as root"; exit 1; }
 cd "$BRIDGE_DIR" 2>/dev/null || { log "no checkout at $BRIDGE_DIR"; exit 1; }
 
+# Git runs as the account that owns the checkout, never as root.
+#
+# The installer clones as the login user, so root operating on that tree is
+# refused outright by git as "dubious ownership" — which it did, on every
+# device, every fifteen minutes, since this script shipped. Whitelisting the
+# path with safe.directory would silence the refusal and let root write objects
+# into somebody else's tree, which is the thing the check exists to prevent.
+#
+# runuser rather than sudo: we are already root, this needs no policy lookup,
+# and it does not care whether a tty exists.
+OWNER=$(stat -c '%U' "$REPO_DIR")
+as_owner() {
+  if command -v runuser >/dev/null 2>&1; then
+    runuser -u "$OWNER" -- "$@"
+  else
+    sudo -u "$OWNER" "$@"
+  fi
+}
+
 # The live credential, which is the rotated one on disk if there is one and the
 # bootstrap value in .env otherwise — the same precedence the bridge uses.
 TOKEN=""
@@ -37,7 +56,11 @@ fi
 [ -n "$TOKEN" ] || { log "no bridge credential; nothing to ask with"; exit 0; }
 
 HOSTNAME_NOW=$(hostname)
-RUNNING=$(git -C "$REPO_DIR" rev-parse --short HEAD 2>/dev/null || echo "")
+RUNNING=$(as_owner git -C "$REPO_DIR" rev-parse --short HEAD 2>/dev/null || echo "")
+# Said out loud. This was silently empty on every device for weeks, reported as
+# a blank version in the console, and the only trace was the word "unknown" in
+# a log line nobody had reason to read.
+[ -n "$RUNNING" ] || log "cannot read the running version from $REPO_DIR"
 # Cleared once an update succeeds; sent so a failure stays visible in the
 # console until it does.
 PENDING_ERROR=""
@@ -80,8 +103,8 @@ fi
 log "moving from ${RUNNING:-unknown} to $TARGET"
 PREVIOUS="$RUNNING"
 
-git -C "$REPO_DIR" fetch --quiet --tags origin || { log "fetch failed"; exit 1; }
-if ! git -C "$REPO_DIR" checkout --quiet --detach "$TARGET" 2>/dev/null; then
+as_owner git -C "$REPO_DIR" fetch --quiet --tags origin || { log "fetch failed"; exit 1; }
+if ! as_owner git -C "$REPO_DIR" checkout --quiet --detach "$TARGET" 2>/dev/null; then
   log "no such ref in this repository: $TARGET"
   printf 'no such ref: %s' "$TARGET" > "$STATE_DIR/update_error"
   exit 1
@@ -90,7 +113,7 @@ fi
 # Dependencies can move with the code. Doing this every time is a few seconds
 # and avoids the failure where a new import is missing on exactly the devices
 # that updated unattended.
-if ! sudo -u "$(stat -c '%U' "$REPO_DIR")" "$BRIDGE_DIR/venv/bin/pip" install -q \
+if ! as_owner "$BRIDGE_DIR/venv/bin/pip" install -q \
      -r "$BRIDGE_DIR/requirements.txt"; then
   log "dependency install failed"
 fi
@@ -121,7 +144,7 @@ if [ "$HEALTHY" = true ]; then
 fi
 
 log "the bridge did not come back on $TARGET; reverting to ${PREVIOUS:-the previous commit}"
-if [ -n "$PREVIOUS" ] && git -C "$REPO_DIR" checkout --quiet --detach "$PREVIOUS"; then
+if [ -n "$PREVIOUS" ] && as_owner git -C "$REPO_DIR" checkout --quiet --detach "$PREVIOUS"; then
   chmod -R o+rX "$REPO_DIR"
   systemctl restart "$SERVICE"
   printf 'update to %s failed to start; reverted to %s' "$TARGET" "$PREVIOUS" \
