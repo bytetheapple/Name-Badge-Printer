@@ -64,6 +64,13 @@ URL** rather than a dedicated endpoint:
 > control, which is stable across both. Captured page:
 > `bridge/testdata/wireless_fw1.23.html`.
 >
+> **Verified firmware.** `FIRMWARE_SETTINGS_OK` and `FIRMWARE_WIRELESS_OK`
+> in `printer_config.py` are the list. Both hold `1.32` and `1.23`. They are
+> separate on purpose: the settings pages passing is not evidence the wireless
+> page works, because that page is renumbered and its failure costs a factory
+> reset. Add a version to the wireless list only after a real run that joined
+> a network and came back.
+>
 > Verified on 1.23 (serial C0Z851372, 2026-08-31): once the login field is
 > read off the page, every settings field matches 1.32 exactly — `B28`,
 > the power fields and the comms fields all took. The wireless page has

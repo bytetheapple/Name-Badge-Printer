@@ -600,11 +600,14 @@ check("the login field is redacted from transcripts on both firmwares",
 
 check("1.23 settings pages are recorded as verified",
       "1.23" in pc.FIRMWARE_SETTINGS_OK)
-# Tracked apart on purpose. The run that proved 1.23's settings fields was made
-# without --ssid, so the wireless page has still never been posted on it — and
-# that is the one step whose failure costs a factory reset.
-check("1.23 wireless is NOT claimed as verified",
-      "1.23" not in pc.FIRMWARE_WIRELESS_OK)
+# Verified 2026-08-31 by a full wizard run: the printer joined the network,
+# came back on wireless and printed. Kept as a separate list from the settings
+# pages because the settings passing was NOT evidence for this — the wireless
+# fields are renumbered on 1.23 and were rejected until they were read off the
+# page.
+check("1.23 wireless is verified too", "1.23" in pc.FIRMWARE_WIRELESS_OK)
+check("the two lists are still tracked separately",
+      pc.FIRMWARE_SETTINGS_OK is not pc.FIRMWARE_WIRELESS_OK)
 check("the verified-against version is still named for messages",
       pc.FIRMWARE_VERIFIED == "1.32")
 

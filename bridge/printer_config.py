@@ -44,10 +44,14 @@ FIRMWARE_SETTINGS_OK = {"1.32", "1.23"}
 
 # Firmware whose WIRELESS page has been driven end to end. Tracked apart
 # deliberately: joining a network is the step that drops the wired link, and
-# undoing a bad one means a factory reset. 1.23 is NOT here — the run that
-# verified its settings pages was made without --ssid, so those field names
-# have still never been exercised on it.
-FIRMWARE_WIRELESS_OK = {"1.32"}
+# undoing a bad one means a factory reset, so "the settings pages work" is not
+# evidence that this one does.
+#
+# 1.23 added 2026-08-31 after a full wizard run on serial C0Z851372: the
+# printer joined the network, came back on wireless, and printed. Its field
+# names are two lower than 1.32's from the SSID onward, which is why this
+# needed a real run and not an inference from the settings pages passing.
+FIRMWARE_WIRELESS_OK = {"1.32", "1.23"}
 
 SUCCESS_MARKER = "postSuccess"
 
