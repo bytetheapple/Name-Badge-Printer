@@ -29,6 +29,7 @@ import time
 from dataclasses import dataclass, field
 from html import unescape
 from html.parser import HTMLParser
+from urllib.parse import urljoin
 
 import requests
 
@@ -50,7 +51,11 @@ PAGE_NETSTATUS = "/net/net/net.html"
 #: the radio still unconfigured, which is what makes it usable during setup.
 PAGE_WIRELESS_SCAN = "/net/wireless/wireless.html?wlan=3"
 
-F_PASSWORD = "B128"          # login
+# The login field's name is NOT stable across firmware: 1.32 calls it B128 and
+# 1.23 calls it B126. Kept only as a fallback and to redact it from
+# transcripts — the name actually used is read from the page. See _login_form.
+F_PASSWORD = "B128"          # login (1.32; read from the page at run time)
+F_PASSWORD_ALT = "B126"      # login (1.23)
 F_AUTO_POWER_ON = "B1c"      # 0 disable, 1 enable
 F_AUTO_POWER_OFF_AC = "B1d"  # 0 None … 6 60 Mins
 F_LANGUAGE = "B28"           # 3 English
@@ -68,7 +73,7 @@ F_YEAR, F_MONTH, F_DAY = "B3e", "B3f", "B40"
 F_HOUR, F_MINUTE = "B41", "B42"
 
 # Anything whose value must never reach a transcript.
-SECRET_FIELDS = {F_PASSWORD, F_PASSPHRASE, "Be8", "Bec", "Bf0", "Bf4"}
+SECRET_FIELDS = {F_PASSWORD, F_PASSWORD_ALT, F_PASSPHRASE, "Be8", "Bec", "Bf0", "Bf4"}
 
 
 class _FormParser(HTMLParser):
@@ -257,6 +262,78 @@ class Result:
         return "\n".join(lines)
 
 
+class _LoginFormParser(HTMLParser):
+    """Locate the login form on a page by its shape rather than its field name.
+
+    The password input is called B128 on firmware 1.32 and B126 on 1.23.
+    Hardcoding either one does not merely fail — it fails *silently and in both
+    directions*. Against 1.23 the login posted the password under a name the
+    printer ignored, so it was never authenticated; and the check meant to
+    catch that looked for B128, did not find it, and concluded it was logged
+    in. Every later write then came back as the login page and was reported as
+    a dropped session. The printer's clock was the only thing that changed,
+    because that page happens not to require a login.
+
+    What is stable across both is that the form contains an input of
+    type="password". That is what we match on, and we submit the form's own
+    hidden fields rather than reconstructing them.
+    """
+
+    def __init__(self) -> None:
+        super().__init__(convert_charrefs=True)
+        self.action = ""
+        self.field = ""
+        self.hidden: dict[str, str] = {}
+        self._action = ""
+        self._field = ""
+        self._hidden: dict[str, str] = {}
+        self._in_form = False
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        a = {k: (v or "") for k, v in attrs}
+        if tag == "form":
+            self._in_form = True
+            self._action = a.get("action", "")
+            self._field = ""
+            self._hidden = {}
+            return
+        if not self._in_form or tag != "input":
+            return
+        name, itype = a.get("name"), a.get("type", "text").lower()
+        if not name:
+            return
+        if itype == "password":
+            self._field = name
+        elif itype not in ("submit", "button", "reset"):
+            self._hidden[name] = a.get("value", "")
+
+    def handle_endtag(self, tag: str) -> None:
+        if tag != "form" or not self._in_form:
+            return
+        self._in_form = False
+        # First form carrying a password box wins; there is only ever one.
+        if self._field and not self.field:
+            self.action, self.field, self.hidden = self._action, self._field, self._hidden
+
+
+def _login_form(html: str) -> _LoginFormParser | None:
+    """The page's login form, or None when it does not offer one."""
+    p = _LoginFormParser()
+    p.feed(html)
+    return p if p.field else None
+
+
+def is_login_page(html: str) -> bool:
+    """Whether this page is asking us to log in.
+
+    Deliberately not `name="B128" in html`. That was the old test, and on 1.23
+    it answered False for a page whose entire content was "To Access this page
+    you are required to Login" — which is how an unauthenticated run got
+    mistaken for a firmware incompatibility.
+    """
+    return _login_form(html) is not None
+
+
 class PrinterWeb:
     """A logged-in session against one printer's web UI."""
 
@@ -293,15 +370,18 @@ class PrinterWeb:
         """Authenticate. The login form posts to the page it is displayed on,
         so it cannot be told apart from that page's own settings form by action
         alone — it is identified by carrying the password field."""
-        p = _FormParser(PAGE_STATUS)
-        p.feed(self.get(PAGE_STATUS))
-        token = p.fields.get("CSRFToken", "")
-        r = self.session.post(
-            self.base + PAGE_STATUS,
-            data={"CSRFToken": token, F_PASSWORD: self.password, "loginurl": PAGE_STATUS},
-            timeout=self.timeout,
-        )
-        r.raise_for_status()
+        html = self.get(PAGE_STATUS)
+        form = _login_form(html)
+        if form is not None:
+            # The form's own hidden fields, whatever they are on this firmware
+            # — CSRFToken on some, a loginurl pointing at an error page on
+            # others. Reconstructing them by hand is what made this brittle.
+            data = dict(form.hidden)
+            data[form.field] = self.password
+            self.login_field = form.field
+            action = urljoin(self.base + PAGE_STATUS, form.action or PAGE_STATUS)
+            r = self.session.post(action, data=data, timeout=self.timeout)
+            r.raise_for_status()
         # Verify against a freshly fetched settings page rather than the login
         # response.
         #
@@ -314,7 +394,10 @@ class PrinterWeb:
         #
         # A page that still offers somewhere to type a password is a page we
         # are not authenticated on. That holds whatever else the markup says.
-        if f'name="{F_PASSWORD}"' in self.get(PAGE_COMMS):
+        # Verified against a page that requires a login, by shape rather than by
+        # field name. The old test named B128 and so could not see a 1.23 login
+        # page at all: it reported success on a session that did not exist.
+        if is_login_page(self.get(PAGE_COMMS)):
             raise RuntimeError("the printer rejected the web-UI password")
 
     def submit(
@@ -331,7 +414,24 @@ class PrinterWeb:
         wireless page stores its settings without emitting one, so trusting it
         reports failure on a write that worked.
         """
-        fields = self.fields_of(path)
+        page = self.get(path)
+        parser = _FormParser(path)
+        parser.feed(page)
+        fields = parser.fields
+        if not fields:
+            # No form to post back. Sending just the changed field produces a
+            # request with no page context, which the printer answers with the
+            # login page — indistinguishable, to the caller, from a session
+            # that expired. Four rounds of debugging went into that confusion;
+            # say which it is instead.
+            if is_login_page(page):
+                raise RuntimeError(
+                    f"not logged in: {path} came back as the login page"
+                )
+            raise RuntimeError(
+                f"{path} served no form to post back "
+                f"(firmware {FIRMWARE_VERIFIED} is what this was built against)"
+            )
         fields.update(changes)
         for key in drop:
             fields.pop(key, None)

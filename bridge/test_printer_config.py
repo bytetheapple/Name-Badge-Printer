@@ -524,6 +524,43 @@ r2 = pc.Result()
 r2.steps = [pc.Step("a", False, "the printer said: value out of range")]
 check("an ordinary rejection is not", r2.refused is False, r2.steps[0].detail)
 
+print("— firmware 1.23 names the login field differently —")
+# Captured from a real QL-820NWB on 1.23 (serial C0Z851372). The whole bug in
+# one page: it calls the password box B126, where 1.32 calls it B128.
+#
+# Hardcoding B128 failed in both directions at once. The login posted the
+# password under a name the printer ignored, so the session never existed; and
+# the check meant to catch exactly that looked for B128, did not find it, and
+# reported success. Every later write returned this page and was read as a
+# dropped session. Only the clock changed, because /general/date.html does not
+# require a login on this firmware — so the one thing the operator could see
+# directly contradicted the error message.
+_p123 = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                     "testdata", "device_settings_fw1.23.html")
+with open(_p123, encoding="utf-8") as fh:
+    FW123 = fh.read()
+
+check("recognises a 1.23 login page", pc.is_login_page(FW123))
+check("reads the login field from the page rather than assuming",
+      pc._login_form(FW123).field == "B126", pc._login_form(FW123).field)
+check("carries the form's own hidden fields",
+      "loginurl" in pc._login_form(FW123).hidden,
+      repr(pc._login_form(FW123).hidden))
+check("does not mistake the login box for a settings field",
+      pc._login_form(FW123).field not in pc._FormParser(pc.PAGE_DEVICE).fields)
+# The old test, kept as a negative control: this is what used to be asked, and
+# it is False on the very page that is asking for a login.
+check("the old name-based test would have missed it",
+      f'name="{pc.F_PASSWORD}"' not in FW123)
+check("a 1.32 login page is still recognised",
+      pc.is_login_page('<form action="/general/status.html">'
+                       '<input type="password" name="B128" /></form>'))
+check("a settings page is not mistaken for a login page",
+      not pc.is_login_page('<form action="/printer/device_settings.html">'
+                           '<input type="text" name="B28" value="3" /></form>'))
+check("the login field is redacted from transcripts on both firmwares",
+      pc.F_PASSWORD in pc.SECRET_FIELDS and pc.F_PASSWORD_ALT in pc.SECRET_FIELDS)
+
 print()
 if FAILURES:
     print(f"RESULT: {len(FAILURES)} failure(s): {', '.join(FAILURES)}")

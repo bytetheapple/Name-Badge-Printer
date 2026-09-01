@@ -46,6 +46,19 @@ URL** rather than a dedicated endpoint:
 | Field | Meaning |
 |---|---|
 | `B128` | the password (the code printed on the back of the printer) |
+
+> **The login field name is not stable across firmware.** 1.32 calls it
+> `B128`; 1.23 (observed on serial C0Z851372, 2026-08-31) calls it `B126`.
+> Do not hardcode either — `_login_form()` reads it off the page by finding
+> the input of `type="password"`.
+>
+> This mattered more than a renamed field usually would. Posting `B128` to
+> 1.23 meant the printer never received a password, and the check that was
+> supposed to catch a failed login also looked for `B128`, did not find it,
+> and reported success. The result was an unauthenticated session that
+> appeared healthy: every settings write came back as the login page and was
+> diagnosed as a dropped session, while `/general/date.html` — which needs no
+> login on this firmware — accepted its write and set the clock.
 | `loginurl` | path to return to after login, e.g. `/general/status.html` |
 | `CSRFToken` | see below |
 
