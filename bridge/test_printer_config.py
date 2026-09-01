@@ -608,6 +608,43 @@ check("1.23 wireless is NOT claimed as verified",
 check("the verified-against version is still named for messages",
       pc.FIRMWARE_VERIFIED == "1.32")
 
+print("— the wireless page is numbered differently on 1.23 too —")
+# Captured from the same printer. From the SSID field onward every name is two
+# lower than on 1.32, while the three below it are unchanged — the same shift
+# that moved the login box from B128 to B126. The labels beside them do not
+# move, so that is what we read.
+with open(os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                       "testdata", "wireless_fw1.23.html"), encoding="utf-8") as fh:
+    WIFI123 = fh.read()
+
+_f = pc.wireless_fields(WIFI123)
+check("finds the SSID field by its label", _f["ssid"] == "Bdc", _f["ssid"])
+check("finds the passphrase by its label", _f["passphrase"] == "Bf6", _f["passphrase"])
+check("finds all four WEP keys",
+      _f["wep"] == ["Be6", "Bea", "Bee", "Bf2"], repr(_f["wep"]))
+check("leaves the unshifted fields alone",
+      (_f["comm_mode"], _f["auth"], _f["encryption"]) == ("B62", "B63", "B64"))
+# The status table above the form prints the current SSID, so matching the
+# whole run of text ahead of a control picked the Communication Mode dropdown
+# as the SSID box.
+check("does not mistake the status table for a label", _f["ssid"] != _f["comm_mode"])
+
+_c, _d = pc.wifi_changes("Lobby", "hunter2", _f)
+check("sends the SSID under this firmware's name", _c.get("Bdc") == "Lobby")
+check("sends the passphrase under this firmware's name", _c.get("Bf6") == "hunter2")
+check("drops this firmware's WEP fields",
+      set(_d) == {"Be4", "Be6", "Bea", "Bee", "Bf2"}, repr(_d))
+# 1.23's wireless.js builds the same options: new Option(WPA_WPA2, 3) and
+# new Option(AES, 4). Only the names moved, not the values.
+check("keeps WPA2/AES values, which did not move",
+      (_c.get("B63"), _c.get("B64")) == ("3", "4"))
+# A passphrase reaching the transcript would put a customer's network key in
+# the provisioning console. Bf6 is not in the static 1.32 list.
+check("redacts the passphrase under this firmware's name too",
+      pc._redact({"Bf6": "hunter2"})["Bf6"] == "(redacted)")
+check("1.32 callers are unaffected",
+      pc.wifi_changes("Lobby", "hunter2")[0].get(pc.F_SSID) == "Lobby")
+
 print()
 if FAILURES:
     print(f"RESULT: {len(FAILURES)} failure(s): {', '.join(FAILURES)}")

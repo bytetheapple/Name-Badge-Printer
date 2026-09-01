@@ -152,7 +152,118 @@ class _FormParser(HTMLParser):
             self._in_form = False
 
 
-def wifi_changes(ssid: str, passphrase: str | None) -> tuple[dict[str, str], tuple[str, ...]]:
+class _LabelParser(HTMLParser):
+    """Map each named control on a page to the visible text just before it."""
+
+    def __init__(self) -> None:
+        super().__init__(convert_charrefs=True)
+        self.pairs: list[tuple[str, str]] = []
+        self._text: list[str] = []
+        self._skip = 0
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        a = {k: (v or "") for k, v in attrs}
+        if tag in ("option", "script", "style"):
+            self._skip += 1
+            return
+        if tag in ("input", "select", "textarea"):
+            name = a.get("name")
+            if name and a.get("type", "text").lower() not in ("submit", "button", "reset"):
+                self.pairs.append((" ".join("".join(self._text).split()), name))
+            self._text = []
+
+    def handle_endtag(self, tag: str) -> None:
+        if tag in ("option", "script", "style") and self._skip:
+            self._skip -= 1
+        elif tag == "select":
+            self._text = []
+
+    def handle_data(self, data: str) -> None:
+        if not self._skip:
+            self._text.append(data)
+
+
+#: What each control on the wireless page is called, in words. Matched against
+#: the label the page prints next to it.
+_WIRELESS_LABELS = (
+    ("ssid", ("wireless network name", "ssid")),
+    ("passphrase", ("passphrase",)),
+    ("comm_mode", ("communication mode",)),
+    ("auth", ("authentication method",)),
+    ("encryption", ("encryption mode",)),
+    ("network_key", ("network key",)),
+)
+
+#: The names on firmware 1.32, used when a label cannot be found.
+WIRELESS_DEFAULTS = {
+    "ssid": F_SSID,
+    "passphrase": F_PASSPHRASE,
+    "comm_mode": F_COMM_MODE,
+    "auth": F_AUTH,
+    "encryption": F_ENCRYPTION,
+    "network_key": WEP_FIELDS[0],
+    "wep": list(WEP_FIELDS[1:]),
+}
+
+
+def wireless_fields(html: str) -> dict[str, object]:
+    """Resolve the wireless page's field names from the labels beside them.
+
+    Firmware 1.23 numbers this page two lower than 1.32 from the SSID field
+    onwards — SSID is Bdc not Bde, the passphrase Bf6 not Bf8, the WEP keys
+    Be6/Bea/Bee/Bf2 not Be8/Bec/Bf0/Bf4 — while the three fields below it
+    (B62, B63, B64) are unchanged. The login box moved by the same two, which
+    is what made a renamed field look like a dropped session for an evening.
+
+    So the names are not a fact about this product; they are a fact about a
+    build of its firmware. The labels are not: "Passphrase" is "Passphrase" on
+    both. Reading the name off the page is the only version of this that does
+    not need revisiting when the numbering shifts again.
+
+    Falls back to the 1.32 names for anything it cannot find, so a page shaped
+    in some third way degrades to today's behaviour rather than to nothing.
+    """
+    parser = _LabelParser()
+    parser.feed(html)
+
+    found: dict[str, object] = {}
+    wep: list[str] = []
+    for label, name in parser.pairs:
+        # Only the tail. The first control on the page is preceded by the whole
+        # status table above the form, which prints the current SSID — so
+        # matching the entire run of text ahead of a control identified the
+        # Communication Mode dropdown as the SSID box. A label sits directly
+        # before its control; the longest of them here is 28 characters.
+        low = label.lower()[-48:]
+        if re.match(r"wep\s*key\s*\d", low):
+            if name not in wep:
+                wep.append(name)
+            continue
+        for key, phrases in _WIRELESS_LABELS:
+            if key in found:
+                continue
+            if any(phrase in low for phrase in phrases):
+                found[key] = name
+                break
+
+    if wep:
+        found["wep"] = wep
+    for key, default in WIRELESS_DEFAULTS.items():
+        found.setdefault(key, default)
+
+    # Whatever THIS firmware calls the passphrase and the WEP keys is a secret
+    # on this firmware, so register the resolved names for redaction. The
+    # static list below is the 1.32 numbering; on 1.23 the passphrase is Bf6,
+    # which is not in it, and a transcript would have printed a customer's
+    # network key in clear in the provisioning console.
+    SECRET_FIELDS.add(str(found["passphrase"]))
+    SECRET_FIELDS.update(str(n) for n in found["wep"])
+    return found
+
+
+def wifi_changes(
+    ssid: str, passphrase: str | None, fields: dict[str, object] | None = None
+) -> tuple[dict[str, str], tuple[str, ...]]:
     """The fields to set, and the fields to leave out, for joining a network.
 
     Both halves come from the page's own script (`/common/js/wireless.js`),
@@ -166,16 +277,22 @@ def wifi_changes(ssid: str, passphrase: str | None) -> tuple[dict[str, str], tup
       and disables the passphrase unless the method is WPA/WPA2-PSK. A browser
       does not submit disabled controls, so neither do we.
     """
-    changes: dict[str, str] = {F_COMM_MODE: "1", F_SSID: ssid}
+    f = fields or WIRELESS_DEFAULTS
+    drop = tuple([str(f["network_key"])] + [str(n) for n in f["wep"]])
+
+    changes: dict[str, str] = {str(f["comm_mode"]): "1", str(f["ssid"]): ssid}
     if passphrase:
-        changes[F_AUTH] = "3"          # WPA/WPA2-PSK
-        changes[F_ENCRYPTION] = "4"    # AES — WPA2's cipher; 3 would be legacy TKIP
-        changes[F_PASSPHRASE] = passphrase
-        return changes, WEP_FIELDS
+        # Verified identical on 1.23: its wireless.js builds the same options,
+        # new Option(WPA_WPA2, 3) and new Option(AES, 4). The numbering that
+        # shifted is the field names, not the values they take.
+        changes[str(f["auth"])] = "3"          # WPA/WPA2-PSK
+        changes[str(f["encryption"])] = "4"    # AES — WPA2's cipher; 3 is legacy TKIP
+        changes[str(f["passphrase"])] = passphrase
+        return changes, drop
     # An open network: no passphrase, no keys.
-    changes[F_AUTH] = "1"
-    changes[F_ENCRYPTION] = "1"
-    return changes, WEP_FIELDS + (F_PASSPHRASE,)
+    changes[str(f["auth"])] = "1"
+    changes[str(f["encryption"])] = "1"
+    return changes, drop + (str(f["passphrase"]),)
 
 
 def _form_encode(fields: dict[str, str]) -> dict[str, str]:
@@ -652,7 +769,17 @@ def configure_printer(
                 "fails the printer may need a factory reset"
             )
         say("  joining the wireless network (the wired link will drop) …")
-        changes, drop = wifi_changes(ssid, passphrase)
+        # Resolve the field names from the page in front of us rather than
+        # from a table captured on some other firmware. Best effort: if the
+        # page cannot be read, wifi_changes falls back to the 1.32 names,
+        # which is what it used to do unconditionally.
+        try:
+            names = wireless_fields(web.get(PAGE_WIRELESS))
+        except requests.RequestException:
+            names = None
+        if names and names["ssid"] != F_SSID:
+            say(f"  this firmware calls the SSID field {names['ssid']}, not {F_SSID}")
+        changes, drop = wifi_changes(ssid, passphrase, names)
         try:
             ok, sent, _ = web.submit(PAGE_WIRELESS, changes, drop)
             result.steps.append(Step("join the wireless network", ok, "", sent))

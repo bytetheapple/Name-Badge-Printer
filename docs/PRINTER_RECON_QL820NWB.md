@@ -52,6 +52,18 @@ URL** rather than a dedicated endpoint:
 > Do not hardcode either — `_login_form()` reads it off the page by finding
 > the input of `type="password"`.
 >
+> **The wireless page is shifted by the same two.** On 1.23 the SSID is
+> `Bdc` (not `Bde`), the passphrase `Bf6` (not `Bf8`), the network-key index
+> `Be4` (not `Be6`) and the WEP keys `Be6/Bea/Bee/Bf2` (not
+> `Be8/Bec/Bf0/Bf4`) — while `B62`, `B63` and `B64` below them are unchanged.
+> 1.32 evidently inserted a field between them. The option *values* did not
+> move: 1.23's `wireless.js` also builds `new Option(WPA_WPA2, 3)` and
+> `new Option(AES, 4)`.
+>
+> `wireless_fields()` resolves these from the label printed beside each
+> control, which is stable across both. Captured page:
+> `bridge/testdata/wireless_fw1.23.html`.
+>
 > Verified on 1.23 (serial C0Z851372, 2026-08-31): once the login field is
 > read off the page, every settings field matches 1.32 exactly — `B28`,
 > the power fields and the comms fields all took. The wireless page has
