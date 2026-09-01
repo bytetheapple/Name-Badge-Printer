@@ -76,6 +76,32 @@ Deno.serve(async (req) => {
     });
   }
 
+  // The version the device says it is running, from the device itself.
+  //
+  // The updater reports one too, but only when it runs, so a fleet whose
+  // updater was broken reported nothing and that was indistinguishable from a
+  // device that had simply not checked in yet. A bridge that is polling is by
+  // definition running, so this is the one report that cannot be stale.
+  //
+  // Deliberately not bridge_target_ref(), which is what the updater calls:
+  // that clears update_error unconditionally, and a poll arriving seconds
+  // later would wipe a failure before anyone read it. Matched on hostname for
+  // the same reason as that function — the bridge token is replaced on every
+  // rotation, so a link through it would break on the first renewal.
+  const version = String(body.version ?? "").trim();
+  const host = String(body.hostname ?? "").trim();
+  if (version && host) {
+    await fetch(
+      `${REST}/pi_devices?serial=eq.${encodeURIComponent(host)}` +
+        `&org_id=eq.${bridge.org_id}`,
+      {
+        method: "PATCH",
+        headers: restHeaders,
+        body: JSON.stringify({ running_ref: version, last_seen: now }),
+      },
+    );
+  }
+
   // ---- printer status reported by the bridge -------------------------------
   const reported = Array.isArray(body.printers) ? body.printers : [];
   for (const p of reported) {

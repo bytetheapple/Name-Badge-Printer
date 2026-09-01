@@ -86,6 +86,8 @@ os.environ["SUPABASE_URL"] = base
 os.environ["BRIDGE_TOKEN"] = "nbk_test_token"
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
+import re
+
 import client  # noqa: E402
 import config  # noqa: E402
 
@@ -113,6 +115,17 @@ check("returns the org's printers", r.printers == PRINTERS)
 check("returns the claimed job with its name resolved", r.job and r.job["first_name"] == "Ada")
 check("sends the bridge key as a header", Stub.seen[0]["bridge_key"] == "nbk_test_token")
 check("forwards the printer status report", Stub.seen[0]["body"]["printers"][0]["reachable"] is True)
+
+# The Fleet version column is only as good as this. Until the bridge reported
+# its own sha the column showed whatever the updater last said, which on a
+# fleet whose updater was broken was nothing at all — indistinguishable from a
+# device that had not checked in.
+check("reports the version it is running",
+      re.fullmatch(r"[0-9a-f]{7}", Stub.seen[0]["body"].get("version", "") or "") is not None,
+      repr(Stub.seen[0]["body"].get("version")))
+check("says which device is reporting it",
+      Stub.seen[0]["body"].get("hostname") == client._HOSTNAME,
+      repr(Stub.seen[0]["body"].get("hostname")))
 
 print("— an empty queue is not an error —")
 Stub.routes = {"/functions/v1/bridge-poll": (200, {"ok": True, "config": CONFIG, "printers": PRINTERS, "job": None})}

@@ -45,3 +45,46 @@ def require():
             "Missing credentials: set BRIDGE_TOKEN (issue one in the admin under "
             "Print servers). See bridge/.env.example."
         )
+
+
+def running_version() -> str:
+    """The short sha this bridge is running, read from the checkout on disk.
+
+    Deliberately not `git rev-parse`. The bridge runs as its own service
+    account and the checkout belongs to the login user, so git refuses to touch
+    it — the same "dubious ownership" that stopped the updater working on every
+    device for weeks. Reading two files needs no such permission, and the
+    installer already makes the tree world-readable.
+
+    Empty when it cannot be worked out, which the server treats as "did not
+    say" rather than as a version.
+    """
+    import os as _os
+
+    repo = _os.path.dirname(_os.path.dirname(_os.path.abspath(__file__)))
+    git_dir = _os.path.join(repo, ".git")
+    try:
+        with open(_os.path.join(git_dir, "HEAD"), encoding="utf-8") as fh:
+            head = fh.read().strip()
+    except OSError:
+        return ""
+
+    # Detached — which is what the updater leaves behind — is the sha itself.
+    if not head.startswith("ref: "):
+        return head[:7]
+
+    ref = head[5:].strip()
+    try:
+        with open(_os.path.join(git_dir, ref), encoding="utf-8") as fh:
+            return fh.read().strip()[:7]
+    except OSError:
+        pass
+    # A ref that has been packed away has no file of its own.
+    try:
+        with open(_os.path.join(git_dir, "packed-refs"), encoding="utf-8") as fh:
+            for line in fh:
+                if line.rstrip().endswith(" " + ref):
+                    return line.split()[0][:7]
+    except OSError:
+        pass
+    return ""

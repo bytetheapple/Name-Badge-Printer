@@ -21,11 +21,17 @@ comes back on it too.
 """
 from dataclasses import dataclass, field
 
+import socket
+
 import requests
 
 import config
 import credential
 import db
+
+#: Read once. See the note in poll().
+_VERSION = config.running_version()
+_HOSTNAME = socket.gethostname()
 
 _TIMEOUT = 15
 
@@ -93,6 +99,14 @@ class BridgeApiClient:
             "bridge-poll",
             {
                 "printers": printer_reports or [],
+                # What this device is actually running, said by the device.
+                # The updater also reports a version, but only when it runs —
+                # so a fleet whose updater was broken showed no version at all
+                # and nobody could tell that from "not reported yet". Read once
+                # at import: it cannot change without the service restarting,
+                # which is what the updater does after a checkout.
+                "version": _VERSION,
+                "hostname": _HOSTNAME,
                 **({"rotation_error": self._rotation_error} if self._rotation_error else {}),
                 # Present only on the poll after a provisioning step finished.
                 **({"provision_result": provision_result} if provision_result else {}),

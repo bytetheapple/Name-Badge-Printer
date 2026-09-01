@@ -96,6 +96,10 @@ case "$TARGET" in
 esac
 
 if [ "$TARGET" = "$RUNNING" ]; then
+  # Said out loud. A silent exit is indistinguishable in the journal from a run
+  # that did nothing for some other reason, which is exactly the ambiguity that
+  # made a broken updater look like a working one for weeks.
+  log "already on $TARGET; nothing to do"
   rm -f "$STATE_DIR/update_error"
   exit 0
 fi
