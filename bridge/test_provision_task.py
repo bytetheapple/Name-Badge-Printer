@@ -224,8 +224,24 @@ def refused_result():
 install(result=refused_result())
 r = pt.run("configure", BASE)
 check("is reported as a failure", not r.ok)
-check("does not blame the firmware",
-      "firmware" not in (r.error or "").lower(), r.error or "")
+# Loosened from "the word firmware must not appear", which was a proxy for the
+# real fault: a transcript that LED with a firmware warning when the cause was
+# elsewhere. An unverified version is worth naming — it is the one fact that
+# distinguishes a printer nobody has tried from one that is misbehaving — but
+# it belongs after the things the operator can act on, and hedged.
+check("does not lead with the firmware",
+      "firmware" not in (r.error or "").lower().split("logged into")[0],
+      r.error or "")
+check("names an unverified firmware only as a possibility",
+      "may be the reason" in (r.error or ""), r.error or "")
+# It must say what it managed to do. The message this replaced said the
+# settings "were not applied" while the printer's clock had visibly been set,
+# and an operator who can see a change the tool denies making has no reason to
+# believe the rest of it.
+check("says what did apply",
+      "set the clock" in (r.error or ""), r.error or "")
+check("says where it stopped",
+      "set the panel language to English" in (r.error or ""), r.error or "")
 # It must not send the operator back to the password either. Reaching this
 # point means login() already accepted it — it verifies against a freshly
 # fetched settings page and raises when it is wrong — so the session was

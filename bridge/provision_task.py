@@ -164,6 +164,51 @@ def _discover(ctx, say) -> TaskResult:
     )
 
 
+def _applied(result) -> str:
+    """What actually took, in the operator's words.
+
+    Said explicitly because the message this replaces claimed nothing had been
+    applied while the printer's clock had visibly been set. An operator who can
+    see a change the tool says it did not make has no reason to trust the rest
+    of what it says.
+    """
+    done = [st.name for st in result.steps if st.ok]
+    if not done:
+        return "nothing"
+    if len(done) == 1:
+        return done[0]
+    return ", ".join(done[:-1]) + " and " + done[-1]
+
+
+def _refusal_advice(result) -> str:
+    """What to try, without asserting a cause that is not in evidence.
+
+    The previous text led with "usually something else is logged into that
+    printer's web page". That is a guess, and in the field it has been wrong:
+    reported with no browser open, and again after a power cycle. Sending an
+    operator to close a window that is not open costs them the one thing this
+    message is for.
+
+    So: the observation first, then the cheap things to rule out, then the
+    thing that is actually diagnostic.
+    """
+    first_failed = next((st.name for st in result.steps if not st.ok), None)
+    where = f"It stopped at \u201c{first_failed}\u201d. " if first_failed else ""
+    extra = ""
+    if result.firmware and result.firmware != pc.FIRMWARE_VERIFIED:
+        extra = (
+            f" This printer runs firmware {result.firmware}, which this setup "
+            "has not been verified against; that may be the reason."
+        )
+    return (
+        where
+        + "If another browser or setup tool is logged into this printer, close "
+        "it and try again. If nothing else is talking to it, or a power cycle "
+        "made no difference, the printer is ending the session on its own."
+        + extra
+    )
+
+
 def _survey(ip: str, password: str, say) -> list[str]:
     """Networks the printer can see. Never raises: this is a convenience."""
     try:
@@ -257,13 +302,10 @@ def _configure(ctx, say) -> TaskResult:
             log=say.lines,
             next_state="password",
             error=(
-                f"The printer at {ip} accepted the password and then dropped "
-                "the session, even after logging in again, so its settings "
-                "were not applied. Usually something else is logged into that "
-                "printer's web page — close it, and any other setup running "
-                "against the same printer — then try this step again. If it "
-                "keeps happening, power the printer off and on with its own "
-                "button first."
+                f"The printer at {ip} accepted the password, applied "
+                f"{_applied(result)}, and then stopped accepting writes — "
+                "logging in again did not recover it.\n\n"
+                + _refusal_advice(result)
             ),
         )
     if not result.ok:
