@@ -144,6 +144,21 @@ done
 if [ "$HEALTHY" = true ]; then
   log "now on $TARGET"
   rm -f "$STATE_DIR/update_error"
+  # Say so, rather than leaving it until the next run.
+  #
+  # The version above was reported in the same call that asked for the target,
+  # which means it was the version we were LEAVING. On its own that made the
+  # console structurally one update behind: a device that had just updated
+  # successfully still showed its old version, which is indistinguishable from
+  # an update that never happened — and that is exactly what someone checking
+  # whether an update worked is looking at.
+  #
+  # Best effort. The update has already succeeded by this point and must not be
+  # undone by a reporting call that fails.
+  curl -sS --max-time 30 -X POST "$SUPABASE_URL/functions/v1/bridge-release" \
+    -H "x-bridge-key: $TOKEN" -H "Content-Type: application/json" \
+    -d "$(printf '{"hostname":"%s","running":"%s"}' "$HOSTNAME_NOW" "$TARGET")" \
+    >/dev/null 2>&1 || log "updated to $TARGET but could not report it"
   exit 0
 fi
 
