@@ -52,6 +52,11 @@ URL** rather than a dedicated endpoint:
 > Do not hardcode either — `_login_form()` reads it off the page by finding
 > the input of `type="password"`.
 >
+> Verified on 1.23 (serial C0Z851372, 2026-08-31): once the login field is
+> read off the page, every settings field matches 1.32 exactly — `B28`,
+> the power fields and the comms fields all took. The wireless page has
+> *not* been exercised on 1.23; that run was made without `--ssid`.
+>
 > This mattered more than a renamed field usually would. Posting `B128` to
 > 1.23 meant the printer never received a password, and the check that was
 > supposed to catch a failed login also looked for `B128`, did not find it,

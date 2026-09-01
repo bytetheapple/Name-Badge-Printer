@@ -561,6 +561,16 @@ check("a settings page is not mistaken for a login page",
 check("the login field is redacted from transcripts on both firmwares",
       pc.F_PASSWORD in pc.SECRET_FIELDS and pc.F_PASSWORD_ALT in pc.SECRET_FIELDS)
 
+check("1.23 settings pages are recorded as verified",
+      "1.23" in pc.FIRMWARE_SETTINGS_OK)
+# Tracked apart on purpose. The run that proved 1.23's settings fields was made
+# without --ssid, so the wireless page has still never been posted on it — and
+# that is the one step whose failure costs a factory reset.
+check("1.23 wireless is NOT claimed as verified",
+      "1.23" not in pc.FIRMWARE_WIRELESS_OK)
+check("the verified-against version is still named for messages",
+      pc.FIRMWARE_VERIFIED == "1.32")
+
 print()
 if FAILURES:
     print(f"RESULT: {len(FAILURES)} failure(s): {', '.join(FAILURES)}")

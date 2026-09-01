@@ -36,6 +36,19 @@ import requests
 # Values captured from firmware 1.32. See the recon doc.
 FIRMWARE_VERIFIED = "1.32"
 
+# Firmware whose SETTINGS pages have been driven end to end on real hardware.
+# 1.23 was added after a full run on serial C0Z851372 (2026-08-31): its
+# settings fields are identical to 1.32 — only the login box differs, which
+# _login_form now reads off the page.
+FIRMWARE_SETTINGS_OK = {"1.32", "1.23"}
+
+# Firmware whose WIRELESS page has been driven end to end. Tracked apart
+# deliberately: joining a network is the step that drops the wired link, and
+# undoing a bad one means a factory reset. 1.23 is NOT here — the run that
+# verified its settings pages was made without --ssid, so those field names
+# have still never been exercised on it.
+FIRMWARE_WIRELESS_OK = {"1.32"}
+
 SUCCESS_MARKER = "postSuccess"
 
 # Pages, and the fields on them we care about.
@@ -244,7 +257,7 @@ class Result:
         lines = [
             f"printer {self.model or '?'} serial {self.serial or '?'} firmware {self.firmware or '?'}"
         ]
-        if self.firmware and self.firmware != FIRMWARE_VERIFIED:
+        if self.firmware and self.firmware not in FIRMWARE_SETTINGS_OK:
             lines.append(
                 f"  ! firmware {self.firmware} differs from the verified {FIRMWARE_VERIFIED};"
                 " field names may not match"
@@ -547,7 +560,7 @@ def configure_printer(
     say(f"connected to {result.model or 'printer'} at {ip} (firmware {result.firmware or '?'})")
     if result.wireless.mac:
         say(f"  its wireless interface is {result.wireless.node_name} ({result.wireless.mac})")
-    if result.firmware and result.firmware != FIRMWARE_VERIFIED:
+    if result.firmware and result.firmware not in FIRMWARE_SETTINGS_OK:
         say(
             f"WARNING: firmware {result.firmware} has not been verified "
             f"(this routine was built against {FIRMWARE_VERIFIED}); "
@@ -614,6 +627,17 @@ def configure_printer(
 
     # ---- WiFi last: this is what cuts the cable we are talking over ----------
     if ssid:
+        if result.firmware and result.firmware not in FIRMWARE_WIRELESS_OK:
+            # Warned separately from the settings pages, and immediately before
+            # the write rather than at the top of the run, because this is the
+            # step with no cheap undo: a wrong field here drops the wired link
+            # and the way back is a factory reset.
+            say(
+                f"WARNING: the wireless page has never been exercised on "
+                f"firmware {result.firmware} (verified on "
+                f"{', '.join(sorted(FIRMWARE_WIRELESS_OK))}); if this step "
+                "fails the printer may need a factory reset"
+            )
         say("  joining the wireless network (the wired link will drop) …")
         changes, drop = wifi_changes(ssid, passphrase)
         try:
