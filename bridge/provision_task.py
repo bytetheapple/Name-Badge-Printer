@@ -355,7 +355,15 @@ def _wifi(ctx, say) -> TaskResult:
             web.submit(pc.PAGE_COMMS, {pc.F_RADIO_ON_POWER: "0"})
 
         say(f"writing the settings for {ssid}")
-        changes, drop = pc.wifi_changes(ssid, passphrase)
+        # Resolve the field names from this printer's own page. The wizard
+        # reaches the wireless page here rather than through
+        # configure_printer(), so it needs the same lookup — without it the
+        # 1.23 renumbering (SSID Bdc not Bde, passphrase Bf6 not Bf8) is posted
+        # under 1.32's names and the write is rejected.
+        names = pc.wireless_fields(web.get(pc.PAGE_WIRELESS))
+        if names["ssid"] != pc.F_SSID:
+            say(f"this firmware calls the SSID field {names['ssid']}, not {pc.F_SSID}")
+        changes, drop = pc.wifi_changes(ssid, passphrase, names)
         ok, _sent, body = web.submit(pc.PAGE_WIRELESS, changes, drop)
     except requests.RequestException as e:
         # Losing the connection here is the expected outcome rather than a

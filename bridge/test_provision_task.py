@@ -59,12 +59,33 @@ class FakeWeb:
 
     radio_on_power = "2"      # "keep current state" — the factory default
     raise_on_wireless = None
+    #: The wireless page this printer serves. Defaults to 1.32's numbering;
+    #: a test can swap in the captured 1.23 page to check the wizard resolves
+    #: names off the page rather than assuming them.
+    wireless_page = (
+        '<form action="/net/wireless/wireless.html">'
+        'Communication Mode<select name="%s"><option value="1">Infrastructure</option></select>'
+        'Wireless Network Name (SSID)<input name="%s" value=""/>'
+        'Authentication Method<select name="%s"><option value="1">Open System</option></select>'
+        'Encryption Mode<select name="%s"><option value="1">None</option></select>'
+        'Network Key<input name="%s" value="1"/>'
+        'WEP Key1<input type="password" name="%s"/>'
+        'WEP Key2<input type="password" name="%s"/>'
+        'WEP Key3<input type="password" name="%s"/>'
+        'WEP Key4<input type="password" name="%s"/>'
+        'Passphrase<input type="password" name="%s"/>'
+        '</form>'
+    ) % (pc.F_COMM_MODE, pc.F_SSID, pc.F_AUTH, pc.F_ENCRYPTION,
+         pc.WEP_FIELDS[0], *pc.WEP_FIELDS[1:], pc.F_PASSPHRASE)
 
     def __init__(self, *a, **k):
         pass
 
     def login(self):
         pass
+
+    def get(self, path):
+        return type(self).wireless_page
 
     def fields_of(self, path):
         return {pc.F_RADIO_ON_POWER: type(self).radio_on_power}
@@ -336,6 +357,32 @@ for task in ("discover", "rediscover"):
     ctx = {k: v for k, v in BASE.items() if k not in ("web_password", "wifi_passphrase")}
     r = pt.run(task, ctx)
     check(f"{task} works with no secrets at all", r.ok, r.error or "")
+
+print("— the wizard posts wifi under the names THIS printer uses —")
+# The wizard reaches the wireless page through _wifi(), not through
+# configure_printer(), so the field-name lookup has to be here too. Without
+# it, a 1.23 printer is sent 1.32's names and rejects the write — which is
+# exactly what happened in the field, and what the fix to configure_printer
+# alone would NOT have corrected.
+with open(os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                       "testdata", "wireless_fw1.23.html"), encoding="utf-8") as fh:
+    FakeWeb.wireless_page = fh.read()
+posted.clear()
+install()
+r = pt.run("wifi", {**BASE, "ssid": "Lobby WiFi", "wifi_passphrase": "hunter2"})
+check("the wifi step succeeds on 1.23", r.ok, r.error or "")
+_wifi_post = next((c for p_, c in posted if p_ == pc.PAGE_WIRELESS), {})
+check("sends the SSID as Bdc, this firmware's name",
+      _wifi_post.get("Bdc") == "Lobby WiFi", repr(_wifi_post))
+check("sends the passphrase as Bf6, not Bf8",
+      _wifi_post.get("Bf6") == "hunter2" and "Bf8" not in _wifi_post,
+      repr(sorted(_wifi_post)))
+check("still uses WPA2 with AES", (_wifi_post.get("B63"), _wifi_post.get("B64")) == ("3", "4"))
+# The transcript is sent to the server and shown in the console. It must not
+# carry the network key under any firmware's name for it.
+check("the passphrase is not in the transcript",
+      not any("hunter2" in line for line in (r.log or [])),
+      repr(r.log))
 
 print()
 if FAILURES:
