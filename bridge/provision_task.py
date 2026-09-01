@@ -164,6 +164,38 @@ def _discover(ctx, say) -> TaskResult:
     )
 
 
+#: The only values that may reach the fleet-wide firmware record. A fixed
+#: vocabulary, because anything free-form eventually carries a customer's text.
+FAILURE_REASONS = ("login_page", "no_form", "unreachable", "rejected")
+
+
+def _failure_reason(result) -> str | None:
+    """Why this firmware failed, classified rather than quoted.
+
+    firmware_observations is fleet-wide: no org_id, and read by platform
+    admins across every customer. Sending the error text put one org's
+    incidental data into it — the message quotes up to 200 characters of the
+    printer's own page, which can include their network name.
+
+    The question that table exists to answer is "does this step fail on this
+    firmware?", and a classification answers it without carrying anything of
+    theirs. The full text still goes to the session log, which is scoped to
+    the org it belongs to.
+    """
+    for st in result.steps:
+        if st.ok:
+            continue
+        detail = (st.detail or "").lower()
+        if "login page" in detail:
+            return "login_page"
+        if "served no form" in detail:
+            return "no_form"
+        if "connection" in detail or "timed out" in detail or "timeout" in detail:
+            return "unreachable"
+        return "rejected"
+    return None
+
+
 def _applied(result) -> str:
     """What actually took, in the operator's words.
 
@@ -276,6 +308,8 @@ def _configure(ctx, say) -> TaskResult:
         "firmware_outcome": {
             "ok": result.ok,
             "failed_steps": [st.name for st in result.steps if not st.ok],
+            # Classified, never quoted — see _failure_reason.
+            "reason": _failure_reason(result),
         },
     }
     if result.refused:

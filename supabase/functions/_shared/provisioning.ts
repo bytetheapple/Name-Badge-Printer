@@ -211,7 +211,7 @@ export async function applyResult(
 
   // Fleet-wide, and deliberately not part of the session: a firmware version is
   // a property of the hardware, not of the org that bought it.
-  await recordFirmware(data, String(result.error ?? ""));
+  await recordFirmware(data);
 
   if (!ok) {
     patch.error = String(result.error ?? "That step did not finish.").slice(0, 1000);
@@ -258,8 +258,13 @@ export async function applyResult(
  * password, an unreachable printer — because attributing those to a firmware
  * version is how a fleet record becomes misleading rather than useful.
  */
-async function recordFirmware(data: Record<string, unknown>, error: string): Promise<void> {
-  const outcome = data.firmware_outcome as { ok?: boolean; failed_steps?: unknown } | undefined;
+/** The only failure descriptions allowed into the fleet-wide record. */
+const FIRMWARE_REASONS = new Set(["login_page", "no_form", "unreachable", "rejected"]);
+
+async function recordFirmware(data: Record<string, unknown>): Promise<void> {
+  const outcome = data.firmware_outcome as
+    | { ok?: boolean; failed_steps?: unknown; reason?: unknown }
+    | undefined;
   if (!outcome || typeof outcome !== "object") return;
   const model = String(data.model ?? "").trim();
   const firmware = String(data.firmware ?? "").trim();
@@ -275,7 +280,16 @@ async function recordFirmware(data: Record<string, unknown>, error: string): Pro
       p_failed_steps: Array.isArray(outcome.failed_steps)
         ? outcome.failed_steps.map(String)
         : [],
-      p_error: outcome.ok === true ? null : error || null,
+      // A classification from a fixed vocabulary, never the error text.
+      //
+      // This table has no org_id and is read across every customer, while the
+      // error quotes up to 200 characters of one printer's own page — which
+      // can carry that org's network name. The full text stays on the session
+      // log, which is scoped to the org it belongs to. Anything outside the
+      // vocabulary is dropped rather than trusted.
+      p_error: outcome.ok === true || !FIRMWARE_REASONS.has(String(outcome.reason ?? ""))
+        ? null
+        : String(outcome.reason),
     }),
   });
 }

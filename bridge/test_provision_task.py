@@ -180,7 +180,7 @@ check("records the wireless MAC for the cutover",
       r.data["wireless_mac"] == WIRELESS.mac, str(r.data))
 check("keeps the transcript", any("set the clock" in ln for ln in r.log))
 check("reports the firmware outcome for the fleet record",
-      r.data["firmware_outcome"] == {"ok": True, "failed_steps": []},
+      r.data["firmware_outcome"] == {"ok": True, "failed_steps": [], "reason": None},
       str(r.data.get("firmware_outcome")))
 check("asks the printer which networks it can see",
       r.data["visible_networks"] == SEEN, str(r.data.get("visible_networks")))
@@ -202,8 +202,19 @@ r = pt.run("configure", BASE)
 check("a failed setting stops before WiFi", not r.ok and r.next_state == "")
 check("explains why", "half-configured" in (r.error or ""), r.error or "")
 check("names which step failed, which is the part worth recording",
-      r.data["firmware_outcome"] == {"ok": False, "failed_steps": ["set the clock"]},
+      r.data["firmware_outcome"] == {"ok": False, "failed_steps": ["set the clock"],
+                                     "reason": "rejected"},
       str(r.data.get("firmware_outcome")))
+# The fleet record is read across every customer and has no org_id, so what
+# reaches it must come from a fixed vocabulary. The error text quotes the
+# printer's own page, which can carry the org's network name; that stays on
+# the org-scoped session log.
+check("the reason is from the fixed vocabulary",
+      r.data["firmware_outcome"]["reason"] in pt.FAILURE_REASONS,
+      str(r.data["firmware_outcome"]["reason"]))
+check("no printer page text reaches the fleet record",
+      not any(w in str(r.data["firmware_outcome"]) for w in ("printer said", "Login", "SSID")),
+      str(r.data["firmware_outcome"]))
 
 # The wireless MAC is the only way to find the printer after the cutover, so a
 # printer that does not report one must not be moved onto WiFi at all.
