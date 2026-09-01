@@ -104,6 +104,21 @@ if [ "$TARGET" = "$RUNNING" ]; then
   exit 0
 fi
 
+# Never restart the bridge in the middle of setting up a printer.
+#
+# A provisioning step's result is held in the bridge until its next poll, so a
+# restart in that window destroys work that already succeeded — and because
+# the server leases the step for ten minutes, the operator watches a spinner
+# for all ten before anything may retry. Observed exactly once and then fixed:
+# an update landed one second after a configure step finished.
+#
+# The timer brings us back in a few minutes, and a release is never so urgent
+# that it cannot wait for someone to finish plugging in a printer.
+if [ -e "$STATE_DIR/provisioning_active" ]; then
+  log "a printer is being set up; leaving this device alone until it finishes"
+  exit 0
+fi
+
 log "moving from ${RUNNING:-unknown} to $TARGET"
 PREVIOUS="$RUNNING"
 

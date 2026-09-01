@@ -182,6 +182,25 @@ def probe_printers(printers: list) -> list:
     return reports
 
 
+#: Present while a provisioning step is running or its result is still
+#: undelivered. update.sh checks for it: restarting the bridge mid-step
+#: destroys the result and strands the operator on a spinner until the
+#: server's ten-minute lease expires.
+_PROVISIONING_MARK = os.path.join(config.STATE_DIR, "provisioning_active")
+
+
+def _mark_provisioning(active: bool) -> None:
+    """Best effort; never let bookkeeping break a setup."""
+    try:
+        if active:
+            with open(_PROVISIONING_MARK, "w", encoding="utf-8") as fh:
+                fh.write(str(os.getpid()))
+        else:
+            os.unlink(_PROVISIONING_MARK)
+    except OSError:
+        pass
+
+
 def handle_provision(request: dict) -> dict:
     """Run one step of a guided printer setup and package up what happened.
 
@@ -193,7 +212,12 @@ def handle_provision(request: dict) -> dict:
     session_id = request.get("session_id")
     _log(f"provisioning step '{task}' for session {session_id}")
 
-    outcome = provision_task.run(task, request, log=lambda m: _log(f"  {m}"))
+    _mark_provisioning(True)
+    try:
+        outcome = provision_task.run(task, request, log=lambda m: _log(f"  {m}"))
+    except BaseException:
+        _mark_provisioning(False)
+        raise
 
     if outcome.ok:
         _log(f"provisioning step '{task}' done -> {outcome.next_state}")
@@ -239,6 +263,9 @@ def main():
                 last_probe = now
 
             result = client.poll(reports, provision_result)
+            if provision_result is not None:
+                # Delivered. Only now may an update restart us safely.
+                _mark_provisioning(False)
             provision_result = None
             cfg, printers = result.config, result.printers
 
@@ -261,6 +288,16 @@ def main():
                 # acceptable, because a printer being set up is not yet printing
                 # anything, and nobody is provisioning during a service.
                 provision_result = handle_provision(result.provision)
+                # Report it NOW rather than on the next tick.
+                #
+                # A finished step's result lives only in this variable until
+                # the next poll. A restart in that window throws away work
+                # that actually completed, and the server — which has the step
+                # leased to us for ten minutes — shows a spinner for all ten
+                # before anyone may retry it. That happened: an update
+                # restarted the bridge one second after a configure finished,
+                # and the whole step was lost with it.
+                continue
 
             if result.job:
                 handle_job(client, result.job, cfg, printers)
