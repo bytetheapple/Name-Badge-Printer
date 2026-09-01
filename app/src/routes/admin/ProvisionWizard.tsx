@@ -799,7 +799,7 @@ function PrinterPassword({
         {session.model ? ` — ${session.model}` : ''}.
       </p>
       <p className="muted small">
-        Look on the back of the printer. Below the bar code, look for &ldquo;Pwd: xxxxxx&rdquo; and
+        Look on the back of the printer. Below the bar code, look for &ldquo;Pwd: xxxxxxxx&rdquo; and
         enter what comes after &ldquo;Pwd:&nbsp;&rdquo;.
       </p>
 
