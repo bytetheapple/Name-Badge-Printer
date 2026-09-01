@@ -539,6 +539,40 @@ console.log('— reflashing a print server revokes what the old card holds —')
   if (gone.n === 0) ok('a build clicked by mistake can be removed')
   else bad('the unclaimed device survived deletion')
 
+  // A chain longer than any cap anyone would think to write. This is the case
+  // the depth guard got wrong in production: it revoked the first fifty and
+  // left the rest — including the newest, which are the ones that still
+  // authenticate — on a card that had already been rewritten.
+  await db.exec(`
+    insert into public.pi_devices (serial, org_id, customer, claim_hash, claim_prefix)
+    values ('GuestBadgesServerLONG', '${org}', 'Long', 'hash-long', 'gbc_long');
+    do $$
+    declare prev uuid := null; cur uuid;
+    begin
+      for i in 1..120 loop
+        insert into public.bridge_tokens (org_id, name, token_hash, token_prefix, replaces)
+        values ('${org}', 'chain' || i, 'hc' || i, 'nbkc_' || i, prev)
+        returning id into cur;
+        if i = 1 then
+          update public.pi_devices set bridge_token_id = cur, claimed_at = now()
+           where serial = 'GuestBadgesServerLONG';
+        end if;
+        prev := cur;
+      end loop;
+    end $$;`)
+
+  await db.exec(asUser(ADMIN, `select public.reissue_pi_device('GuestBadgesServerLONG');`))
+  const longLive = await q(`
+    select count(*)::int as n from public.bridge_tokens
+    where token_prefix like 'nbkc\\_%' and revoked_at is null`)
+  if (longLive.n === 0) ok('a 120-link chain is revoked to its end, not to a cap')
+  else bad(`${longLive.n} credential(s) survived a long chain — the walk stopped early`)
+
+  await db.exec(`
+    delete from public.pi_devices where serial = 'GuestBadgesServerLONG';
+    delete from public.bridge_tokens where token_prefix like 'nbkc\\_%';
+    delete from public.activity_log where subject = 'GuestBadgesServerLONG';`)
+
   // A cycle in the rotation graph. It should not be possible, but the walk has
   // to end whether or not that holds — unbounded, this recursed until the
   // statement timeout killed it, which is how it was found.
