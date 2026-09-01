@@ -300,6 +300,7 @@ class _LoginFormParser(HTMLParser):
         self._action = ""
         self._field = ""
         self._hidden: dict[str, str] = {}
+        self._marked = False
         self._in_form = False
 
     def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
@@ -309,6 +310,7 @@ class _LoginFormParser(HTMLParser):
             self._action = a.get("action", "")
             self._field = ""
             self._hidden = {}
+            self._marked = False
             return
         if not self._in_form or tag != "input":
             return
@@ -317,15 +319,26 @@ class _LoginFormParser(HTMLParser):
             return
         if itype == "password":
             self._field = name
+            # The login box carries this id on both firmwares.
+            if a.get("id") == "LogBox":
+                self._marked = True
         elif itype not in ("submit", "button", "reset"):
             self._hidden[name] = a.get("value", "")
+            # The login form is the one that says where to go on failure. This
+            # marker is what separates it from a settings form that merely
+            # contains password-typed inputs — the wireless page has five of
+            # them (a passphrase and four WEP keys), and matching on
+            # type="password" alone declared it a login page while we were
+            # demonstrably logged into it.
+            if name == "loginurl":
+                self._marked = True
 
     def handle_endtag(self, tag: str) -> None:
         if tag != "form" or not self._in_form:
             return
         self._in_form = False
-        # First form carrying a password box wins; there is only ever one.
-        if self._field and not self.field:
+        # First form carrying a *marked* password box wins.
+        if self._field and self._marked and not self.field:
             self.action, self.field, self.hidden = self._action, self._field, self._hidden
 
 

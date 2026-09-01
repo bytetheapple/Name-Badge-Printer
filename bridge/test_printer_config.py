@@ -153,7 +153,17 @@ class Stub(BaseHTTPRequestHandler):
             # makes "is there still somewhere to type a password" a usable
             # test for whether we are authenticated — and it is what this stub
             # got wrong, which let a broken login check pass for weeks.
-            header = f'<form><input type="password" name="{pc.F_PASSWORD}"/></form>'
+            # Shaped like the page a real printer sends — captured verbatim in
+            # testdata/device_settings_fw1.23.html. The loginurl marker and the
+            # LogBox id are not decoration: they are what tells this apart from
+            # the wireless page, which carries five password-typed inputs of
+            # its own and is emphatically not a login page.
+            header = (
+                f'<form method="post" action="/general/status.html">'
+                f'Login<input type="password" id="LogBox" name="{pc.F_PASSWORD}"/>'
+                f'<input type="hidden" name="loginurl" value="/general/status.html"/>'
+                f'</form>'
+            )
         self._send(f"<html><body>{header}{page}</body></html>")
 
     def do_POST(self):
@@ -182,7 +192,16 @@ class Stub(BaseHTTPRequestHandler):
                 Stub.logged_in = True
                 self._send("<html><body>Logout</body></html>")
             else:
-                self._send(f'<html><body><input type="password" name="B128"/></body></html>')
+                # The real printer answers with its whole login page, not a
+                # stray input — see testdata/device_settings_fw1.23.html. The
+                # form and its loginurl marker are what distinguish a login
+                # page from a settings page that merely holds password fields.
+                self._send(
+                    '<html><body><form method="post" action="/general/status.html">'
+                    '<input type="password" id="LogBox" name="B128"/>'
+                    '<input type="hidden" name="loginurl" value="/general/status.html"/>'
+                    '</form></body></html>'
+                )
             return
 
         # The device treats a POST carrying the logout form's field as a
@@ -444,7 +463,12 @@ def _web(after_login):
     return w
 
 
-LOGIN_PAGE = '<form><input type="password" name="%s"/></form>' % pc.F_PASSWORD
+LOGIN_PAGE = (
+    '<form method="post" action="/general/status.html">'
+    '<input type="password" id="LogBox" name="%s"/>'
+    '<input type="hidden" name="loginurl" value="/general/status.html"/>'
+    '</form>'
+) % pc.F_PASSWORD
 SETTINGS_PAGE = '<form><input name="B32" value="0"/>Logout</form>'
 
 try:
@@ -554,7 +578,20 @@ check("the old name-based test would have missed it",
       f'name="{pc.F_PASSWORD}"' not in FW123)
 check("a 1.32 login page is still recognised",
       pc.is_login_page('<form action="/general/status.html">'
-                       '<input type="password" name="B128" /></form>'))
+                       '<input type="password" id="LogBox" name="B128" />'
+                       '<input type="hidden" name="loginurl" value="/general/status.html" />'
+                       '</form>'))
+# Regression for a bug introduced by the first version of this check. The
+# wireless page carries a passphrase and four WEP keys, all type="password".
+# Matching on that alone called it a login page while we were demonstrably
+# logged into it — 13 fields of real settings read back from it at the time.
+check("a settings page holding password fields is not a login page",
+      not pc.is_login_page(
+          '<form action="/net/wireless/wireless.html">'
+          '<input type="text" name="Bdc" value="QL-820NWB_51372" />'
+          '<input type="password" name="Bf6" value="***" />'
+          '<input type="password" name="Be6" value="***" />'
+          '<input type="password" name="Bea" value="***" /></form>'))
 check("a settings page is not mistaken for a login page",
       not pc.is_login_page('<form action="/printer/device_settings.html">'
                            '<input type="text" name="B28" value="3" /></form>'))
