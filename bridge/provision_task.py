@@ -234,10 +234,17 @@ def _configure(ctx, say) -> TaskResult:
         },
     }
     if result.refused:
-        # Not a firmware fault: the printer stopped accepting the session, which
-        # is a password problem. Recording it would attribute an operator's typo
-        # to a firmware version and make the fleet record worse than none.
-        data.pop("firmware_outcome", None)
+        # The firmware observation is KEPT, which reverses the original
+        # reasoning here. That said a refusal was an operator's typo, and that
+        # recording it would blame a firmware version for a human mistake. It
+        # is not a typo: login() verifies the password against a freshly
+        # fetched settings page and raises when it is wrong, so a refusal
+        # further in means the password worked and the session did not survive.
+        #
+        # That is a property of the printer, and one worth having across a
+        # fleet — "every device on 1.23 drops the session mid-run" is exactly
+        # the pattern firmware_observations exists to make visible, and
+        # discarding it guaranteed nobody would ever see it.
         # NOT "wrong password". The password was already proven: login()
         # verifies it against a freshly fetched settings page and raises if it
         # is wrong, so reaching this point means it was accepted and the

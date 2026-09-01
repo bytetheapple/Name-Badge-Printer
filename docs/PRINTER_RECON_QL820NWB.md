@@ -19,6 +19,25 @@ this file records the version so prominently.
 
 ---
 
+## A0. Firmware versions seen in the field
+
+The whole of this document was reverse-engineered against **firmware 1.32**.
+`FIRMWARE_VERIFIED` in `printer_config.py` records that, and `configure_printer`
+warns when it meets anything else.
+
+| Firmware | Seen on | Behaviour |
+|---|---|---|
+| 1.32 | the recon printer | everything here is confirmed against it |
+| 1.23 | a printer at Temple Beth El, 2026-09-01 | accepted the web password, then answered a later write with the login page — the session did not survive the run |
+
+**1.23 is older than 1.32, not newer.** A device that has never been updated is
+the normal case, not the exception, so an unverified firmware should be
+expected rather than treated as a surprise. What is not yet known is whether
+1.23 names fields differently, handles the session differently, or objects to a
+field the newer UI accepts — the transcript from a failed run is the place to
+look, and `firmware_observations` now keeps the outcome of a refused run so the
+pattern is visible across a fleet.
+
 ## A. Session and authentication
 
 Login is a **password-only** form (no username), posted to **the page's own

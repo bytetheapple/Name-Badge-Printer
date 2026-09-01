@@ -239,8 +239,12 @@ check("returns to the code, not to the choice of printer",
       r.next_state == "password", r.next_state)
 # The whole point of separating these: a mistyped password is not a property of
 # the firmware, and counting it as one would make the fleet record misleading.
-check("and records nothing against the firmware",
-      "firmware_outcome" not in r.data, str(r.data.get("firmware_outcome")))
+# Reversed deliberately. A refusal is not an operator's typo — login() proves
+# the password before any of this — so it is a fact about the printer, and
+# "every device on this firmware drops the session" is precisely what the
+# fleet record is for. Discarding it guaranteed nobody would ever see it.
+check("and the firmware outcome is recorded, not discarded",
+      "firmware_outcome" in r.data, str(r.data))
 check("a Result knows it was refused", refused_result().refused is True)
 check("an ordinary failure is not mistaken for one",
       good_result(ok=False).refused is False)
