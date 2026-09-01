@@ -224,11 +224,17 @@ def refused_result():
 install(result=refused_result())
 r = pt.run("configure", BASE)
 check("is reported as a failure", not r.ok)
-check("blames the password, not the firmware",
-      "password" in (r.error or "").lower() and "firmware" not in (r.error or "").lower(),
-      r.error or "")
-check("says the code is per printer",
-      "different one" in (r.error or ""), r.error or "")
+check("does not blame the firmware",
+      "firmware" not in (r.error or "").lower(), r.error or "")
+# It must not send the operator back to the password either. Reaching this
+# point means login() already accepted it — it verifies against a freshly
+# fetched settings page and raises when it is wrong — so the session was
+# accepted and then lost. Telling someone to re-check a code that demonstrably
+# worked sends them to the one place the answer is not.
+check("says the password was accepted, not that it was wrong",
+      "accepted the password" in (r.error or ""), r.error or "")
+check("points at the likely cause instead",
+      "logged into" in (r.error or ""), r.error or "")
 check("returns to the code, not to the choice of printer",
       r.next_state == "password", r.next_state)
 # The whole point of separating these: a mistyped password is not a property of

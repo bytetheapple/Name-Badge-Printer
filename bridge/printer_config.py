@@ -463,12 +463,27 @@ def configure_printer(
         say(f"  {name} …")
         try:
             ok, sent, body = web.submit(path, changes)
+            # The session went away mid-run. It cannot be the password — login()
+            # verified that against a freshly fetched settings page before any
+            # of this, and raises if it is wrong. Something else took the
+            # session, or the printer dropped it. Log in again and try the step
+            # once more, because a setup abandoned half-applied is worse than a
+            # second attempt.
+            if not ok and "login page" in _explain(body):
+                say("  the session went away — logging in again")
+                web.login()
+                ok, sent, body = web.submit(path, changes)
         except requests.RequestException as e:
             result.steps.append(Step(name, False, str(e)[:200], changes))
             return
+        except RuntimeError as e:
+            # The re-login itself was refused. Recorded as a refusal so the
+            # caller stops rather than working through the remaining steps.
+            result.steps.append(Step(name, False, f"login page: {e}", changes))
+            return
         result.steps.append(Step(name, ok, "" if ok else _explain(body), sent))
         if not ok and "login page" in result.steps[-1].detail:
-            say("  the printer stopped accepting the session — stopping here")
+            say("  logging in again did not help — stopping here")
 
     # ---- conveniences first, while the link is definitely up -----------------
     if set_clock:

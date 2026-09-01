@@ -460,6 +460,62 @@ try:
 except RuntimeError as e:
     check("a good password does not raise", False, str(e))
 
+print("— a session that goes away mid-run is recovered, once —")
+# The failure this exists for: the printer accepted the password, then answered
+# a write with the login page. That is not a wrong password — login() already
+# proved the password — so the step logs in again and retries rather than
+# abandoning a printer half-configured.
+
+
+class _ScriptedWeb:
+    """A PrinterWeb whose submits fail with the login page a set number of times."""
+
+    def __init__(self, ip, password, login_pages=1, always=False):
+        self.logins = 0
+        self.submits = 0
+        self._left = login_pages
+        self._always = always
+
+    def login(self):
+        self.logins += 1
+
+    def submit(self, path, changes, drop=()):
+        self.submits += 1
+        if self._always or self._left > 0:
+            self._left -= 1
+            return False, changes, "<p>Please Login</p>"
+        return True, changes, "<div class='postSuccess'>Submit OK</div>"
+
+
+def _run(**kw):
+    made = {}
+
+    def factory(ip, password):
+        made["web"] = _ScriptedWeb(ip, password, **kw)
+        return made["web"]
+
+    real_web, real_id, real_if = pc.PrinterWeb, pc._identity, pc._interfaces
+    pc.PrinterWeb = factory
+    pc._identity = lambda w: ("QL-820NWB", "SER", pc.FIRMWARE_VERIFIED)
+    pc._interfaces = lambda w: (pc.Interface(), pc.Interface())
+    try:
+        return pc.configure_printer("10.0.0.1", "pw", set_clock=True), made["web"]
+    finally:
+        pc.PrinterWeb, pc._identity, pc._interfaces = real_web, real_id, real_if
+
+
+res, web = _run(login_pages=1)
+check("one dropped session is retried, not abandoned", res.refused is False,
+      f"refused={res.refused}")
+check("it logged in a second time to do so", web.logins == 2, f"logins={web.logins}")
+check("and the step it stumbled on ends up ok",
+      all(st.ok for st in res.steps), [st.name for st in res.steps if not st.ok])
+
+res2, web2 = _run(always=True)
+check("a session it cannot get back is still a refusal", res2.refused is True)
+check("and it stops rather than retrying every step", web2.logins == 2,
+      f"logins={web2.logins}")
+
 print("— and the transcript says which kind of failure it was —")
 r = pc.Result()
 r.steps = [pc.Step("a", True), pc.Step("b", False, pc._explain("<p>Login</p>"))]

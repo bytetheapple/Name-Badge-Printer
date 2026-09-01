@@ -238,19 +238,25 @@ def _configure(ctx, say) -> TaskResult:
         # is a password problem. Recording it would attribute an operator's typo
         # to a firmware version and make the fleet record worse than none.
         data.pop("firmware_outcome", None)
-        # The likeliest cause by far, and the one the operator can fix. Said
-        # plainly, because the transcript leads with a firmware warning that
-        # has nothing to do with it.
+        # NOT "wrong password". The password was already proven: login()
+        # verifies it against a freshly fetched settings page and raises if it
+        # is wrong, so reaching this point means it was accepted and the
+        # session was lost afterwards. Telling an operator to re-check a code
+        # that demonstrably worked sends them to the one place the answer is
+        # not.
         return TaskResult(
             ok=False,
             data=data,
             log=say.lines,
             next_state="password",
             error=(
-                f"The printer at {ip} stopped accepting the password part way "
-                "through, so its settings were not applied. Check the code on "
-                "that printer's own label — each printer has a different one — "
-                "and try again."
+                f"The printer at {ip} accepted the password and then dropped "
+                "the session, even after logging in again, so its settings "
+                "were not applied. Usually something else is logged into that "
+                "printer's web page — close it, and any other setup running "
+                "against the same printer — then try this step again. If it "
+                "keeps happening, power the printer off and on with its own "
+                "button first."
             ),
         )
     if not result.ok:
