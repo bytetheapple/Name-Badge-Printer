@@ -234,6 +234,13 @@ export interface Printer {
   badge_header_mode: 'text' | 'logo' | 'image'
   location: string | null
   printer_ip: string | null
+  /** Wireless MAC — how the printer is found again when its address changes.
+   *  Null on printers configured before this was recorded; the bridge fills
+   *  it in on the first heartbeat where the printer answers. */
+  mac: string | null
+  /** Wired MAC. Separate because the mDNS name depends on which interface
+   *  answers: BRW+mac on wireless, BRN+wired_mac on Ethernet. */
+  wired_mac: string | null
   port: number
   reachable: boolean | null
   media_type: string | null

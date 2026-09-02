@@ -164,21 +164,99 @@ def handle_job(client, job: dict, cfg: dict, printers: list):
         _log(f"FAILED job {job_id}: {e}", err=True)
 
 
+def _classify_mac(ip: str, mac: str) -> str | None:
+    """Which interface a MAC belongs to: "mac" (wireless), "wired_mac", or None.
+
+    ARP hands back the MAC of whatever interface answers on this subnet and
+    says nothing about which one it is. Brother builds its mDNS name from the
+    MAC — BRW for wireless, BRN for wired — so resolving both names and seeing
+    which one points back at this address settles it, with no credentials and
+    no writes to the printer.
+
+    None when neither answers, which happens where mDNS is blocked. Guessing
+    would be worse than not knowing: a wired MAC filed under the wireless
+    column is exactly the value the WiFi recovery would later search for and
+    never find.
+    """
+    for wireless, column in ((True, "mac"), (False, "wired_mac")):
+        try:
+            if ip in discover.resolve_all(discover.node_name_for(mac, wireless)):
+                return column
+        except Exception:  # noqa: BLE001 — a naming convenience, never fatal
+            continue
+    return None
+
+
+def _relocate(p: dict) -> str | None:
+    """Where a configured printer has moved to, found by mDNS alone.
+
+    Deliberately NOT discover.find_printer(), which falls through to sweeping
+    a /24 whenever mDNS does not answer. This runs on every heartbeat for
+    every unreachable printer, so a sweep here would turn one printer switched
+    off overnight into a continuous scan of the customer's network. The sweep
+    belongs behind an explicit "find it again" action, where somebody is
+    waiting for the answer and one scan is the point.
+    """
+    port = p.get("port", 9100)
+    for column, mac in (("mac", p.get("mac")), ("wired_mac", p.get("wired_mac"))):
+        if not mac:
+            continue
+        try:
+            addresses = discover.resolve_all(
+                discover.node_name_for(mac, wireless=column == "mac")
+            )
+        except Exception:  # noqa: BLE001
+            continue
+        for ip in addresses:
+            if ip != p.get("printer_ip") and printer.query_status(ip, port).get("reachable"):
+                return ip
+    return None
+
+
 def probe_printers(printers: list) -> list:
-    """Ask each printer how it is, for the next poll to report upstream."""
+    """Ask each printer how it is, for the next poll to report upstream.
+
+    Also does two things that need no extra round trip when all is well:
+    learns the MAC of a printer that has none recorded, and — when one cannot
+    be reached at its stored address — asks mDNS whether it has simply moved.
+    A DHCP lease expiring is otherwise indistinguishable from a printer that
+    has failed, and it is by far the more likely of the two.
+    """
     reports = []
     for p in printers:
         ip = p.get("printer_ip")
-        status = printer.query_status(ip, p.get("port", 9100)) if ip else {"reachable": False}
-        reports.append(
-            {
-                "id": p["id"],
-                "reachable": bool(status.get("reachable")),
-                "media_type": status.get("media_type"),
-                "media_width": status.get("media_width"),
-                "error_state": status.get("error_state"),
-            }
-        )
+        port = p.get("port", 9100)
+        status = printer.query_status(ip, port) if ip else {"reachable": False}
+
+        if not status.get("reachable") and (p.get("mac") or p.get("wired_mac")):
+            moved = _relocate(p)
+            if moved:
+                _log(f"{p.get('name') or p['id']} answered at {moved}, not {ip}")
+                status = printer.query_status(moved, port)
+                if status.get("reachable"):
+                    ip = moved
+
+        report = {
+            "id": p["id"],
+            "reachable": bool(status.get("reachable")),
+            "media_type": status.get("media_type"),
+            "media_width": status.get("media_width"),
+            "error_state": status.get("error_state"),
+        }
+        if ip and ip != p.get("printer_ip"):
+            report["printer_ip"] = ip
+
+        # Backfill. Printers configured before MACs were recorded have none,
+        # and the address is the least durable thing about a printer — so the
+        # first time one is reachable, learn the identifier that outlives it.
+        if status.get("reachable") and ip and not (p.get("mac") or p.get("wired_mac")):
+            learned = discover.mac_of(ip)
+            column = _classify_mac(ip, learned) if learned else None
+            if column:
+                report[column] = learned
+                _log(f"learned {p.get('name') or p['id']}'s {column} ({learned})")
+
+        reports.append(report)
     return reports
 
 

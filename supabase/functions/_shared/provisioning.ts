@@ -364,6 +364,10 @@ async function createPrinter(
       name,
       location: session.location ?? null,
       printer_ip: ip,
+      // The identifier that outlives the address. The wizard has always read
+      // this to find the printer again after the WiFi cutover, and then
+      // discarded it at the exact moment it became a permanent record.
+      mac: session.wireless_mac ?? patch.wireless_mac ?? null,
       port: 9100,
     }),
   });

@@ -5,7 +5,8 @@
 // against its own org's printers — never as authority.
 //
 // Request  (POST, header `x-bridge-key`):
-//   { printers?:   [{ id, reachable, media_type, media_width, error_state }],
+//   { printers?:   [{ id, reachable, media_type, media_width, error_state,
+//                     printer_ip?, mac?, wired_mac? }],
 //     provision_result?: { session_id, task, ok, next_state, data, log, error },
 //     rotation_error?: "…" }   // could not store the replacement credential
 // Response:
@@ -119,6 +120,17 @@ Deno.serve(async (req) => {
         media_width: row.media_width ?? null,
         error_state: row.error_state ?? null,
         last_checked: now,
+        // Only when the bridge actually says so. These are spread in rather
+        // than defaulted to null like the fields above, because a null here
+        // means "not reported this tick", not "this printer has no MAC" —
+        // writing the null would erase the identifier on the very next poll.
+        ...(typeof row.printer_ip === "string" && row.printer_ip
+          ? { printer_ip: row.printer_ip }
+          : {}),
+        ...(typeof row.mac === "string" && row.mac ? { mac: row.mac } : {}),
+        ...(typeof row.wired_mac === "string" && row.wired_mac
+          ? { wired_mac: row.wired_mac }
+          : {}),
       }),
     });
   }
@@ -186,7 +198,8 @@ Deno.serve(async (req) => {
 
   const printersRes = await fetch(
     `${REST}/printers?org_id=eq.${bridge.org_id}${printerFilter(bridge)}` +
-      `&select=id,name,printer_ip,port,header_image_url,badge_header,badge_subtitle,badge_header_mode` +
+      `&select=id,name,printer_ip,port,mac,wired_mac,header_image_url,badge_header,` +
+      `badge_subtitle,badge_header_mode` +
       `&order=created_at.asc`,
     { headers: restHeaders },
   );
