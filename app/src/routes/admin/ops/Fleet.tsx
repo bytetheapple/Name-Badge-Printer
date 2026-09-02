@@ -364,6 +364,7 @@ export default function Fleet() {
               <th>Serial</th>
               <th>Built for</th>
               <th>Version</th>
+              <th>Updates</th>
               <th>Claimed</th>
               <th>Notes</th>
               <th />
@@ -399,10 +400,33 @@ export default function Fleet() {
                       stopped moving with the fleet. */}
                   {d.update_error && <div className="pill pill-sync-failed">{d.update_error}</div>}
 
-                  {d.pinned_ref && (
-                    <div className="muted">
+                </td>
+                <td className="small">
+                  {/* Drawn for both states on purpose. Only the pin used to be
+                      shown, so a device that follows the fleet and a device
+                      nobody had looked at were the same empty cell. */}
+                  {d.pinned_ref ? (
+                    <span
+                      className="pill pill-held"
+                      title={
+                        `Held on ${d.pinned_ref}. Setting a new fleet release ` +
+                        `will not move this device until the hold is lifted.`
+                      }
+                    >
                       held on <code>{d.pinned_ref}</code>
-                    </div>
+                    </span>
+                  ) : (
+                    <span
+                      className="pill pill-follows"
+                      title={
+                        release?.ref
+                          ? `Follows the fleet release (${release.ref}).`
+                          : 'Follows the fleet release. No release is set, so this ' +
+                            'device stays on whatever it was built with.'
+                      }
+                    >
+                      follows the fleet
+                    </span>
                   )}
                 </td>
                 <td className="small">
@@ -449,7 +473,7 @@ export default function Fleet() {
             ))}
             {!devices.length && (
               <tr>
-                <td colSpan={7} className="muted">
+                <td colSpan={8} className="muted">
                   No print servers built yet.
                 </td>
               </tr>

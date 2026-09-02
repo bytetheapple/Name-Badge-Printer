@@ -522,6 +522,22 @@ td.actions-cell {
   color: var(--muted);
 }
 
+/* Whether a print server follows the fleet release or is held on one.
+   Both states are drawn, not just the exceptional one: an empty cell reads as
+   "nobody has looked at this yet" rather than "this one follows the fleet",
+   which is the question the column exists to answer. Held is the deviation,
+   so it is the one that catches the eye. */
+.pill-held {
+  background: var(--pending-bg);
+  color: var(--text);
+  font-weight: 600;
+}
+.pill-follows {
+  background: transparent;
+  color: var(--muted);
+  padding-left: 0;
+}
+
 /* Three destinations in one cell. They wrap rather than widen the table. */
 .sync-cell {
   display: flex;
