@@ -38,7 +38,7 @@ const MAX_LOG_LINES = 400;
 
 const SESSION_COLUMNS =
   "id,org_id,state,printer_name,location,ssid,wired_ip,model,serial,firmware," +
-  "wireless_mac,wireless_ip,printer_id,task_started_at,log,visible_networks";
+  "wireless_mac,wireless_ip,printer_id,task_started_at,log,visible_networks,kind";
 
 type Session = Record<string, unknown>;
 
@@ -224,8 +224,30 @@ export async function applyResult(
   }
 
   patch.error = null;
-  const next = String(result.next_state ?? "");
+  let next = String(result.next_state ?? "");
   if (next) patch.state = next;
+
+  // A locate has nobody standing at the printer, so "here are the candidates,
+  // pick one" is not a step it can take. It knows which printer it is looking
+  // for; it either found it or it did not.
+  if (next === "select" && String(session.kind ?? "setup") === "locate") {
+    const annotated = await annotate(orgId, (patch.candidates ?? []) as Candidate[]);
+    patch.candidates = annotated;
+    const hit = annotated.find((c) => c.configured_id === session.printer_id);
+    if (hit?.ip) {
+      patch.wireless_ip = hit.ip;
+      next = "done";
+    } else {
+      // Not "failed": the printer being switched off is the ordinary case, and
+      // a scan that swept the network and found nothing is a complete answer.
+      next = "failed";
+      patch.error =
+        "Swept the network and this printer did not answer. It is either " +
+        "switched off, on a different network, or no longer reachable from " +
+        "this print server.";
+    }
+    patch.state = next;
+  }
 
   // Candidates are annotated with the printer they already are, if any, so the
   // operator is never offered a working printer as though it were a new one.
@@ -241,7 +263,12 @@ export async function applyResult(
   }
 
   if (next === "done") {
-    const printerId = await createPrinter(orgId, session, patch);
+    // A rehome and a locate already know which printer they are about, so they
+    // correct that record. Only a setup creates one — which is the difference
+    // between moving a printer and quietly acquiring a second copy of it.
+    const printerId = session.printer_id
+      ? await updatePrinter(orgId, String(session.printer_id), session, patch)
+      : await createPrinter(orgId, session, patch);
     if (printerId) patch.printer_id = printerId;
     // The passphrase has done its job. Keeping it would turn a credential the
     // operator lent us for ten minutes into one we store.
@@ -315,6 +342,9 @@ interface Candidate {
   via?: string;
   /** The name of the printer this already is, if the org has it configured. */
   configured_as?: string | null;
+  /** And its id — what a rehome binds to so it corrects that record rather
+   *  than adding a second one for the same hardware. */
+  configured_id?: string | null;
 }
 
 /**
@@ -325,21 +355,70 @@ interface Candidate {
  * reconfigure, and the easiest to pick by mistake when a freshly reset printer
  * has not finished booting.
  */
+type KnownPrinter = {
+  id: string;
+  name: string;
+  printer_ip: string | null;
+  mac: string | null;
+  wired_mac: string | null;
+};
+
+const norm = (v: unknown) => String(v ?? "").trim().toLowerCase();
+
+/**
+ * Correct the record of a printer that has moved, rather than adding another.
+ *
+ * The address is the only thing a rehome or a locate is really changing. The
+ * MAC is written too, because a setup that predates MACs being recorded has a
+ * null there and this is a chance to fill it in from a run that read it
+ * directly off the hardware.
+ */
+async function updatePrinter(
+  orgId: string,
+  printerId: string,
+  session: Session,
+  patch: Record<string, unknown>,
+): Promise<string | null> {
+  const ip = (patch.wireless_ip ?? session.wireless_ip) as string | undefined;
+  const mac = (patch.wireless_mac ?? session.wireless_mac) as string | undefined;
+  const body: Record<string, unknown> = {};
+  if (ip) body.printer_ip = ip;
+  if (mac) body.mac = mac;
+  if (!Object.keys(body).length) return printerId;
+
+  const res = await fetch(
+    `${REST}/printers?id=eq.${printerId}&org_id=eq.${orgId}`,
+    { method: "PATCH", headers: restHeaders, body: JSON.stringify(body) },
+  );
+  return res.ok ? printerId : null;
+}
+
+
 async function annotate(orgId: string, candidates: Candidate[]): Promise<Candidate[]> {
   if (!candidates.length) return candidates;
   const res = await fetch(
-    `${REST}/printers?org_id=eq.${orgId}&select=name,printer_ip`,
+    `${REST}/printers?org_id=eq.${orgId}&select=id,name,printer_ip,mac,wired_mac`,
     { headers: restHeaders },
   );
   if (!res.ok) return candidates;
-  const known = new Map<string, string>();
-  for (const p of (await res.json()) as { name: string; printer_ip: string | null }[]) {
-    if (p.printer_ip) known.set(p.printer_ip.trim(), p.name);
+
+  // MAC first, address second.
+  //
+  // Matching on the address alone was the whole problem: a printer whose lease
+  // changed looked like a printer nobody had ever seen, so the operator was
+  // offered their own working hardware as though it were new. The MAC is the
+  // part that does not move, and it is what a rehome binds to.
+  const byMac = new Map<string, KnownPrinter>();
+  const byIp = new Map<string, KnownPrinter>();
+  for (const p of (await res.json()) as KnownPrinter[]) {
+    if (p.mac) byMac.set(norm(p.mac), p);
+    if (p.wired_mac) byMac.set(norm(p.wired_mac), p);
+    if (p.printer_ip) byIp.set(norm(p.printer_ip), p);
   }
-  return candidates.map((c) => ({
-    ...c,
-    configured_as: known.get(String(c.ip ?? "").trim()) ?? null,
-  }));
+  return candidates.map((c) => {
+    const hit = byMac.get(norm(c.mac)) ?? byIp.get(norm(c.ip)) ?? null;
+    return { ...c, configured_as: hit?.name ?? null, configured_id: hit?.id ?? null };
+  });
 }
 
 /** Add the finished printer, so the operator does not have to retype what we

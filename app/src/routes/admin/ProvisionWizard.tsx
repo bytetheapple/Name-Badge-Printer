@@ -4,7 +4,7 @@ import { useOrg } from '../../lib/org'
 import type { ProvisioningCandidate, ProvisioningSession } from '../../lib/types'
 
 const COLUMNS =
-  'id, org_id, state, printer_name, location, ssid, candidates, wired_ip, model, ' +
+  'id, org_id, kind, state, printer_name, location, ssid, candidates, wired_ip, model, ' +
   'serial, firmware, visible_networks, wireless_mac, wireless_ip, printer_id, ' +
   'task_started_at, log, ' +
   'error, created_at, updated_at'
@@ -60,6 +60,11 @@ export default function ProvisionWizard({ onFinished }: { onFinished: () => void
       .from('provisioning_sessions')
       .select(COLUMNS)
       .eq('org_id', orgId)
+      // A locate runs unattended and finishes in seconds. It is a session so
+      // that it inherits the lease and the transcript, but it is not a
+      // walkthrough — picking one up here would replace the wizard with a
+      // half-rendered setup nobody started.
+      .neq('kind', 'locate')
       .not('state', 'eq', 'done')
       .order('created_at', { ascending: false })
       .limit(1)
@@ -126,6 +131,21 @@ export default function ProvisionWizard({ onFinished }: { onFinished: () => void
     await refresh()
   }
 
+  /** Start a move. Deliberately no form: the printer already has a name, a
+   *  location and a badge configuration, and asking for them again is how you
+   *  end up with a second record for one piece of hardware. Which printer it
+   *  is gets settled at the Find it step, from the hardware that answers. */
+  async function rehome() {
+    setBusy(true)
+    setError(null)
+    const { error } = await supabase
+      .from('provisioning_sessions')
+      .insert({ org_id: orgId, kind: 'rehome', state: 'cable' })
+    setBusy(false)
+    if (error) return setError(error.message)
+    await load()
+  }
+
   async function cancel() {
     if (!session) return
     setBusy(true)
@@ -166,6 +186,16 @@ export default function ProvisionWizard({ onFinished }: { onFinished: () => void
           Walks a printer from the box to the wireless network. You will need to be at the
           printer — some of the steps are buttons on the printer itself.
         </p>
+
+        <button type="button" className="btn-secondary" disabled={busy} onClick={() => void rehome()}>
+          Move a printer to a new network
+        </button>
+        <p className="muted small">
+          For a printer you have already set up that is now somewhere else — a different building,
+          or a network whose name or password changed. It keeps its record, its name and its badge
+          settings. <strong>Do not reset it first</strong>: a reset would throw away the settings
+          this is here to change, and turn a five-minute job into the full setup above.
+        </p>
       </div>
     )
   }
@@ -181,7 +211,7 @@ export default function ProvisionWizard({ onFinished }: { onFinished: () => void
         </button>
       </div>
 
-      <Progress state={session.state} />
+      <Progress state={session.state} kind={session.kind ?? 'setup'} />
 
       {session.error && (
         <div className="error">
@@ -444,7 +474,15 @@ const UNDER: Record<string, string> = {
   done: 'done',
 }
 
-function Progress({ state }: { state: string }) {
+/** A rehome skips the two steps that only make sense for a boxed printer.
+ *  Leaving them in the rail would show two steps permanently unlit, which
+ *  reads as something having been missed rather than something not applying. */
+function stepsFor(kind: string) {
+  return kind === 'rehome' ? ORDER.filter((s) => s.key !== 'reset' && s.key !== 'first_run') : ORDER
+}
+
+function Progress({ state, kind = 'setup' }: { state: string; kind?: string }) {
+  const ORDER = stepsFor(kind)
   const at = ORDER.findIndex((s) => s.key === UNDER[state])
   return (
     <ol className="provision-progress">
@@ -514,12 +552,24 @@ function Step({
     case 'cable':
       return (
         <div className="provision-step">
-          <h3>3. Connect it to the wired network</h3>
-          <p>
-            Plug in the Ethernet cable and make sure the printer is switched on. A reset printer has
-            no network settings, so it takes an address from the cable and becomes visible to the
-            print server.
-          </p>
+          <h3>
+            {(session.kind ?? 'setup') === 'rehome'
+              ? 'Connect the printer to the wired network'
+              : '3. Connect it to the wired network'}
+          </h3>
+          {(session.kind ?? 'setup') === 'rehome' ? (
+            <p>
+              Plug in the Ethernet cable and make sure the printer is switched on. Do{' '}
+              <strong>not</strong> reset it — its settings are what we are about to change, and the
+              wired connection is what keeps this working while the wireless settings are rewritten.
+            </p>
+          ) : (
+            <p>
+              Plug in the Ethernet cable and make sure the printer is switched on. A reset printer
+              has no network settings, so it takes an address from the cable and becomes visible to
+              the print server.
+            </p>
+          )}
           <button onClick={() => void advance('discover')} disabled={busy}>
             The cable is in and the printer is on
           </button>
@@ -529,10 +579,16 @@ function Step({
 
     case 'select': {
       const candidates = (session.candidates ?? []) as ProvisioningCandidate[]
-      const fresh = candidates.filter((c) => !c.configured_as)
+      const rehoming = (session.kind ?? 'setup') === 'rehome'
+      // A rehome inverts this list. Setting up a new printer, an already
+      // configured one is the last thing you want to write to — that mistake
+      // reconfigured a congregation's live printer. Moving one, it is the only
+      // thing you want to write to, and an unrecognised device is the one to
+      // keep your hands off.
+      const fresh = candidates.filter((c) => (rehoming ? !!c.configured_as : !c.configured_as))
       return (
         <div className="provision-step">
-          <h3>4. Which printer do you want to configure?</h3>
+          <h3>{rehoming ? 'Which printer are you moving?' : '4. Which printer do you want to configure?'}</h3>
           {candidates.length === 0 ? (
             <>
               <p>Nothing was found on the wired network.</p>
@@ -573,7 +629,30 @@ function Step({
                         {/* A printer already in service is shown so the list
                             makes sense, but never offered as a target: setting
                             it up again would rewrite a working printer. */}
-                        {c.configured_as ? (
+                        {rehoming ? (
+                          c.configured_as && c.configured_id ? (
+                            <button
+                              className="btn-sm"
+                              disabled={busy}
+                              onClick={() =>
+                                void advance('password', {
+                                  wired_ip: c.ip,
+                                  model: c.model ?? null,
+                                  // Bound from the candidate the operator
+                                  // actually picked, not from wherever this
+                                  // session was started — so the record that
+                                  // gets rewritten is the hardware in front of
+                                  // them.
+                                  printer_id: c.configured_id,
+                                })
+                              }
+                            >
+                              Move {c.configured_as}
+                            </button>
+                          ) : (
+                            <span className="muted small">Not one of your printers</span>
+                          )
+                        ) : c.configured_as ? (
                           <span className="muted small">Already set up as {c.configured_as}</span>
                         ) : (
                           <button

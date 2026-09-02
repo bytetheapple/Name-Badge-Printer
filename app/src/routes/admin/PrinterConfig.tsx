@@ -244,6 +244,33 @@ export default function PrinterConfig() {
     setNotice(error ? `Could not queue a test print: ${error.message}` : 'Test print queued.')
   }
 
+  /** Ask the print server to sweep for a printer whose address has changed.
+   *
+   *  The heartbeat already follows a printer by mDNS, so this is for the case
+   *  where that fails — mDNS blocked, or the printer on a different subnet
+   *  from the one it was on. That needs a scan of the network, which is fine
+   *  once because somebody asked for it, and would be wrong as a background
+   *  habit; so it lives behind this button rather than in the heartbeat.
+   */
+  async function locate(printer: Printer) {
+    setBusy(printer.id)
+    setNotice(null)
+    const { error } = await supabase.from('provisioning_sessions').insert({
+      org_id: printer.org_id,
+      kind: 'locate',
+      state: 'discover',
+      printer_id: printer.id,
+      printer_name: printer.name,
+    })
+    setBusy(null)
+    setNotice(
+      error
+        ? `Could not start the search: ${error.message}`
+        : `Looking for ${printer.name} on the network. This takes up to a couple of ` +
+          'minutes; the address updates here when it is found.',
+    )
+  }
+
   async function remove(printer: Printer) {
     if (!window.confirm(`Delete "${printer.name}"? Its sign-in QR code will stop working.`)) return
     setBusy(printer.id)
@@ -320,6 +347,19 @@ export default function PrinterConfig() {
                   disabled={busy === current.id}
                 >
                   {busy === current.id ? 'Queuing…' : 'Test print'}
+                </button>
+                <button
+                  className="secondary btn-sm"
+                  onClick={() => void locate(current)}
+                  disabled={busy === current.id || !current.mac}
+                  title={
+                    current.mac
+                      ? 'Sweep the network for this printer and correct its address'
+                      : 'No MAC recorded yet — the print server fills this in the ' +
+                        'next time the printer answers'
+                  }
+                >
+                  {busy === current.id ? 'Looking…' : 'Find it again'}
                 </button>
                 <button
                   className="secondary btn-sm"

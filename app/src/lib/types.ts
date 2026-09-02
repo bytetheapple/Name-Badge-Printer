@@ -103,6 +103,9 @@ export interface ProvisioningCandidate {
   via: string
   /** The printer this already is, if the org has it configured. */
   configured_as?: string | null
+  /** And its id — what a re-home binds to, so moving a printer corrects its
+   *  record instead of creating a second one for the same hardware. */
+  configured_id?: string | null
 }
 
 /** One entry in a session's transcript — what the print server reported. */
@@ -121,6 +124,10 @@ export interface ProvisioningLogEntry {
  * standing at the printer.
  */
 export interface ProvisioningSession {
+  /** What this session is doing. 'setup' is a printer out of a box; 'rehome'
+   *  is a configured printer that has moved to another network and must not be
+   *  reset; 'locate' is unattended and only corrects an address. */
+  kind: 'setup' | 'rehome' | 'locate'
   id: string
   org_id: string
   state: string
