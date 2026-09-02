@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { supabase } from '../../lib/supabase'
+import { invokeFn } from '../../lib/functions'
 import { useOrg } from '../../lib/org'
 import type { Integration, IntegrationKind } from '../../lib/types'
 
@@ -8,12 +9,18 @@ export { CUSTOM_SPECS, PLATFORM_SPECS }
 const COLUMNS =
   'id, org_id, kind, name, enabled, default_enabled, config, updated_at, created_at'
 
+/** One control the scan found on the customer's form. */
+type ScannedField = { name: string; type: string; label: string }
+
 type Field = {
   key: string
   label: string
   type?: 'text' | 'checkbox' | 'json'
   hint?: string
   placeholder?: string
+  /** This field holds a form control's name, so it can be picked from a scan
+   *  of the form rather than transcribed out of the page's HTML. */
+  mappable?: boolean
 }
 
 type Spec = {
@@ -21,6 +28,9 @@ type Spec = {
   title: string
   blurb: string
   fields: Field[]
+  /** Set when the form itself can be read to list its fields. `urlKey` names
+   *  the config entry holding the address to read. */
+  scan?: { urlKey: string; fn: string }
   /** Set when this integration also stores a credential in Vault. */
   secret?: { label: string; hint: string }
 }
@@ -67,12 +77,13 @@ const CUSTOM_SPECS: Spec[] = [
     kind: 'shulcloud',
     title: 'ShulCloud',
     blurb: 'Visitors are submitted to your ShulCloud welcome form.',
+    scan: { urlKey: 'form_url', fn: 'shulcloud-scan' },
     fields: [
       { key: 'form_url', label: 'Form URL', placeholder: 'https://www.example.org/form/welcome' },
-      { key: 'field_first', label: 'First name input', placeholder: 'element_12345678' },
-      { key: 'field_last', label: 'Last name input', placeholder: 'element_12345678' },
-      { key: 'field_email', label: 'Email input', placeholder: 'element_12345678' },
-      { key: 'field_phone', label: 'Phone input', placeholder: 'element_12345678' },
+      { key: 'field_first', label: 'First name input', placeholder: 'element_12345678', mappable: true },
+      { key: 'field_last', label: 'Last name input', placeholder: 'element_12345678', mappable: true },
+      { key: 'field_email', label: 'Email input', placeholder: 'element_12345678', mappable: true },
+      { key: 'field_phone', label: 'Phone input', placeholder: 'element_12345678', mappable: true },
       {
         key: 'success_text',
         label: 'Success text',
@@ -123,6 +134,56 @@ export default function Integrations({ specs = PLATFORM_SPECS }: { specs?: Spec[
   const [loaded, setLoaded] = useState<Record<string, string>>({})
   const [hasSecret, setHasSecret] = useState<Record<string, boolean>>({})
   const [secretInput, setSecretInput] = useState<Record<string, string>>({})
+  /** What a scan of each row's form turned up, keyed by integration id. */
+  const [scanned, setScanned] = useState<Record<string, ScannedField[]>>({})
+  const [scanning, setScanning] = useState<string | null>(null)
+  const [scanNote, setScanNote] = useState<Record<string, string>>({})
+
+  /**
+   * Read the form and offer its fields, instead of asking someone to find
+   * element_30776892 in a page of HTML.
+   *
+   * A suggestion only fills a box that is empty. Overwriting a mapping that
+   * already works — because a label happened to match — would silently change
+   * where a congregation's visitors are sent, which is the one thing this must
+   * never do on its own.
+   */
+  async function scanFormFor(row: Integration, spec: Spec) {
+    if (!spec.scan) return
+    const cfg = (row.config ?? {}) as Record<string, unknown>
+    const url = String(cfg[spec.scan.urlKey] ?? '').trim()
+    if (!url) {
+      setScanNote((p) => ({ ...p, [row.id]: 'Fill in the form URL first, then scan.' }))
+      return
+    }
+    setScanning(row.id)
+    setScanNote((p) => ({ ...p, [row.id]: '' }))
+    const res = await invokeFn(spec.scan.fn, { org_id: row.org_id, form_url: url })
+    setScanning(null)
+    if (!res.ok) {
+      setScanNote((p) => ({ ...p, [row.id]: res.error ?? 'The scan failed.' }))
+      return
+    }
+
+    const fields = (res.fields ?? []) as ScannedField[]
+    const suggested = (res.suggested ?? {}) as Record<string, string>
+    setScanned((p) => ({ ...p, [row.id]: fields }))
+
+    const filled: string[] = []
+    for (const f of spec.fields) {
+      if (!f.mappable || !suggested[f.key]) continue
+      if (String(cfg[f.key] ?? '').trim()) continue
+      setField(row.id, f.key, suggested[f.key])
+      filled.push(f.label)
+    }
+    setScanNote((p) => ({
+      ...p,
+      [row.id]:
+        `Found ${fields.length} field${fields.length === 1 ? '' : 's'}` +
+        (res.formId ? ` in ${res.formId}` : '') +
+        (filled.length ? `. Filled in ${filled.join(', ')} — check them, then Save.` : '.'),
+    }))
+  }
   const [loading, setLoading] = useState(true)
   const [busy, setBusy] = useState<string | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
@@ -402,6 +463,40 @@ export default function Integrations({ specs = PLATFORM_SPECS }: { specs?: Spec[
                     />
                     {f.label}
                   </label>
+                ) : f.mappable && scanned[row.id] ? (
+                  <label className="field" key={f.key}>
+                    {f.label}
+                    <select
+                      value={(config[f.key] as string) ?? ''}
+                      onChange={(e) => setField(row.id, f.key, e.target.value)}
+                    >
+                      <option value="">— not sent —</option>
+                      {scanned[row.id].map((sf) => (
+                        <option key={sf.name} value={sf.name}>
+                          {sf.label || '(no label on the form)'} ({sf.name})
+                        </option>
+                      ))}
+                      {/* A saved code the form no longer has. Kept as an option
+                          so it is visible and selected rather than silently
+                          reset to "not sent" — the mapping is wrong either way,
+                          and being told is the whole point. */}
+                      {(config[f.key] as string) &&
+                        !scanned[row.id].some((sf) => sf.name === config[f.key]) && (
+                          <option value={config[f.key] as string}>
+                            {config[f.key] as string} — no longer on this form
+                          </option>
+                        )}
+                    </select>
+                    {(config[f.key] as string) &&
+                    !scanned[row.id].some((sf) => sf.name === config[f.key]) ? (
+                      <span className="field-error">
+                        This form has no field called {config[f.key] as string} any more. Sign-ins
+                        mapped to it are not arriving. Pick the right one.
+                      </span>
+                    ) : (
+                      f.hint && <span className="muted small">{f.hint}</span>
+                    )}
+                  </label>
                 ) : (
                   <label className="field" key={f.key}>
                     {f.label}
@@ -421,6 +516,28 @@ export default function Integrations({ specs = PLATFORM_SPECS }: { specs?: Spec[
                 ),
               )}
             </div>
+
+            {spec.scan && (
+              <div style={{ marginTop: 10 }}>
+                <button
+                  type="button"
+                  className="secondary btn-sm"
+                  disabled={scanning === row.id}
+                  onClick={() => void scanFormFor(row, spec)}
+                >
+                  {scanning === row.id
+                    ? 'Reading the form…'
+                    : scanned[row.id]
+                      ? 'Read the form again'
+                      : 'Read the form'}
+                </button>
+                <span className="muted small" style={{ marginLeft: 10 }}>
+                  {scanNote[row.id] ||
+                    'Fetches the form and lists its fields by name, so the boxes above ' +
+                      'become drop-downs instead of codes to copy.'}
+                </span>
+              </div>
+            )}
 
             {spec.secret && (
               <label className="field" style={{ marginTop: 18 }}>

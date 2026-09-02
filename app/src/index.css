@@ -228,6 +228,13 @@ button.secondary {
   font-size: 14px;
 }
 
+/* An inline warning under one field, where a boxed .error would break the
+   grid the fields sit in. Same colour, no chrome. */
+.field-error {
+  color: var(--err-text);
+  font-size: 13px;
+}
+
 .big {
   font-size: 22px;
   font-weight: 600;
