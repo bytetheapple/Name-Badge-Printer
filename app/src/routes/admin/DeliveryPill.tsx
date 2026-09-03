@@ -17,6 +17,9 @@ export interface Delivery {
 const RESENDER: Record<string, string> = {
   google_form: 'google-sync',
   shulcloud: 'shulcloud-sync',
+  // Safe to press twice: the sheet sync updates the row it already wrote
+  // rather than appending the same visitor again.
+  google_sheet: 'google-sheet-sync',
 }
 
 /** The worst thing that happened, which is what the closed pill should show —

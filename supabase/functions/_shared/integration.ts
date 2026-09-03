@@ -20,7 +20,7 @@ export const restHeaders = {
   "Content-Type": "application/json",
 };
 
-export type IntegrationKind = "google_form" | "shulcloud" | "google_drive";
+export type IntegrationKind = "google_form" | "shulcloud" | "google_drive" | "google_sheet";
 
 export interface Integration {
   enabled: boolean;

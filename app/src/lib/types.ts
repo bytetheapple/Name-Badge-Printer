@@ -51,7 +51,7 @@ export interface ApiKey {
   revoked_at: string | null
 }
 
-export type IntegrationKind = 'google_form' | 'shulcloud' | 'google_drive'
+export type IntegrationKind = 'google_form' | 'shulcloud' | 'google_drive' | 'google_sheet'
 
 /** One organization's settings for one external system. Credentials are not
  *  here — they live in Vault and are never returned to the browser. */

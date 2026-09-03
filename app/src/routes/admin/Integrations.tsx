@@ -91,6 +91,38 @@ const CUSTOM_SPECS: Spec[] = [
       },
     ],
   },
+  {
+    kind: 'google_sheet',
+    title: 'Google Sheet',
+    blurb:
+      'Each visitor is added as a row of your own spreadsheet. Members are never sent. ' +
+      'Make the sheet in your Google Drive, then Share it with the service account ' +
+      'below as an Editor — it stays your sheet, in your Drive.',
+    fields: [
+      {
+        key: 'spreadsheet_id',
+        label: 'Sheet link',
+        placeholder: 'https://docs.google.com/spreadsheets/d/…/edit',
+        hint: 'Paste the whole address from the browser, or just the id.',
+      },
+      {
+        key: 'sa_client_email',
+        label: 'Service account email',
+        placeholder: 'name@project.iam.gserviceaccount.com',
+        hint: 'Share the sheet with this address, as an Editor. It may be the same ' +
+          'service account used for selfies.',
+      },
+      {
+        key: 'tab_name',
+        label: 'Tab name',
+        hint: 'Leave empty for the first tab. Only needed if the sheet has several.',
+      },
+    ],
+    secret: {
+      label: 'Service account private key',
+      hint: 'The PEM private key from the service account JSON. Stored encrypted and never shown again.',
+    },
+  },
 ]
 
 const PLATFORM_SPECS: Spec[] = [

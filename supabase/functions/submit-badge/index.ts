@@ -22,7 +22,8 @@ const restHeaders = {
 
 const EMAIL_RE = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
 
-// Fire a background sync Edge Function (google-sync / shulcloud-sync) without
+// Fire a background sync Edge Function (google-sync / shulcloud-sync /
+// google-sheet-sync) without
 // blocking the response.
 function triggerSync(fn: string, entryId: string) {
   const task = fetch(`${SUPABASE_URL}/functions/v1/${fn}`, {
@@ -220,6 +221,7 @@ Deno.serve(async (req) => {
   if (visitorType === "visitor") {
     triggerSync("google-sync", entry.id);
     triggerSync("shulcloud-sync", entry.id);
+    triggerSync("google-sheet-sync", entry.id);
   }
 
   return json({ ok: true, job_id: job.id, entry_id: entry.id, job_ids: jobIds });

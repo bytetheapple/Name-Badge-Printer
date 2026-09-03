@@ -9,6 +9,7 @@
 // which is already per-organization — it is a setting, not a credential.
 import { corsHeaders, json } from "../_shared/cors.ts";
 import { orgOfEntry, recordDelivery, targetsFor } from "../_shared/integration.ts";
+import { getAccessToken } from "../_shared/google.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_ROLE = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -38,55 +39,6 @@ const restHeaders = {
   Authorization: `Bearer ${SERVICE_ROLE}`,
   "Content-Type": "application/json",
 };
-
-function b64url(bytes: Uint8Array): string {
-  return btoa(String.fromCharCode(...bytes)).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
-}
-function b64urlStr(s: string): string {
-  return b64url(new TextEncoder().encode(s));
-}
-function pemToPkcs8(pem: string): ArrayBuffer {
-  const body = pem.replace(/-----[A-Z ]+-----/g, "").replace(/\s+/g, "");
-  const bin = atob(body);
-  const buf = new Uint8Array(bin.length);
-  for (let i = 0; i < bin.length; i++) buf[i] = bin.charCodeAt(i);
-  return buf.buffer;
-}
-
-async function getAccessToken(SA_EMAIL: string, SA_KEY: string): Promise<string> {
-  const now = Math.floor(Date.now() / 1000);
-  const header = { alg: "RS256", typ: "JWT" };
-  const claim = {
-    iss: SA_EMAIL,
-    scope: "https://www.googleapis.com/auth/drive",
-    aud: "https://oauth2.googleapis.com/token",
-    iat: now,
-    exp: now + 3600,
-  };
-  const unsigned = `${b64urlStr(JSON.stringify(header))}.${b64urlStr(JSON.stringify(claim))}`;
-  const key = await crypto.subtle.importKey(
-    "pkcs8",
-    pemToPkcs8(SA_KEY),
-    { name: "RSASSA-PKCS1-v1_5", hash: "SHA-256" },
-    false,
-    ["sign"],
-  );
-  const sig = new Uint8Array(
-    await crypto.subtle.sign("RSASSA-PKCS1-v1_5", key, new TextEncoder().encode(unsigned)),
-  );
-  const jwt = `${unsigned}.${b64url(sig)}`;
-  const res = await fetch("https://oauth2.googleapis.com/token", {
-    method: "POST",
-    headers: { "Content-Type": "application/x-www-form-urlencoded" },
-    body: new URLSearchParams({
-      grant_type: "urn:ietf:params:oauth:grant-type:jwt-bearer",
-      assertion: jwt,
-    }),
-  });
-  const data = await res.json();
-  if (!data.access_token) throw new Error(`token error: ${JSON.stringify(data)}`);
-  return data.access_token;
-}
 
 function slug(s: string): string {
   return s.replace(/[^A-Za-z0-9]+/g, "-").replace(/^-|-$/g, "") || "x";
@@ -175,7 +127,7 @@ Deno.serve(async (req) => {
   const filename = `${slug(first)}_${slug(last)}_${stamp(new Date())}.jpg`;
 
   try {
-    const token = await getAccessToken(SA_EMAIL, SA_KEY);
+    const token = await getAccessToken(SA_EMAIL, SA_KEY, "https://www.googleapis.com/auth/drive");
     const metadata = { name: filename, parents: [folderId] };
     const boundary = `sfb-${crypto.randomUUID()}`;
     const enc = new TextEncoder();
@@ -219,6 +171,26 @@ Deno.serve(async (req) => {
         }),
       });
       await recordDelivery(entryId, target.id, "sent");
+
+      // Fill the selfie in on any sheet row this sign-in already wrote.
+      //
+      // The photo is uploaded in the background, after the sign-in has been
+      // submitted and the row appended, so at append time this link did not
+      // exist. Without this the Selfie column would be empty on precisely the
+      // visitors who had their picture taken — a column that looks like a
+      // feature and is always blank.
+      //
+      // The sync updates the row it recorded rather than adding another.
+      // Fire-and-forget, exactly like the sync triggers in submit-badge: a
+      // sheet must never hold up a photo, and the photo is already stored.
+      fetch(`${SUPABASE_URL}/functions/v1/google-sheet-sync`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${SERVICE_ROLE}`,
+        },
+        body: JSON.stringify({ entry_id: entryId }),
+      }).catch((e) => console.error("google-sheet-sync trigger failed:", e));
     }
     return json({ ok: true, file_id: upData.id, link: upData.webViewLink ?? null });
   } catch (e) {
