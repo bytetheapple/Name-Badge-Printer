@@ -1,6 +1,6 @@
 import { Link } from 'react-router-dom'
 
-const UPDATED = '25 August 2026'
+const UPDATED = '3 September 2026'
 
 /**
  * Terms of service.
@@ -19,9 +19,10 @@ export default function Terms() {
       <section>
         <h2>The agreement</h2>
         <p>
-          These terms are between [LEGAL ENTITY NAME] ("we", "us") and the organization that uses
-          Guest Badges ("you"). By setting up an account or using the service, you accept them. If
-          you are agreeing on behalf of an organization, you are confirming you may do so.
+          These terms are between Guest Badges, a sole proprietorship in California ("we",
+          "us"), and the organization that uses Guest Badges ("you"). By setting up an account or
+          using the service, you accept them. If you are agreeing on behalf of an organization,
+          you are confirming you may do so.
         </p>
       </section>
 
@@ -81,8 +82,14 @@ export default function Terms() {
       <section>
         <h2>Fees</h2>
         <p>
-          Where fees apply, they are as agreed with you in writing. [CONFIRM: billing terms, notice
-          period, and what happens to data on non-payment.]
+          Some organizations use the service at no charge. Where a fee does apply, it is the one
+          agreed with you in writing, and invoices are due 30 days from their date.
+        </p>
+        <p>
+          If an invoice goes unpaid we will contact you. Should it reach 60 days past due we may
+          suspend the service, and we will tell you before we do. Should it reach 90 days past due
+          we may close the account and delete your sign-in records — we will give you at least 14
+          days' written notice first, and you can export everything at any point up to that.
         </p>
       </section>
 
@@ -112,7 +119,10 @@ export default function Terms() {
 
       <section>
         <h2>Governing law</h2>
-        <p>These terms are governed by the laws of [STATE / JURISDICTION].</p>
+        <p>
+          These terms are governed by the laws of the State of California, and the courts of
+          California are where any dispute about them is decided.
+        </p>
       </section>
 
       <section>
@@ -120,6 +130,10 @@ export default function Terms() {
         <p>
           If these terms change materially, the date above changes and we tell account holders.
           Questions: <a href="mailto:support@guestbadges.com">support@guestbadges.com</a>.
+        </p>
+        <p>
+          Formal notice under these terms should go to{' '}
+          <a href="mailto:sales@guestbadges.com">sales@guestbadges.com</a>.
         </p>
       </section>
 
