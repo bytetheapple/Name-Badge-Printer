@@ -129,6 +129,21 @@ for mode, bg in (("RGBA", (0, 0, 0, 0)), ("RGB", (255, 255, 255))):
     lit = sum(1 for v in mask.getdata() if v > 128)
     check(f"a {mode} logo becomes a white silhouette", 250 < lit < 350, f"{lit} px")
 
+print("— a badge never carries another organization's name —")
+# The built-in logo had this exact fault and was fixed in "the badge logo
+# belongs to the organization, not to the build"; the subtitle on the next line
+# was missed and kept defaulting to a congregation's name. bridge.py only sets
+# `subtitle` when the printer has one, so every org that had not filled it in
+# printed somebody else's name on every badge.
+check("an unconfigured subtitle renders nothing at all",
+      badge_mod.render_badge("Ada", "L", template={"length_mm": 90}, label="62").tobytes()
+      == badge_mod.render_badge("Ada", "L", template={"length_mm": 90, "subtitle": ""},
+                            label="62").tobytes())
+check("and a configured one is still drawn",
+      badge_mod.render_badge("Ada", "L", template={"length_mm": 90}, label="62").tobytes()
+      != badge_mod.render_badge("Ada", "L", template={"length_mm": 90, "subtitle": "Temple Beth El"},
+                            label="62").tobytes())
+
 print()
 if FAILURES:
     print(f"RESULT: {len(FAILURES)} failure(s): {', '.join(FAILURES)}")

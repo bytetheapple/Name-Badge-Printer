@@ -151,7 +151,13 @@ def render_badge(
     """
     t = template or {}
     header = t.get("header", "WELCOME")
-    subtitle = t.get("subtitle", "Shir Hadash")
+    # No subtitle unless one is configured. This defaulted to a congregation's
+    # name — the same fault the built-in logo had, in the line above it, fixed
+    # in "the badge logo belongs to the organization, not to the build" and
+    # missed here. bridge.py only sets `subtitle` when the printer has one, so
+    # any organization that had not filled it in printed somebody else's name
+    # on every badge.
+    subtitle = t.get("subtitle", "")
 
     # Size the readable landscape image to the label: continuous rolls use the
     # admin length, die-cut labels (e.g. 60x86 / DK-1234) are fixed. Rendering at
