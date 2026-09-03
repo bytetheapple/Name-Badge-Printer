@@ -9,7 +9,7 @@
 // Members are never sent. That is decided at submit-badge, where the same rule
 // is applied to the Google Form and ShulCloud syncs.
 import { corsHeaders, json } from "../_shared/cors.ts";
-import { getAccessToken } from "../_shared/google.ts";
+import { explainGoogleError, getAccessToken } from "../_shared/google.ts";
 import { anyKnown, colName, COLUMNS, rowFor, sheetId } from "../_shared/sheetrow.ts";
 import {
   recordDelivery,
@@ -54,24 +54,6 @@ async function sheetsFetch(
   return { ok: res.ok, status: res.status, body };
 }
 
-/** What the destination said, in words an office can act on. */
-function explain(status: number, body: Record<string, unknown>, saEmail: string): string {
-  const msg = String(
-    (body?.error as { message?: string } | undefined)?.message ?? "",
-  );
-  if (status === 403) {
-    // By far the most common setup mistake, and the one a generic "permission
-    // denied" sends someone to entirely the wrong place.
-    return `The service account cannot open that sheet. In Google Sheets, press ` +
-      `Share and give ${saEmail} Editor access.` + (msg ? ` (${msg})` : "");
-  }
-  if (status === 404) {
-    return "No sheet with that address. Check the link, and that it has not been " +
-      "moved to the bin." + (msg ? ` (${msg})` : "");
-  }
-  return msg || `The Sheets API answered HTTP ${status}.`;
-}
-
 async function sendTo(entry: Entry, t: Target): Promise<{ ok: boolean; error?: string }> {
   const id = sheetId(String(t.config.spreadsheet_id ?? ""));
   const saEmail = String(t.config.sa_client_email ?? "");
@@ -95,7 +77,7 @@ async function sendTo(entry: Entry, t: Target): Promise<{ ok: boolean; error?: s
   //    columns of their own that this does not fill in.
   const headRange = `${tab ? `'${tab}'!` : ""}1:1`;
   const head = await sheetsFetch(token, `${id}/values/${encodeURIComponent(headRange)}`);
-  if (!head.ok) return { ok: false, error: explain(head.status, head.body, saEmail) };
+  if (!head.ok) return { ok: false, error: explainGoogleError(head.status, head.body, saEmail) };
 
   let headers = (((head.body.values as string[][]) ?? [])[0] ?? []).map(String);
   if (headers.filter((h) => h.trim()).length === 0) {
@@ -104,7 +86,7 @@ async function sendTo(entry: Entry, t: Target): Promise<{ ok: boolean; error?: s
       `${id}/values/${encodeURIComponent(headRange)}?valueInputOption=RAW`,
       { method: "PUT", body: JSON.stringify({ values: [COLUMNS] }) },
     );
-    if (!put.ok) return { ok: false, error: explain(put.status, put.body, saEmail) };
+    if (!put.ok) return { ok: false, error: explainGoogleError(put.status, put.body, saEmail) };
     headers = [...COLUMNS];
   }
 
@@ -133,7 +115,7 @@ async function sendTo(entry: Entry, t: Target): Promise<{ ok: boolean; error?: s
       `${id}/values/${encodeURIComponent(ref)}?valueInputOption=USER_ENTERED`,
       { method: "PUT", body: JSON.stringify({ values: [row] }) },
     );
-    if (!put.ok) return { ok: false, error: explain(put.status, put.body, saEmail) };
+    if (!put.ok) return { ok: false, error: explainGoogleError(put.status, put.body, saEmail) };
     return { ok: true };
   }
 
@@ -145,7 +127,7 @@ async function sendTo(entry: Entry, t: Target): Promise<{ ok: boolean; error?: s
       `?valueInputOption=USER_ENTERED&insertDataOption=INSERT_ROWS`,
     { method: "POST", body: JSON.stringify({ values: [row] }) },
   );
-  if (!app.ok) return { ok: false, error: explain(app.status, app.body, saEmail) };
+  if (!app.ok) return { ok: false, error: explainGoogleError(app.status, app.body, saEmail) };
 
   const written = String(
     ((app.body.updates as { updatedRange?: string } | undefined)?.updatedRange) ?? "",
