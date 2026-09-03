@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" role="img"
+     aria-label="Guest Badges">
+  <title>Guest Badges</title>
+  <!-- The product, not an abstraction: a name badge with its header banner and
+       the name beneath. The banner is dark because that is what a visitor
+       badge actually prints — the mark and the output are the same object. -->
+  <defs>
+    <clipPath id="card">
+      <rect x="174" y="276" width="676" height="472" rx="36"/>
+    </clipPath>
+  </defs>
+  <rect width="1024" height="1024" rx="224" fill="#2563eb"/>
+  <rect x="174" y="276" width="676" height="472" rx="36" fill="#ffffff"/>
+  <g clip-path="url(#card)">
+    <rect x="174" y="276" width="676" height="160" fill="#0b1220"/>
+  </g>
+  <rect x="248" y="498" width="528" height="94" rx="47" fill="#0b1220"/>
+  <rect x="377" y="629" width="270" height="56" rx="28" fill="#0b1220"/>
+</svg>

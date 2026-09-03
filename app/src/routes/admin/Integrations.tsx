@@ -31,6 +31,9 @@ type Spec = {
   /** Set when the form itself can be read to list its fields. `urlKey` names
    *  the config entry holding the address to read. */
   scan?: { urlKey: string; fn: string }
+  /** Set when this integration is configured by connecting an account rather
+   *  than by typing credentials — the card shows a Connect button. */
+  connect?: { fn: string; label: string }
   /** Set when this integration also stores a credential in Vault. */
   secret?: { label: string; hint: string }
 }
@@ -90,6 +93,16 @@ const CUSTOM_SPECS: Spec[] = [
         hint: 'Text that appears on the page after a successful submission.',
       },
     ],
+  },
+  {
+    kind: 'google_oauth',
+    title: 'Google account',
+    blurb:
+      'Connect your Google account once, and sign-ins and photographs are written to your ' +
+      'own Drive, on your own storage. No service account, no key file, no sharing a folder. ' +
+      'We ask only to manage the files we create — nothing else in your Drive is visible to us.',
+    connect: { fn: 'google-oauth-begin', label: 'Connect Google' },
+    fields: [],
   },
   {
     kind: 'google_sheet',
@@ -180,6 +193,28 @@ export default function Integrations({ specs = PLATFORM_SPECS }: { specs?: Spec[
    * where a congregation's visitors are sent, which is the one thing this must
    * never do on its own.
    */
+  /** Send the owner to Google to approve, then come back to this page.
+   *
+   *  A full navigation rather than a popup or a fetch: the consent screen is
+   *  Google's page and must be seen, and a 302 answered to fetch() would be
+   *  followed invisibly by the browser.
+   */
+  async function connectAccount(row: Integration, spec: Spec) {
+    if (!spec.connect) return
+    setBusy(row.id)
+    setError(null)
+    const res = await invokeFn(spec.connect.fn, {
+      org_id: row.org_id,
+      integration_id: row.id,
+    })
+    if (!res.ok || typeof res.url !== 'string') {
+      setBusy(null)
+      setError(res.error ?? 'Could not start the connection.')
+      return
+    }
+    window.location.assign(res.url as string)
+  }
+
   async function scanFormFor(row: Integration, spec: Spec) {
     if (!spec.scan) return
     const cfg = (row.config ?? {}) as Record<string, unknown>
@@ -548,6 +583,24 @@ export default function Integrations({ specs = PLATFORM_SPECS }: { specs?: Spec[
                 ),
               )}
             </div>
+
+            {spec.connect && (
+              <div style={{ marginTop: 10 }}>
+                <button
+                  type="button"
+                  className="secondary btn-sm"
+                  disabled={busy === row.id}
+                  onClick={() => void connectAccount(row, spec)}
+                >
+                  {config.connected_email ? 'Reconnect Google' : spec.connect.label}
+                </button>
+                <span className="muted small" style={{ marginLeft: 10 }}>
+                  {config.connected_email
+                    ? `Connected as ${String(config.connected_email)}.`
+                    : 'Not connected yet.'}
+                </span>
+              </div>
+            )}
 
             {spec.scan && (
               <div style={{ marginTop: 10 }}>
