@@ -1,4 +1,10 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
-  "rewrites": [{ "source": "/(.*)", "destination": "/index.html" }]
+  "rewrites": [
+    {
+      "source": "/oauth/google/callback",
+      "destination": "https://xesgdkwwhszdtcgcdjjw.supabase.co/functions/v1/google-oauth-callback"
+    },
+    { "source": "/(.*)", "destination": "/index.html" }
+  ]
 }

@@ -436,3 +436,13 @@ verify_jwt = false
 # to demand.
 [functions.pi-claim]
 verify_jwt = false
+
+# Google redirects a *browser* here after the owner approves. There is no JWT
+# on that request and there cannot be one — it is a navigation, not a fetch,
+# and the query string is all Google sends. What authorises it is the `state`
+# it carries, which names a row only an authenticated owner could have created.
+#
+# Without this the function never runs: the platform rejects the redirect with
+# "Missing authorization header" and the owner sees a page of JSON.
+[functions.google-oauth-callback]
+verify_jwt = false
