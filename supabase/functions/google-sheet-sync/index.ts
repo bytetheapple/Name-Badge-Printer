@@ -9,7 +9,12 @@
 // Members are never sent. That is decided at submit-badge, where the same rule
 // is applied to the Google Form and ShulCloud syncs.
 import { corsHeaders, json } from "../_shared/cors.ts";
-import { explainGoogleError, getAccessToken } from "../_shared/google.ts";
+import {
+  explainGoogleError,
+  type GoogleAuth,
+  googleAuthFor,
+  GoogleAuthError,
+} from "../_shared/google.ts";
 import { anyKnown, colName, COLUMNS, rowFor, sheetId } from "../_shared/sheetrow.ts";
 import {
   recordDelivery,
@@ -25,6 +30,7 @@ const SCOPE = "https://www.googleapis.com/auth/spreadsheets";
 
 interface Entry {
   id: string;
+  org_id: string;
   first_name: string;
   last_name: string | null;
   email: string | null;
@@ -54,22 +60,73 @@ async function sheetsFetch(
   return { ok: res.ok, status: res.status, body };
 }
 
+/**
+ * Make the sheet, in the customer's own Drive.
+ *
+ * Only possible on an OAuth connection, and it is the reason that path exists:
+ * `drive.file` reaches what this application created, so creating the sheet is
+ * what earns the right to write to it. A service account cannot do this
+ * usefully — the file would land in a Drive no person can open.
+ */
+async function createSheet(
+  token: string,
+  integrationId: string,
+  config: Record<string, unknown>,
+): Promise<string> {
+  const create = await fetch(SHEETS, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ properties: { title: "Guest Badges — visitor sign-ins" } }),
+  });
+  const res = {
+    ok: create.ok,
+    status: create.status,
+    body: (await create.json().catch(() => ({}))) as Record<string, unknown>,
+  };
+  const id = String((res.body as { spreadsheetId?: string })?.spreadsheetId ?? "");
+  if (!res.ok || !id) throw new Error(explainGoogleError(res.status, res.body, "", "sheets.googleapis.com"));
+
+  // Written back so the next sign-in appends to this sheet rather than making
+  // another one. A second sheet per visitor would be a quiet disaster.
+  await fetch(`${REST}/integrations?id=eq.${integrationId}`, {
+    method: "PATCH",
+    headers: restHeaders,
+    body: JSON.stringify({
+      // Merged, not replaced. PostgREST writes the column whole, so sending
+      // only the new keys would drop use_oauth, tab_name and everything else
+      // this destination was configured with.
+      config: {
+        ...config,
+        spreadsheet_id: id,
+        spreadsheet_url: String((res.body as { spreadsheetUrl?: string })?.spreadsheetUrl ?? ""),
+      },
+    }),
+  });
+  return id;
+}
+
 async function sendTo(entry: Entry, t: Target): Promise<{ ok: boolean; error?: string }> {
-  const id = sheetId(String(t.config.spreadsheet_id ?? ""));
-  const saEmail = String(t.config.sa_client_email ?? "");
-  const saKey = t.secret ?? "";
   const tab = String(t.config.tab_name ?? "").trim();
 
-  if (!id) return { ok: false, error: "No sheet link is set for this destination." };
-  if (!saEmail || !saKey) {
-    return { ok: false, error: "This destination has no service account configured." };
-  }
-
-  let token: string;
+  let auth: GoogleAuth;
   try {
-    token = await getAccessToken(saEmail, saKey, SCOPE);
+    auth = await googleAuthFor(entry.org_id, t.config, t.secret, SCOPE);
   } catch (e) {
-    return { ok: false, error: `Could not authenticate as ${saEmail}: ${e}` };
+    return { ok: false, error: e instanceof GoogleAuthError ? e.message : String(e) };
+  }
+  const token = auth.token;
+  const saEmail = auth.kind === "service_account" ? auth.email : "";
+
+  let id = sheetId(String(t.config.spreadsheet_id ?? ""));
+  if (!id) {
+    if (auth.kind !== "oauth") {
+      return { ok: false, error: "No sheet link is set for this destination." };
+    }
+    try {
+      id = await createSheet(token, t.id, t.config);
+    } catch (e) {
+      return { ok: false, error: `Could not create the sheet: ${e}` };
+    }
   }
 
   // 1. The headings. A sheet the congregation made is empty, so write them
@@ -156,7 +213,8 @@ Deno.serve(async (req) => {
 
   const res = await fetch(
     `${REST}/form_entries?id=eq.${entryId}` +
-      `&select=id,first_name,last_name,email,phone,created_at,selfie_link,printer:printers(name)`,
+      `&select=id,org_id,first_name,last_name,email,phone,created_at,selfie_link,`+
+      `printer:printers(name)`,
     { headers: restHeaders },
   );
   const rows = res.ok ? await res.json() : [];

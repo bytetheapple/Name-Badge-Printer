@@ -1,4 +1,4 @@
-//   deno test supabase/functions/_shared/sheetrow_test.ts
+//   deno test --allow-read --allow-env supabase/functions/_shared/
 import { assertEquals } from "jsr:@std/assert@1";
 import { anyKnown, colName, COLUMNS, rowFor, sheetId, valuesFor } from "./sheetrow.ts";
 

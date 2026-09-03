@@ -1,4 +1,4 @@
-//   deno test supabase/functions/_shared/google_test.ts
+//   deno test --allow-read --allow-env supabase/functions/_shared/
 import { assertEquals, assertRejects, assertStringIncludes } from "jsr:@std/assert@1";
 import { explainGoogleError, getAccessToken, pemBody } from "./google.ts";
 

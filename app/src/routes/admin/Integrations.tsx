@@ -109,6 +109,9 @@ const CUSTOM_SPECS: Spec[] = [
     title: 'Google Sheet',
     blurb:
       'Each visitor is added as a row of your own spreadsheet. Members are never sent. ' +
+      'With a connected Google account we make the sheet for you, in your Drive. ' +
+      'Switching an existing destination over starts a NEW sheet — we can only reach files ' +
+      'we created, so the old one keeps its history and stops growing. ' +
       'Make the sheet in your Google Drive, then Share it with the service account ' +
       'below as an Editor — it stays your sheet, in your Drive.',
     fields: [
@@ -130,6 +133,11 @@ const CUSTOM_SPECS: Spec[] = [
         label: 'Tab name',
         hint: 'Leave empty for the first tab. Only needed if the sheet has several.',
       },
+      {
+        key: 'use_oauth',
+        label: 'Use the connected Google account instead of the service account',
+        type: 'checkbox',
+      },
     ],
     secret: {
       label: 'Service account private key',
@@ -149,6 +157,11 @@ const PLATFORM_SPECS: Spec[] = [
         key: 'sa_client_email',
         label: 'Service account email',
         placeholder: 'name@project.iam.gserviceaccount.com',
+      },
+      {
+        key: 'use_oauth',
+        label: 'Use the connected Google account instead of the service account',
+        type: 'checkbox',
       },
     ],
     secret: {
