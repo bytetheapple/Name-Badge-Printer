@@ -33,7 +33,7 @@ type Spec = {
   scan?: { urlKey: string; fn: string }
   /** Set when this integration is configured by connecting an account rather
    *  than by typing credentials — the card shows a Connect button. */
-  connect?: { fn: string; label: string }
+  connect?: { fn: string; label: string; test?: string }
   /** Set when this integration also stores a credential in Vault. */
   secret?: { label: string; hint: string }
 }
@@ -101,7 +101,7 @@ const CUSTOM_SPECS: Spec[] = [
       'Connect your Google account once, and sign-ins and photographs are written to your ' +
       'own Drive, on your own storage. No service account, no key file, no sharing a folder. ' +
       'We ask only to manage the files we create — nothing else in your Drive is visible to us.',
-    connect: { fn: 'google-oauth-begin', label: 'Connect Google' },
+    connect: { fn: 'google-oauth-begin', label: 'Connect Google', test: 'google-oauth-check' },
     fields: [],
   },
   {
@@ -213,6 +213,38 @@ export default function Integrations({ specs = PLATFORM_SPECS }: { specs?: Spec[
       return
     }
     window.location.assign(res.url as string)
+  }
+
+  /** Spend the refresh token, and say what came back.
+   *
+   *  The only way to know a connection still works. A credential Google has
+   *  stopped honouring looks identical in the database to a good one, so
+   *  "connected" on this page is a claim about the past until something
+   *  actually asks Google.
+   */
+  async function testConnection(row: Integration, spec: Spec) {
+    if (!spec.connect?.test) return
+    setBusy(row.id)
+    setError(null)
+    setScanNote((p) => ({ ...p, [row.id]: '' }))
+    const res = await invokeFn(spec.connect.test, {
+      org_id: row.org_id,
+      integration_id: row.id,
+    })
+    setBusy(null)
+    if (!res.ok) {
+      setScanNote((p) => ({ ...p, [row.id]: res.error ?? 'The connection failed.' }))
+      if (res.revoked) void load()
+      return
+    }
+    const mins = Math.round(Number(res.expires_in ?? 0) / 60)
+    setScanNote((p) => ({
+      ...p,
+      [row.id]:
+        `Working. Google issued an access token for ${res.connected_email ?? 'this account'}` +
+        (mins ? `, good for ${mins} minutes` : '') +
+        (res.can_write_files ? '.' : ' — but WITHOUT file access; reconnect to grant it.'),
+    }))
   }
 
   async function scanFormFor(row: Integration, spec: Spec) {
@@ -594,10 +626,22 @@ export default function Integrations({ specs = PLATFORM_SPECS }: { specs?: Spec[
                 >
                   {config.connected_email ? 'Reconnect Google' : spec.connect.label}
                 </button>
+                {Boolean(config.connected_email) && spec.connect.test && (
+                  <button
+                    type="button"
+                    className="secondary btn-sm"
+                    style={{ marginLeft: 8 }}
+                    disabled={busy === row.id}
+                    onClick={() => void testConnection(row, spec)}
+                  >
+                    {busy === row.id ? 'Asking Google…' : 'Test connection'}
+                  </button>
+                )}
                 <span className="muted small" style={{ marginLeft: 10 }}>
-                  {config.connected_email
-                    ? `Connected as ${String(config.connected_email)}.`
-                    : 'Not connected yet.'}
+                  {scanNote[row.id] ||
+                    (config.connected_email
+                      ? `Connected as ${String(config.connected_email)}.`
+                      : 'Not connected yet.')}
                 </span>
               </div>
             )}
