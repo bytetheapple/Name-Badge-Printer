@@ -11,9 +11,42 @@ function b64url(bytes: Uint8Array): string {
 function b64urlStr(s: string): string {
   return b64url(new TextEncoder().encode(s));
 }
+/**
+ * The base64 body of a PEM key, however it was pasted.
+ *
+ * A service-account key is copied out of a JSON file, where the newlines are
+ * written as the two characters backslash-n. Those survive a whitespace strip,
+ * land in the base64 and surface as InvalidCharacterError — which names no
+ * cause and sends nobody anywhere useful.
+ *
+ * upload-selfie learned this and normalised the key at its own call site. The
+ * sheet sync then did not, because the knowledge lived in one function rather
+ * than in the code that needs it. So it lives here now: the armour is
+ * optional, real newlines and literal ones both work, and so does a key with
+ * no line breaks at all.
+ */
+export function pemBody(pem: string): string {
+  return (pem ?? "")
+    .replace(/\\n/g, "\n")
+    .replace(/-----[A-Z ]+-----/g, "")
+    .replace(/\s+/g, "");
+}
+
 function pemToPkcs8(pem: string): ArrayBuffer {
-  const body = pem.replace(/-----[A-Z ]+-----/g, "").replace(/\s+/g, "");
-  const bin = atob(body);
+  const body = pemBody(pem);
+  if (!body) throw new Error("the service account private key is empty");
+  let bin: string;
+  try {
+    bin = atob(body);
+  } catch {
+    // Said in words. This is a paste that went wrong, and the operator can fix
+    // it in ten seconds if told what to look at.
+    throw new Error(
+      "the service account private key is not valid base64 — paste the " +
+        "private_key value from the service account JSON file, including its " +
+        "BEGIN and END lines",
+    );
+  }
   const buf = new Uint8Array(bin.length);
   for (let i = 0; i < bin.length; i++) buf[i] = bin.charCodeAt(i);
   return buf.buffer;
