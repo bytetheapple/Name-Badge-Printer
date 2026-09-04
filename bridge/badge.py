@@ -113,7 +113,14 @@ def _label_render_size(label: str, length_mm: float) -> tuple[int, int]:
             )
         return _sane(round(length_mm * MM), 696)  # fallback: 62 mm continuous
     head_px, feed_px = spec.dots_printable
-    if "ENDLESS" in str(spec.form_factor):
+    # `.name`, not str(). Python 3.11 changed IntEnum.__str__ to return the
+    # number rather than the member name, so "ENDLESS" in str(form_factor) is
+    # True on 3.10 and False on 3.12 — for the same label, the same library and
+    # the same code. A print server on Debian 13 therefore took the die-cut
+    # branch for a continuous roll and rendered every badge on a canvas of no
+    # width, while the machine this was written on printed perfectly.
+    form = getattr(spec.form_factor, "name", None) or str(spec.form_factor)
+    if "ENDLESS" in form:
         # A continuous roll has no fixed length, so one of these two numbers is
         # zero — and which one is not something every build of brother_ql
         # agrees on. Taking whichever is set beats trusting the order: reading

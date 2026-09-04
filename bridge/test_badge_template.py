@@ -164,14 +164,25 @@ print("— a label table that reports oddly still yields a drawable canvas —")
 # agrees on, and reading the zero as the head width gave a canvas with no
 # height — reported by PIL as "height and width must be > 0", which sounds
 # like a bug in the image and is a fact about a label table.
+import enum as _enum
+
+
+class _FF(_enum.IntEnum):
+    ENDLESS = 1
+
+
 class _Endless:
     identifier = "fake"
-    form_factor = "FormFactor.ENDLESS"
-    dots_printable = (0, 696)          # the other order
+    # An IntEnum member, as brother_ql actually provides — not the string it
+    # happens to stringify to on one Python. Python 3.11 changed IntEnum's
+    # __str__ to return the number, so testing this with a string tested the
+    # one environment where the bug could not appear.
+    form_factor = _FF.ENDLESS
+    dots_printable = (0, 696)          # and the pair in the other order
 
 class _Zeroes:
     identifier = "broken"
-    form_factor = "FormFactor.ENDLESS"
+    form_factor = _FF.ENDLESS
     dots_printable = (0, 0)            # no help at all
 
 _saved = dict(badge_mod._LABELS)
