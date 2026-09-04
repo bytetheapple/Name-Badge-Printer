@@ -2181,12 +2181,17 @@ button.danger:disabled {
   gap: 14px;
   flex-wrap: wrap;
   font-size: 14px;
-  /* Delete to the far right of whatever else is here, so it is never the
-     button next to a switch somebody is reaching for. */
-  margin-left: auto;
+  /* Anchored after the name, not to the right edge. Right-aligning the group
+     meant it grew leftwards: ticking Enabled revealed "On by default" and
+     shoved Enabled sideways, so the box someone had just clicked moved out
+     from under the pointer. */
+  margin-left: 28px;
+  flex: 1 1 auto;
 }
+/* Only Delete goes right, and it is the one that should: never the button
+   beside a switch somebody is reaching for. */
 .integration-controls .danger {
-  margin-left: 6px;
+  margin-left: auto;
 }
 
 /* "On by default", and beneath it what to do about it. Aligned to the
