@@ -446,3 +446,15 @@ verify_jwt = false
 # "Missing authorization header" and the owner sees a page of JSON.
 [functions.google-oauth-callback]
 verify_jwt = false
+
+# Stated rather than left to the default, because the default is not what these
+# were deployed with. An audit found both answering with no Authorization header
+# at all: upload-selfie accepts an image and an entry id and writes into a
+# customer's Google Drive, and google-sheet-sync re-sends a sign-in on demand.
+# Both are reached from the browser, where supabase-js attaches the anon key, so
+# requiring a JWT costs them nothing.
+[functions.upload-selfie]
+verify_jwt = true
+
+[functions.google-sheet-sync]
+verify_jwt = true
