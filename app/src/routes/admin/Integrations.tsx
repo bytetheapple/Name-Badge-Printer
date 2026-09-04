@@ -54,6 +54,12 @@ type Spec = {
   /** A destination this integration made for itself, worth offering a way in
    *  to — the config holds the address, but nobody thinks to look there. */
   opens?: { urlKey: string; label: string; fromId?: { key: string; prefix: string } }
+  /** Config key that must be set before this is worth showing. For a Google
+   *  connection there is nothing to see until one exists, and nothing to add
+   *  by hand — it is made when something needs it. */
+  showWhen?: string
+  /** Kept out of "Add an integration": it is not something to add. */
+  notAddable?: boolean
   /** Set when this integration also stores a credential in Vault. */
   secret?: { label: string; hint: string }
 }
@@ -147,10 +153,12 @@ const PLATFORM_SPECS: Spec[] = [
     kind: 'google_oauth',
     title: 'Google account',
     blurb:
-      'Connect your Google account once, and sign-ins and photographs are written to your ' +
-      'own Drive, on your own storage. No service account, no key file, no sharing a folder. ' +
-      'We ask only to manage the files we create — nothing else in your Drive is visible to us.',
+      'Sign-ins and photographs are written to this account\'s Drive, on its own storage. ' +
+      'We can only see the files we create — nothing else in the Drive is visible to us. ' +
+      'Reconnect if access is ever revoked or the password changes.',
     connect: { fn: 'google-oauth-begin', label: 'Connect Google', test: 'google-oauth-check' },
+    showWhen: 'connected_email',
+    notAddable: true,
     fields: [],
   },
 ]
@@ -490,6 +498,10 @@ export default function Integrations({ specs = PLATFORM_SPECS }: { specs?: Spec[
         const spec = specOf(row.kind)
         if (!spec) return null
         const config = (row.config ?? {}) as Record<string, unknown>
+        // Nothing to show yet. A connection begun and abandoned leaves a row
+        // behind; a card for it would be an empty box inviting somebody to
+        // configure something that configures itself.
+        if (spec.showWhen && !config[spec.showWhen]) return null
         return (
           <section className="card" key={row.id}>
             {/* The name, as typed, with what it is behind it. Live rather than
@@ -749,11 +761,13 @@ export default function Integrations({ specs = PLATFORM_SPECS }: { specs?: Spec[
               onChange={(e) => setAddKind(e.target.value as IntegrationKind | '')}
             >
               <option value="">Choose…</option>
-              {specs.map((s) => (
-                <option key={s.kind} value={s.kind}>
-                  {s.title}
-                </option>
-              ))}
+              {specs
+                .filter((s) => !s.notAddable)
+                .map((s) => (
+                  <option key={s.kind} value={s.kind}>
+                    {s.title}
+                  </option>
+                ))}
             </select>
           </label>
           <label className="field">
