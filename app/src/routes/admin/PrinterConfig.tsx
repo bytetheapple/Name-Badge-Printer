@@ -383,6 +383,14 @@ export default function PrinterConfig() {
         )}
       </div>
 
+      {/* What to buy. It sat in the admin footer, on every page — a standing
+          statement about label stock is only useful where printers are, and
+          everywhere else it was furniture. */}
+      <footer className="admin-footer">
+        Badges print on <strong>Brother DK-1234</strong> die-cut name-badge labels (60 × 86 mm).
+        That is the only media this system supports.
+      </footer>
+
       {dialog && orgId && (
         <PrinterDialog
           orgId={orgId}

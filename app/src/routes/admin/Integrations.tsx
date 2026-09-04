@@ -807,9 +807,6 @@ export default function Integrations({ specs = PLATFORM_SPECS }: { specs?: Spec[
               onChange={(e) => setAddName(e.target.value)}
               placeholder={addKind ? specOf(addKind as IntegrationKind)?.title : 'Main office'}
             />
-            <span className="muted small">
-              How you will tell it apart from the others. Shown against every sign-in sent there.
-            </span>
           </label>
         </div>
         <button type="button" disabled={!addKind || busy === 'add'} onClick={() => void create()}>

@@ -952,8 +952,10 @@ a.pill:hover {
 }
 
 /* Which media to buy — the one thing a new site needs to know. */
+/* Now inside the Printers tab rather than under every page, so it takes the
+   page's own left edge instead of the layout's gutter. */
 .admin-footer {
-  padding: 18px 24px;
+  padding: 18px 0 0;
   color: var(--muted);
   font-size: 0.8rem;
   border-top: 1px solid var(--border);
