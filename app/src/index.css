@@ -418,6 +418,15 @@ td.actions-cell {
   background: var(--pending-bg);
   color: var(--muted);
 }
+
+/* A pill that is a link. Underlined on hover only, so a row of pills still
+   reads as status rather than as a paragraph of links. */
+a.pill {
+  text-decoration: none;
+}
+a.pill:hover {
+  text-decoration: underline;
+}
 .notice {
   padding: 8px 12px;
   border-radius: 8px;

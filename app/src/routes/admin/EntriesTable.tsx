@@ -400,11 +400,27 @@ export default function EntriesTable() {
                             {/* No resync: the photo only exists in the kiosk's
                                 browser at capture time, so it cannot be sent
                                 again from here. */}
-                            <SyncPill
-                              label="Photo"
-                              status={r.selfie_status}
-                              title={r.selfie_error}
-                            />
+                            {r.selfie_link ? (
+                              /* The link has been stored on every entry since
+                                 photographs began and shown nowhere, so the
+                                 only way to a visitor's picture was to go
+                                 looking through Drive for it. */
+                              <a
+                                href={r.selfie_link}
+                                target="_blank"
+                                rel="noreferrer noopener"
+                                className="pill pill-sync-sent"
+                                title="Open this visitor's photograph in Google Drive"
+                              >
+                                Photo
+                              </a>
+                            ) : (
+                              <SyncPill
+                                label="Photo"
+                                status={r.selfie_status}
+                                title={r.selfie_error}
+                              />
+                            )}
                           </>
                         )}
                       </div>

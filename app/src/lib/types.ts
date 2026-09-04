@@ -284,6 +284,8 @@ export interface FormEntry {
   shulcloud_error: string | null
   /** 'skipped' means no photo reached us; 'failed' means it did and could not
    *  be stored, with the reason in selfie_error. */
+  /** Where the photograph ended up, when one was stored. */
+  selfie_link: string | null
   selfie_status: 'pending' | 'sent' | 'failed' | 'skipped'
   selfie_error: string | null
   google_synced_at: string | null

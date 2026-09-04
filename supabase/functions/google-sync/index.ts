@@ -59,6 +59,18 @@ Deno.serve(async (req) => {
     return json({ ok: false, error: "No Google Form destinations for this sign-in" });
   }
 
+  // Consent, not scheduling. A visitor who left the follow-up box unticked
+  // asked not to hear more, and sending their name, email and telephone number
+  // into a congregation's systems anyway is precisely what they declined.
+  // Enforced here rather than only where the sync is triggered, so a resend
+  // from the Entries table honours it too.
+  if (entry.wants_followup !== true) {
+    for (const t of targets) {
+      await recordDelivery(entryId, t.id, "skipped", "the visitor did not ask to hear more");
+    }
+    return json({ ok: true, skipped: true, reason: "no follow-up requested" });
+  }
+
   const results: Array<{ ok: boolean; error?: string }> = [];
 
   for (const t of targets) {
