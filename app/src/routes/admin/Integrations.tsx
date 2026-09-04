@@ -17,11 +17,15 @@ const COLUMNS =
  * window, and showed the admin console again.
  */
 function openHref(
-  opens: { urlKey: string; fromId?: { key: string; prefix: string } },
+  opens: {
+    urlKey: string
+    fromId?: { key: string; prefix: string }
+    viewable?: (stored: string) => string
+  },
   config: Record<string, unknown>,
 ): string | null {
   const url = String(config[opens.urlKey] ?? '').trim()
-  if (url.startsWith('http')) return url
+  if (url.startsWith('http')) return opens.viewable ? opens.viewable(url) : url
   const id = opens.fromId ? String(config[opens.fromId.key] ?? '').trim() : ''
   return id ? `${opens.fromId!.prefix}${id}/edit` : null
 }
@@ -55,7 +59,15 @@ type Spec = {
   autoNamed?: boolean
   /** A destination this integration made for itself, worth offering a way in
    *  to — the config holds the address, but nobody thinks to look there. */
-  opens?: { urlKey: string; label: string; fromId?: { key: string; prefix: string } }
+  opens?: {
+    urlKey: string
+    label: string
+    fromId?: { key: string; prefix: string }
+    /** Turn what is stored into something a browser can show. A Google Form's
+     *  stored address is the endpoint its answers are posted to, which is not
+     *  a page. */
+    viewable?: (stored: string) => string
+  }
   /** Set when this integration also stores a credential in Vault. */
   secret?: { label: string; hint: string }
 }
@@ -70,6 +82,14 @@ const CUSTOM_SPECS: Spec[] = [
   {
     kind: 'google_form',
     title: 'Google Form',
+    opens: {
+      urlKey: 'response_url',
+      label: 'Open the form',
+      // What is stored is where answers are POSTed; the page a person can read
+      // is the same address ending in /viewform. Opening the stored one gives
+      // a Google error page, which looks like the integration is broken.
+      viewable: (u) => u.replace(/\/formResponse\b.*$/, '/viewform'),
+    },
     blurb: 'Visitor sign-ins are posted to this form. Members are never sent.',
     fields: [
       {
@@ -101,6 +121,7 @@ const CUSTOM_SPECS: Spec[] = [
   {
     kind: 'shulcloud',
     title: 'ShulCloud',
+    opens: { urlKey: 'form_url', label: 'Open the form' },
     blurb: 'Visitors are submitted to your ShulCloud welcome form.',
     scan: { urlKey: 'form_url', fn: 'shulcloud-scan' },
     fields: [
@@ -542,7 +563,12 @@ export default function Integrations({ specs = PLATFORM_SPECS }: { specs?: Spec[
         const config = (row.config ?? {}) as Record<string, unknown>
         return (
           <section
-            className={`card${!hasEditableText(spec) || open[row.id] ? '' : ' is-collapsed'}`}
+            className={`card${
+              (!hasEditableText(spec) || open[row.id]) ||
+              (spec.opens && openHref(spec.opens, config))
+                ? ''
+                : ' is-collapsed'
+            }`}
             key={row.id}
           >
             {/* The name, as typed, with what it is behind it. Live rather than
@@ -644,6 +670,22 @@ export default function Integrations({ specs = PLATFORM_SPECS }: { specs?: Spec[
               </div>
             </div>
 
+            {/* Always, open or closed. Looking at the form or the sheet is
+                not configuring it, and behind Configure it becomes something
+                to go and find. */}
+            {spec.opens && openHref(spec.opens, config) && (
+              <div style={{ marginTop: 10 }}>
+                <a href={openHref(spec.opens, config)!} target="_blank" rel="noreferrer noopener">
+                  {spec.opens.label}
+                </a>
+                {typeof config.spreadsheet_title === 'string' && (
+                  <span className="muted small" style={{ marginLeft: 8 }}>
+                    {config.spreadsheet_title}
+                  </span>
+                )}
+              </div>
+            )}
+
             {/* Everything below the banner, for a destination that has
                 settings. A card with none — one that makes its own sheet and
                 names it — has nothing to hide, so it stays open. */}
@@ -739,19 +781,6 @@ export default function Integrations({ specs = PLATFORM_SPECS }: { specs?: Spec[
               <p className="muted small" style={{ marginTop: 10 }}>
                 The spreadsheet is created when the first visitor is recorded.
               </p>
-            )}
-
-            {spec.opens && openHref(spec.opens, config) && (
-              <div style={{ marginTop: 10 }}>
-                <a href={openHref(spec.opens, config)!} target="_blank" rel="noreferrer noopener">
-                  {spec.opens.label}
-                </a>
-                {typeof config.spreadsheet_title === 'string' && (
-                  <span className="muted small" style={{ marginLeft: 8 }}>
-                    {config.spreadsheet_title}
-                  </span>
-                )}
-              </div>
             )}
 
             {spec.scan && (
