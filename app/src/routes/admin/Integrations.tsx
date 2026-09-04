@@ -170,6 +170,10 @@ export default function Integrations({ specs = PLATFORM_SPECS }: { specs?: Spec[
   const [scanned, setScanned] = useState<Record<string, ScannedField[]>>({})
   const [scanning, setScanning] = useState<string | null>(null)
   const [scanNote, setScanNote] = useState<Record<string, string>>({})
+  //: Which cards are showing their settings. Closed by default: a destination
+  //: that is working needs no attention, and a page of open forms is a page
+  //: you have to read to find the one you came for.
+  const [open, setOpen] = useState<Record<string, boolean>>({})
 
   /**
    * Read the form and offer its fields, instead of asking someone to find
@@ -400,7 +404,7 @@ export default function Integrations({ specs = PLATFORM_SPECS }: { specs?: Spec[
     await load()
   }
 
-  async function save(row: Integration) {
+  async function save(row: Integration, onSaved?: () => void) {
     const spec = specOf(row.kind)
     setBusy(row.id)
     setNotice(null)
@@ -426,10 +430,21 @@ export default function Integrations({ specs = PLATFORM_SPECS }: { specs?: Spec[
         p_integration: row.id,
         p_secret: pending,
       })
-      if (secretError) setError(secretError.message)
-      else setSecretInput((p) => ({ ...p, [row.id]: '' }))
+      if (secretError) {
+        setError(secretError.message)
+        setBusy(null)
+        // Deliberately not closed. The settings saved and the credential did
+        // not, which is the one outcome where the form must stay in front of
+        // whoever was typing.
+        await load()
+        return
+      }
+      setSecretInput((p) => ({ ...p, [row.id]: '' }))
     }
     setBusy(null)
+    // Closed on the way out: saving is the end of the errand, and leaving the
+    // form open invites a second look at something already dealt with.
+    onSaved?.()
     await load()
   }
 
@@ -496,7 +511,10 @@ export default function Integrations({ specs = PLATFORM_SPECS }: { specs?: Spec[
         if (!spec) return null
         const config = (row.config ?? {}) as Record<string, unknown>
         return (
-          <section className="card" key={row.id}>
+          <section
+            className={`card${!hasEditableText(spec) || open[row.id] ? '' : ' is-collapsed'}`}
+            key={row.id}
+          >
             {/* The name, as typed, with what it is behind it. Live rather than
                 from the last save, so renaming shows here as you type. */}
             <div className="integration-head" data-kind={row.kind}>
@@ -551,6 +569,16 @@ export default function Integrations({ specs = PLATFORM_SPECS }: { specs?: Spec[
                   </div>
                 </>
               )}
+                {hasEditableText(spec) && (
+                  <button
+                    type="button"
+                    className="secondary btn-sm"
+                    aria-expanded={Boolean(open[row.id])}
+                    onClick={() => setOpen((p) => ({ ...p, [row.id]: !p[row.id] }))}
+                  >
+                    {open[row.id] ? 'Close' : 'Configure'}
+                  </button>
+                )}
                 <button
                   type="button"
                   className="secondary btn-sm danger"
@@ -562,6 +590,11 @@ export default function Integrations({ specs = PLATFORM_SPECS }: { specs?: Spec[
               </div>
             </div>
 
+            {/* Everything below the banner, for a destination that has
+                settings. A card with none — one that makes its own sheet and
+                names it — has nothing to hide, so it stays open. */}
+            {(!hasEditableText(spec) || open[row.id]) && (
+            <>
             {spec.autoNamed ? (
               /* Nothing to name. The destination makes its own file and calls
                  it what it calls it; a box asking the operator for a different
@@ -726,21 +759,19 @@ export default function Integrations({ specs = PLATFORM_SPECS }: { specs?: Spec[
               </p>
             )}
 
-            <div className="modal-actions" style={{ marginTop: 20 }}>
-              {/* Only where something can be typed. The switches write
-                  themselves, so on a destination that names itself and holds
-                  no settings this button could never do anything — and a
-                  permanently dimmed button reads as something being wrong. */}
-              {hasEditableText(spec) && (
+            {hasEditableText(spec) && (
+              <div className="modal-actions" style={{ marginTop: 20 }}>
                 <button
                   type="button"
                   disabled={busy === row.id || !pending(row)}
-                  onClick={() => void save(row)}
+                  onClick={() => void save(row, () => setOpen((p) => ({ ...p, [row.id]: false })))}
                 >
-                  {busy === row.id ? 'Saving…' : 'Save'}
+                  {busy === row.id ? 'Saving…' : 'Save configuration'}
                 </button>
-              )}
-            </div>
+              </div>
+            )}
+            </>
+            )}
 
           </section>
         )

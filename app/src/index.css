@@ -2165,6 +2165,18 @@ button.danger:disabled {
   flex-wrap: wrap;
   background: var(--mk-panel);
 }
+/* A card showing only its banner. Without this the card's own padding leaves
+   an empty band under the banner, which reads as content that failed to load
+   rather than as content that is not there. */
+.card.is-collapsed {
+  padding-bottom: 0;
+}
+.card.is-collapsed .integration-head {
+  margin-bottom: 0;
+  border-bottom: none;
+  border-radius: 9px;
+}
+
 .integration-ident {
   display: flex;
   flex-direction: column;
