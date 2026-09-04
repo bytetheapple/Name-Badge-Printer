@@ -9,6 +9,23 @@ export { CUSTOM_SPECS, PLATFORM_SPECS }
 const COLUMNS =
   'id, org_id, kind, name, enabled, default_enabled, config, updated_at, created_at'
 
+/**
+ * Where an `opens` link should point, or null if there is nowhere to go.
+ *
+ * An empty string is not an address. Left unchecked it becomes href="", which
+ * a browser resolves to the current page — so the link "worked", opened a new
+ * window, and showed the admin console again.
+ */
+function openHref(
+  opens: { urlKey: string; fromId?: { key: string; prefix: string } },
+  config: Record<string, unknown>,
+): string | null {
+  const url = String(config[opens.urlKey] ?? '').trim()
+  if (url.startsWith('http')) return url
+  const id = opens.fromId ? String(config[opens.fromId.key] ?? '').trim() : ''
+  return id ? `${opens.fromId!.prefix}${id}/edit` : null
+}
+
 /** One control the scan found on the customer's form. */
 type ScannedField = { name: string; type: string; label: string }
 
@@ -36,7 +53,7 @@ type Spec = {
   connect?: { fn: string; label: string; test?: string }
   /** A destination this integration made for itself, worth offering a way in
    *  to — the config holds the address, but nobody thinks to look there. */
-  opens?: { urlKey: string; label: string }
+  opens?: { urlKey: string; label: string; fromId?: { key: string; prefix: string } }
   /** Set when this integration also stores a credential in Vault. */
   secret?: { label: string; hint: string }
 }
@@ -110,7 +127,11 @@ const CUSTOM_SPECS: Spec[] = [
   {
     kind: 'google_sheet',
     title: 'Google Sheet',
-    opens: { urlKey: 'spreadsheet_url', label: 'Open the sheet' },
+    opens: {
+      urlKey: 'spreadsheet_url',
+      fromId: { key: 'spreadsheet_id', prefix: 'https://docs.google.com/spreadsheets/d/' },
+      label: 'Open the sheet',
+    },
     blurb:
       'Each visitor is added as a row of your own spreadsheet. Members are never sent. ' +
       'With a connected Google account we make the sheet for you, in your Drive. ' +
@@ -633,13 +654,9 @@ export default function Integrations({ specs = PLATFORM_SPECS }: { specs?: Spec[
               )}
             </div>
 
-            {spec.opens && typeof config[spec.opens.urlKey] === 'string' && (
+            {spec.opens && openHref(spec.opens, config) && (
               <div style={{ marginTop: 10 }}>
-                <a
-                  href={config[spec.opens.urlKey] as string}
-                  target="_blank"
-                  rel="noreferrer noopener"
-                >
+                <a href={openHref(spec.opens, config)!} target="_blank" rel="noreferrer noopener">
                   {spec.opens.label}
                 </a>
                 {typeof config.previous_spreadsheet_id === 'string' && (

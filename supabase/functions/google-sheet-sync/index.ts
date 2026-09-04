@@ -98,7 +98,12 @@ async function createSheet(
       config: {
         ...config,
         spreadsheet_id: id,
-        spreadsheet_url: String((res.body as { spreadsheetUrl?: string })?.spreadsheetUrl ?? ""),
+        // Derived when Google does not volunteer it. A spreadsheet's address is
+        // a function of its id, so depending on the response for it buys
+        // nothing and produces an empty string when the field is absent — which
+        // renders as a link to nowhere.
+        spreadsheet_url: String((res.body as { spreadsheetUrl?: string })?.spreadsheetUrl ?? "") ||
+          `https://docs.google.com/spreadsheets/d/${id}/edit`,
         sheet_is_ours: true,
         // Kept rather than overwritten: it is where the organization's earlier
         // sign-ins are, and the only record of that once this field moves on.
