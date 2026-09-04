@@ -137,6 +137,11 @@ const CUSTOM_SPECS: Spec[] = [
   },
 ]
 
+// Note: there is deliberately no card for kind 'google_drive'. The row still
+// exists — per-printer routing and the delivery record for each photograph
+// attach to it — but it holds no settings at all now that the credential lives
+// on the Google connection, so it is created when photographs are switched on
+// in Settings rather than added by hand here.
 const PLATFORM_SPECS: Spec[] = [
   {
     kind: 'google_oauth',
@@ -146,16 +151,6 @@ const PLATFORM_SPECS: Spec[] = [
       'own Drive, on your own storage. No service account, no key file, no sharing a folder. ' +
       'We ask only to manage the files we create — nothing else in your Drive is visible to us.',
     connect: { fn: 'google-oauth-begin', label: 'Connect Google', test: 'google-oauth-check' },
-    fields: [],
-  },
-  {
-    kind: 'google_drive',
-    title: 'Visitor photographs',
-    blurb:
-      'Photographs are uploaded to the Google account connected above, into a folder we ' +
-      'create in your Drive. Whether a photograph is asked for at all is set under ' +
-      'Settings → Selfie. This destination needs no credentials of its own — connect ' +
-      'Google and it works.',
     fields: [],
   },
 ]

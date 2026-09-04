@@ -23,8 +23,14 @@ const restHeaders = {
 };
 
 /** Back to the console with the outcome in the query string. */
-function back(params: Record<string, string>): Response {
-  const url = new URL(`${APP_URL}/admin/integrations`);
+function back(params: Record<string, string>, returnTo = "/admin/integrations"): Response {
+  // Re-checked here even though begin() constrained it. This is the value that
+  // actually becomes a Location header, and the row it came from has been
+  // round-tripping through a third party's redirect in the meantime.
+  const safe = /^\/admin\/[A-Za-z0-9\-/_]*$/.test(returnTo) && !returnTo.includes("//")
+    ? returnTo
+    : "/admin/integrations";
+  const url = new URL(`${APP_URL}${safe}`);
   for (const [k, v] of Object.entries(params)) url.searchParams.set(k, v);
   return new Response(null, { status: 302, headers: { Location: url.toString() } });
 }
@@ -59,12 +65,15 @@ Deno.serve(async (req) => {
   // The verifier, and with it the organization. Read rather than claimed.
   const pendingRes = await fetch(
     `${SUPABASE_URL}/rest/v1/oauth_pending?state=eq.${encodeURIComponent(state)}` +
-      `&select=code_verifier,org_id,integration_id,expires_at`,
+      `&select=code_verifier,org_id,integration_id,expires_at,return_to`,
     { headers: restHeaders },
   );
   const pending = pendingRes.ok ? (await pendingRes.json())[0] : null;
   if (!pending) return back({ google_error: "expired" });
-  if (Date.parse(String(pending.expires_at)) < Date.now()) return back({ google_error: "expired" });
+  const home = String(pending.return_to ?? "/admin/integrations");
+  if (Date.parse(String(pending.expires_at)) < Date.now()) {
+    return back({ google_error: "expired" }, home);
+  }
 
   const tokenRes = await fetch("https://oauth2.googleapis.com/token", {
     method: "POST",
@@ -81,7 +90,7 @@ Deno.serve(async (req) => {
   const token = await tokenRes.json().catch(() => ({}));
   if (!tokenRes.ok) {
     console.error("token exchange failed:", tokenRes.status, JSON.stringify(token).slice(0, 300));
-    return back({ google_error: "exchange_failed" });
+    return back({ google_error: "exchange_failed" }, home);
   }
 
   const refresh = String(token.refresh_token ?? "");
@@ -90,7 +99,7 @@ Deno.serve(async (req) => {
     // silently omits it otherwise — so a connection would appear to work and
     // stop within the hour. Said plainly rather than stored half-made.
     console.error("no refresh_token in the token response");
-    return back({ google_error: "no_refresh_token" });
+    return back({ google_error: "no_refresh_token" }, home);
   }
 
   const done = await fetch(`${SUPABASE_URL}/rest/v1/rpc/complete_google_oauth`, {
@@ -104,8 +113,8 @@ Deno.serve(async (req) => {
   });
   if (!done.ok) {
     console.error("complete_google_oauth failed:", done.status, (await done.text()).slice(0, 300));
-    return back({ google_error: "store_failed" });
+    return back({ google_error: "store_failed" }, home);
   }
 
-  return back({ connected: "google" });
+  return back({ connected: "google" }, home);
 });

@@ -1,12 +1,13 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import { useOrg } from '../../lib/org'
+import { invokeFn } from '../../lib/functions'
 import OrgLogo from './OrgLogo'
 
 type SelfieMode = 'off' | 'optional' | 'required'
 
 export default function Settings() {
-  const { orgId, isAdmin } = useOrg()
+  const { orgId, isAdmin, isOwner } = useOrg()
   const [selfieMode, setSelfieMode] = useState<SelfieMode>('off')
   //: Whether anything can write to this organization's Drive — a connected
   //: Google account, or the service account that path is replacing. An admin
@@ -17,7 +18,26 @@ export default function Settings() {
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  //: What the Google round trip came back saying, if this page started one.
+  const [notice, setNotice] = useState<string | null>(null)
 
+
+  // Back from Google. The selfie requirement is deliberately not applied
+  // before the redirect: abandoning the consent screen would otherwise leave
+  // photographs switched on with nowhere to store them, which fails in front
+  // of a visitor. One more click here, and nothing broken in between.
+  useEffect(() => {
+    const q = new URLSearchParams(window.location.search)
+    if (q.get('connected') === 'google') {
+      setNotice('Google connected. Choose a selfie requirement to switch photographs on.')
+    } else if (q.get('google_error')) {
+      setNotice(null)
+      setError(`Google did not complete the connection (${q.get('google_error')}).`)
+    } else {
+      return
+    }
+    window.history.replaceState({}, '', window.location.pathname)
+  }, [])
 
   useEffect(() => {
     if (!orgId) return
@@ -65,6 +85,48 @@ export default function Settings() {
     }
   }
 
+  /**
+   * Switch photographs on, making whatever that needs.
+   *
+   * Asking for photographs is the moment an organization needs somewhere to
+   * put them, so this is where the Google connection is asked for rather than
+   * a prerequisite to be discovered under Integrations. Connecting is an
+   * owner's job; an admin is told that rather than sent to a page that will
+   * refuse them.
+   */
+  async function enableWithDrive(next: SelfieMode) {
+    if (!isOwner) {
+      setError(
+        'Photographs need a connected Google account, and connecting one is an owner’s job. ' +
+          'Ask an owner of this organization to connect Google, then choose this again.',
+      )
+      return
+    }
+    setSaving(true)
+    setError(null)
+    const res = await invokeFn('google-provision', { org_id: orgId, what: 'drive' })
+    setSaving(false)
+    if (!res.ok) {
+      setError(res.error ?? 'Could not prepare the photographs destination.')
+      return
+    }
+    if (!driveConnected) {
+      // Off to Google, and back to this page rather than to Integrations —
+      // this is where the question was asked.
+      const begin = await invokeFn('google-oauth-begin', {
+        org_id: orgId,
+        return_to: '/admin/settings',
+      })
+      if (!begin.ok || typeof begin.url !== 'string') {
+        setError(begin.error ?? 'Could not start the Google connection.')
+        return
+      }
+      window.location.assign(begin.url as string)
+      return
+    }
+    void chooseSelfieMode(next)
+  }
+
   /** Written on change, like the pronouns switch. There is nothing left for a
    *  Save button to coordinate: the folder used to be saved alongside this and
    *  had to agree with it, and the folder is now made by the connected account
@@ -102,6 +164,7 @@ export default function Settings() {
     <>
       <h1>Settings</h1>
       {error && <div className="error">{error}</div>}
+      {notice && <div className="notice">{notice}</div>}
 
       {/* The column, so the panes line up. Every control on this page writes
           itself on change — there is nothing left to submit. */}
@@ -112,10 +175,12 @@ export default function Settings() {
               reason the control is unavailable. */}
           {!driveConnected && (
             <p className="muted small" style={{ marginBottom: 12 }}>
-              Visitor photos are stored in your congregation's Google Drive, so a Google account
-              has to be connected before they can be collected. An owner can do that under{' '}
-              <strong>Integrations → Google account</strong>. Until then the only option here is
-              no selfie.
+              Visitor photos are stored in your congregation's own Google Drive.{' '}
+              {isOwner
+                ? 'Choosing Optional or Required will ask you to connect a Google account, and ' +
+                  'the folder is made for you.'
+                : 'An owner needs to connect a Google account first — ask one to choose a ' +
+                  'selfie requirement here, or to connect Google under Integrations.'}
             </p>
           )}
 
@@ -134,24 +199,19 @@ export default function Settings() {
                 // Belt and braces: the options are disabled, but a keyboard or
                 // an older browser can still land here, and silently ignoring
                 // the choice would look like the page was broken.
-                if (next !== 'off' && !driveConnected) {
-                  setError(
-                    'Connect a Google account under Integrations before collecting visitor ' +
-                      'photos.',
-                  )
-                  return
-                }
                 setError(null)
-                void chooseSelfieMode(next)
+                // Switching photographs on is what triggers the connection and
+                // the destination; switching them off never needs either.
+                if (next !== 'off') void enableWithDrive(next)
+                else void chooseSelfieMode(next)
               }}
             >
               <option value="off">No selfie</option>
-              <option value="optional" disabled={!driveConnected}>
-                Optional selfie
-              </option>
-              <option value="required" disabled={!driveConnected}>
-                Required selfie
-              </option>
+              {/* Not disabled any more. Choosing one is how an owner connects
+                  Google — refusing the choice was what made the connection
+                  something to go and find first. */}
+              <option value="optional">Optional selfie</option>
+              <option value="required">Required selfie</option>
             </select>
           </label>
 

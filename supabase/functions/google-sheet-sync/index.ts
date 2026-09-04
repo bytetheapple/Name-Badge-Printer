@@ -9,6 +9,7 @@
 // Members are never sent. That is decided at submit-badge, where the same rule
 // is applied to the Google Form and ShulCloud syncs.
 import { corsHeaders, json } from "../_shared/cors.ts";
+import { createSpreadsheet } from "../_shared/gsheets.ts";
 import {
   explainGoogleError,
   type GoogleAuth,
@@ -61,62 +62,6 @@ async function sheetsFetch(
   return { ok: res.ok, status: res.status, body };
 }
 
-/**
- * Make the sheet, in the customer's own Drive.
- *
- * Only possible on an OAuth connection, and it is the reason that path exists:
- * `drive.file` reaches what this application created, so creating the sheet is
- * what earns the right to write to it. A service account cannot do this
- * usefully — the file would land in a Drive no person can open.
- */
-async function createSheet(
-  token: string,
-  integrationId: string,
-  config: Record<string, unknown>,
-): Promise<string> {
-  const create = await fetch(SHEETS, {
-    method: "POST",
-    headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-    body: JSON.stringify({ properties: { title: "Guest Badges — visitor sign-ins" } }),
-  });
-  const res = {
-    ok: create.ok,
-    status: create.status,
-    body: (await create.json().catch(() => ({}))) as Record<string, unknown>,
-  };
-  const id = String((res.body as { spreadsheetId?: string })?.spreadsheetId ?? "");
-  if (!res.ok || !id) throw new Error(explainGoogleError(res.status, res.body, "", "sheets.googleapis.com"));
-
-  // Written back so the next sign-in appends to this sheet rather than making
-  // another one. A second sheet per visitor would be a quiet disaster.
-  await fetch(`${REST}/integrations?id=eq.${integrationId}`, {
-    method: "PATCH",
-    headers: restHeaders,
-    body: JSON.stringify({
-      // Merged, not replaced. PostgREST writes the column whole, so sending
-      // only the new keys would drop use_oauth, tab_name and everything else
-      // this destination was configured with.
-      config: {
-        ...config,
-        spreadsheet_id: id,
-        // Derived when Google does not volunteer it. A spreadsheet's address is
-        // a function of its id, so depending on the response for it buys
-        // nothing and produces an empty string when the field is absent — which
-        // renders as a link to nowhere.
-        spreadsheet_url: String((res.body as { spreadsheetUrl?: string })?.spreadsheetUrl ?? "") ||
-          `https://docs.google.com/spreadsheets/d/${id}/edit`,
-        sheet_is_ours: true,
-        // Kept rather than overwritten: it is where the organization's earlier
-        // sign-ins are, and the only record of that once this field moves on.
-        ...(config.spreadsheet_id && config.spreadsheet_id !== id
-          ? { previous_spreadsheet_id: config.spreadsheet_id }
-          : {}),
-      },
-    }),
-  });
-  return id;
-}
-
 async function sendTo(entry: Entry, t: Target): Promise<{ ok: boolean; error?: string }> {
   const tab = String(t.config.tab_name ?? "").trim();
 
@@ -143,7 +88,7 @@ async function sendTo(entry: Entry, t: Target): Promise<{ ok: boolean; error?: s
 
   if (needsOwnSheet) {
     try {
-      id = await createSheet(token, t.id, t.config);
+      id = (await createSpreadsheet(token, t.id, t.config)).id;
     } catch (e) {
       return { ok: false, error: `Could not create the sheet: ${e}` };
     }

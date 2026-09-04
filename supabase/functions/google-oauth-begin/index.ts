@@ -139,6 +139,15 @@ Deno.serve(async (req) => {
     body: "{}",
   });
 
+  // Where to land afterwards. Only a path inside the console: anything else —
+  // an absolute URL, a protocol-relative //evil.example, a path escaping
+  // upwards — makes this an open redirect, and it is stored rather than passed
+  // through Google precisely so it cannot be tampered with in transit.
+  const askedFor = String(body.return_to ?? "").trim();
+  const returnTo = /^\/admin\/[A-Za-z0-9\-/_]*$/.test(askedFor) && !askedFor.includes("//")
+    ? askedFor
+    : "/admin/integrations";
+
   const state = rand();
   const verifier = rand(48);
   const stored = await fetch(`${SUPABASE_URL}/rest/v1/oauth_pending`, {
@@ -149,6 +158,7 @@ Deno.serve(async (req) => {
       org_id: orgId,
       integration_id: integrationId,
       code_verifier: verifier,
+      return_to: returnTo,
     }),
   });
   if (!stored.ok) return json({ ok: false, error: "Could not start the connection" }, 500);
