@@ -2157,10 +2157,33 @@ button.danger:disabled {
   border-radius: 9px 9px 0 0;
   border-bottom: 1px solid var(--border);
   display: flex;
-  align-items: baseline;
+  /* Name on the left, what you can do to it on the right. `start` rather than
+     centre so the controls stay put when the name wraps to two lines. */
+  align-items: flex-start;
+  justify-content: space-between;
   gap: 12px;
   flex-wrap: wrap;
   background: var(--mk-panel);
+}
+.integration-ident {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 3px;
+  min-width: 0;
+}
+.integration-controls {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex-wrap: wrap;
+  font-size: 14px;
+  /* Delete to the far right of whatever else is here, so it is never the
+     button next to a switch somebody is reaching for. */
+  margin-left: auto;
+}
+.integration-controls .danger {
+  margin-left: 6px;
 }
 .integration-title {
   margin: 0;
@@ -2179,9 +2202,18 @@ button.danger:disabled {
   background: var(--bg);
 }
 
+/* The controls sit on the kind's colour now, so the checkbox labels have to
+   read against it rather than against the card. */
+.integration-controls .check {
+  white-space: nowrap;
+}
+
 /* One hue per kind, roughly where each vendor already sits, so the mapping is
    guessable rather than arbitrary. */
-.integration-head[data-kind='google_drive'] {
+/* Green was Drive's, and Drive no longer has a card — Sheets is the green one
+   in Google's own palette anyway, so it inherits rather than being given a
+   fifth hue nobody can place. */
+.integration-head[data-kind='google_sheet'] {
   background: #e8f4ee;
   border-bottom-color: #bcdcc9;
 }
@@ -2194,7 +2226,7 @@ button.danger:disabled {
   border-bottom-color: #bed6f2;
 }
 @media (prefers-color-scheme: dark) {
-  .integration-head[data-kind='google_drive'] {
+  .integration-head[data-kind='google_sheet'] {
     background: #14251c;
     border-bottom-color: #24503a;
   }

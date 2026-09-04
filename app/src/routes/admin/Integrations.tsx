@@ -500,15 +500,20 @@ export default function Integrations({ specs = PLATFORM_SPECS }: { specs?: Spec[
             {/* The name, as typed, with what it is behind it. Live rather than
                 from the last save, so renaming shows here as you type. */}
             <div className="integration-head" data-kind={row.kind}>
-              <h2 className="integration-title">{row.name.trim() || spec.title}</h2>
-              <span className="integration-kind">{spec.title}</span>
-            </div>
+              {/* What it is called, and under it what it is. Stacked rather
+                  than side by side: the kind is a caption for the name, and
+                  reading it that way needs no gap to scan across. */}
+              <div className="integration-ident">
+                <h2 className="integration-title">{row.name.trim() || spec.title}</h2>
+                <span className="integration-kind">{spec.title}</span>
+              </div>
 
-            {/* First, not last. Both write on click, so this is the state of
-                the thing rather than part of the form below it — and someone
-                who saves settings without scrolling to the foot of the card
-                should not be left wondering why nothing is being sent. */}
-            <div className="switch-row">
+              {/* The state of the thing, on the thing. Both write on click, so
+                  they belong with its name rather than in the form below —
+                  somebody who never scrolls should still see whether anything
+                  is being sent. Delete sits here for the same reason: it acts
+                  on the destination, not on its settings. */}
+              <div className="integration-controls">
               <label className="check">
                 <input
                   type="checkbox"
@@ -541,6 +546,15 @@ export default function Integrations({ specs = PLATFORM_SPECS }: { specs?: Spec[
                   </button>
                 </>
               )}
+                <button
+                  type="button"
+                  className="secondary btn-sm danger"
+                  disabled={busy === row.id}
+                  onClick={() => void remove(row)}
+                >
+                  Delete
+                </button>
+              </div>
             </div>
 
             {spec.autoNamed ? (
@@ -708,14 +722,6 @@ export default function Integrations({ specs = PLATFORM_SPECS }: { specs?: Spec[
             )}
 
             <div className="modal-actions" style={{ marginTop: 20 }}>
-              <button
-                type="button"
-                className="secondary btn-sm danger"
-                disabled={busy === row.id}
-                onClick={() => void remove(row)}
-              >
-                Delete
-              </button>
               {/* Only where something can be typed. The switches write
                   themselves, so on a destination that names itself and holds
                   no settings this button could never do anything — and a
