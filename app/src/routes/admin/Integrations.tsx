@@ -306,6 +306,37 @@ export default function Integrations({ specs = PLATFORM_SPECS }: { specs?: Spec[
     void load()
   }, [load])
 
+  /**
+   * Finish anything the Google round trip interrupted.
+   *
+   * Adding a Sheet with no account connected sends the operator to Google, and
+   * they come back to a destination that still has no sheet — the step that
+   * would have made it was the step that redirected. Nothing else notices, so
+   * the destination sits half made until a visitor signs in.
+   */
+  const finishPending = useCallback(async () => {
+    const half = list.filter(
+      (r) => r.kind === 'google_sheet' && !(r.config as Record<string, unknown>)?.spreadsheet_id,
+    )
+    if (!half.length) return
+    for (const row of half) {
+      const res = await invokeFn('google-provision', {
+        org_id: row.org_id,
+        what: 'sheet',
+        integration_id: row.id,
+      })
+      if (res.ok) await supabase.from('integrations').update({ enabled: true }).eq('id', row.id)
+    }
+    await load()
+  }, [list, load])
+
+  useEffect(() => {
+    const q = new URLSearchParams(window.location.search)
+    if (q.get('connected') !== 'google') return
+    window.history.replaceState({}, '', window.location.pathname)
+    void finishPending()
+  }, [finishPending])
+
   function patch(id: string, changes: Partial<Integration>) {
     setList((prev) => prev.map((r) => (r.id === id ? { ...r, ...changes } : r)))
   }
@@ -623,6 +654,11 @@ export default function Integrations({ specs = PLATFORM_SPECS }: { specs?: Spec[
               )}
             </div>
 
+            {/* Should never be reached in the ordinary flow: adding the
+                destination makes its sheet, and coming back from Google
+                finishes one that was interrupted. It remains because "should
+                never" is not "cannot", and the alternative to a repair is
+                deleting the destination and starting again. */}
             {spec.kind === 'google_sheet' && !config.spreadsheet_id && (
               <div style={{ marginTop: 10 }}>
                 <button
@@ -631,12 +667,12 @@ export default function Integrations({ specs = PLATFORM_SPECS }: { specs?: Spec[
                   disabled={busy === row.id}
                   onClick={() => void createSheetFor(row)}
                 >
-                  {busy === row.id ? 'Creating…' : 'Create the sheet'}
+                  {busy === row.id ? 'Creating…' : 'Finish setting up'}
                 </button>
                 <span className="muted small" style={{ marginLeft: 10 }}>
                   {scanNote[row.id] ||
-                    'Makes the spreadsheet in your Google Drive. Connects a Google account ' +
-                      'first if there is not one.'}
+                    'This destination has no sheet — setting it up did not finish. This makes ' +
+                      'one.'}
                 </span>
               </div>
             )}
