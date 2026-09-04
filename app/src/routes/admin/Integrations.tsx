@@ -34,6 +34,9 @@ type Spec = {
   /** Set when this integration is configured by connecting an account rather
    *  than by typing credentials — the card shows a Connect button. */
   connect?: { fn: string; label: string; test?: string }
+  /** A destination this integration made for itself, worth offering a way in
+   *  to — the config holds the address, but nobody thinks to look there. */
+  opens?: { urlKey: string; label: string }
   /** Set when this integration also stores a credential in Vault. */
   secret?: { label: string; hint: string }
 }
@@ -107,6 +110,7 @@ const CUSTOM_SPECS: Spec[] = [
   {
     kind: 'google_sheet',
     title: 'Google Sheet',
+    opens: { urlKey: 'spreadsheet_url', label: 'Open the sheet' },
     blurb:
       'Each visitor is added as a row of your own spreadsheet. Members are never sent. ' +
       'With a connected Google account we make the sheet for you, in your Drive. ' +
@@ -628,6 +632,23 @@ export default function Integrations({ specs = PLATFORM_SPECS }: { specs?: Spec[
                 ),
               )}
             </div>
+
+            {spec.opens && typeof config[spec.opens.urlKey] === 'string' && (
+              <div style={{ marginTop: 10 }}>
+                <a
+                  href={config[spec.opens.urlKey] as string}
+                  target="_blank"
+                  rel="noreferrer noopener"
+                >
+                  {spec.opens.label}
+                </a>
+                {typeof config.previous_spreadsheet_id === 'string' && (
+                  <span className="muted small" style={{ marginLeft: 10 }}>
+                    An earlier sheet holds the sign-ins from before the switch.
+                  </span>
+                )}
+              </div>
+            )}
 
             {spec.connect && (
               <div style={{ marginTop: 10 }}>
