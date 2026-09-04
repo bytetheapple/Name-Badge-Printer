@@ -2202,9 +2202,13 @@ button.danger:disabled {
   margin-left: 28px;
   flex: 1 1 auto;
 }
-/* Only Delete goes right, and it is the one that should: never the button
-   beside a switch somebody is reaching for. */
-.integration-controls .danger {
+/* What can be done to the destination, as a pair, at the right edge — away
+   from the switches, so Delete is never the button beside one somebody is
+   reaching for. */
+.integration-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
   margin-left: auto;
 }
 

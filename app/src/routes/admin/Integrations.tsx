@@ -575,24 +575,30 @@ export default function Integrations({ specs = PLATFORM_SPECS }: { specs?: Spec[
                   </div>
                 </>
               )}
-                {hasEditableText(spec) && (
+                {/* The two buttons travel together at the right edge. The
+                    switches describe the destination; these two act on it, and
+                    a gap between the kinds is easier to aim at than a row of
+                    controls that all look alike. */}
+                <div className="integration-actions">
+                  {hasEditableText(spec) && (
+                    <button
+                      type="button"
+                      className="secondary btn-sm"
+                      aria-expanded={Boolean(open[row.id])}
+                      onClick={() => setOpen((p) => ({ ...p, [row.id]: !p[row.id] }))}
+                    >
+                      {open[row.id] ? 'Close' : 'Configure'}
+                    </button>
+                  )}
                   <button
                     type="button"
-                    className="secondary btn-sm"
-                    aria-expanded={Boolean(open[row.id])}
-                    onClick={() => setOpen((p) => ({ ...p, [row.id]: !p[row.id] }))}
+                    className="secondary btn-sm danger"
+                    disabled={busy === row.id}
+                    onClick={() => void remove(row)}
                   >
-                    {open[row.id] ? 'Close' : 'Configure'}
+                    Delete
                   </button>
-                )}
-                <button
-                  type="button"
-                  className="secondary btn-sm danger"
-                  disabled={busy === row.id}
-                  onClick={() => void remove(row)}
-                >
-                  Delete
-                </button>
+                </div>
               </div>
             </div>
 
