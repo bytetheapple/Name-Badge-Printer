@@ -222,6 +222,37 @@ _f_date = badge_mod._fit_line(_D.Draw(_test), "2026-09-04", _inner,
 check("and it is sized like a name, not like a date",
       _f_test.size > _f_date.size, f"{_f_test.size} vs {_f_date.size}")
 
+print("— a machine with no font refuses to print, instead of printing specks —")
+# Raspberry Pi OS Lite ships no TrueType fonts at all. Pillow's load_default()
+# hands back a real FreeTypeFont locked at 10 pixels, so every check we could
+# make about it passes and the badge prints at a size nobody can read. Beth El
+# printed like that for a day. A missing font has to be an error.
+_saved_paths = dict(badge_mod._FONT_PATHS)
+_saved_cache = dict(badge_mod._FONT_CACHE)
+_saved_dirs = badge_mod._FONT_DIRS
+try:
+    badge_mod._FONT_DIRS = ("/nonexistent-font-dir",)
+    badge_mod._FONT_PATHS.clear()
+    badge_mod._FONT_CACHE.clear()
+    try:
+        badge_mod._load_font(60, True)
+        check("no font raises rather than silently shrinking", False)
+    except RuntimeError as exc:
+        check("no font raises rather than silently shrinking", True)
+        check("and the message says how to fix it", "apt-get" in str(exc))
+finally:
+    badge_mod._FONT_DIRS = _saved_dirs
+    badge_mod._FONT_PATHS.clear()
+    badge_mod._FONT_PATHS.update(_saved_paths)
+    badge_mod._FONT_CACHE.clear()
+    badge_mod._FONT_CACHE.update(_saved_cache)
+
+# The size we ask for is the size we must get; the fallback ignored it.
+check("a font honours the size it was asked for",
+      badge_mod._load_font(60, True).size == 60)
+check("and the name on a badge is drawn far larger than a fallback's 10px",
+      _f_test.size > 40, f"{_f_test.size}px")
+
 print()
 if FAILURES:
     print(f"RESULT: {len(FAILURES)} failure(s): {', '.join(FAILURES)}")

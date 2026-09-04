@@ -18,6 +18,7 @@ DPI = 300
 MM = DPI / 25.4  # pixels per millimetre (~11.81)
 
 _FONT_CACHE: dict = {}
+_FONT_PATHS: dict = {}  # bold -> resolved file, so the directory walk happens once
 _ASSETS = os.path.join(os.path.dirname(os.path.abspath(__file__)), "assets")
 
 
@@ -132,6 +133,62 @@ def _label_render_size(label: str, length_mm: float) -> tuple[int, int]:
     return _sane(feed_px, head_px)  # die-cut: fixed in both dimensions
 
 
+# Where fonts live, by platform. A badge is nothing but large text, so a missing
+# font is a fatal error, not something to paper over: Pillow's load_default()
+# returns a real FreeTypeFont locked at 10 pixels, which renders a full badge at
+# an unreadable size while passing every check we could make about it.
+_FONT_DIRS = (
+    "/usr/share/fonts",
+    "/usr/local/share/fonts",
+    "/System/Library/Fonts/Supplemental",
+    "/System/Library/Fonts",
+    "/Library/Fonts",
+    os.path.expanduser("~/.local/share/fonts"),
+    os.path.expanduser("~/Library/Fonts"),
+)
+
+# Filenames worth having, best first. Any of them renders a legible badge.
+_FONT_FILES = {
+    True: (  # bold
+        "DejaVuSans-Bold.ttf",
+        "LiberationSans-Bold.ttf",
+        "NotoSans-Bold.ttf",
+        "FreeSansBold.ttf",
+        "Arial Bold.ttf",
+        "Helvetica.ttc",
+    ),
+    False: (
+        "DejaVuSans.ttf",
+        "LiberationSans-Regular.ttf",
+        "NotoSans-Regular.ttf",
+        "FreeSans.ttf",
+        "Arial.ttf",
+        "Helvetica.ttc",
+    ),
+}
+
+
+def _find_font_file(bold: bool):
+    """Locate a usable TrueType file, or None. Walks the font directories rather
+    than hard-coding full paths, because the same font sits in a different place
+    on Raspberry Pi OS, Debian and macOS."""
+    wanted = _FONT_FILES[bold]
+    found: dict = {}
+    for root in _FONT_DIRS:
+        if not os.path.isdir(root):
+            continue
+        for dirpath, _dirnames, filenames in os.walk(root):
+            for name in filenames:
+                if name in wanted and name not in found:
+                    found[name] = os.path.join(dirpath, name)
+        if len(found) == len(wanted):
+            break
+    for name in wanted:
+        if name in found:
+            return found[name]
+    return None
+
+
 def _load_font(size_px: int, bold: bool = True) -> ImageFont.FreeTypeFont:
     key = (size_px, bold)
     cached = _FONT_CACHE.get(key)
@@ -139,32 +196,22 @@ def _load_font(size_px: int, bold: bool = True) -> ImageFont.FreeTypeFont:
         return cached
 
     override = config.FONT_BOLD if bold else config.FONT_REGULAR
-    candidates = [override] if override else []
-    if bold:
-        candidates += [
-            "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",  # Raspberry Pi OS
-            "/System/Library/Fonts/Supplemental/Arial Bold.ttf",  # macOS
-            "/Library/Fonts/Arial Bold.ttf",
-        ]
-    else:
-        candidates += [
-            "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
-            "/System/Library/Fonts/Supplemental/Arial.ttf",
-            "/Library/Fonts/Arial.ttf",
-        ]
-    candidates += ["/System/Library/Fonts/Helvetica.ttc"]  # macOS fallback (both weights)
+    if bold not in _FONT_PATHS:  # "not found" is cached too; the walk is not cheap
+        _FONT_PATHS[bold] = override or _find_font_file(bold)
+    path = _FONT_PATHS[bold]
 
-    for path in candidates:
-        if not path:
-            continue
-        try:
-            font = ImageFont.truetype(path, size_px)
-            _FONT_CACHE[key] = font
-            return font
-        except OSError:
-            continue
+    if not path:
+        raise RuntimeError(
+            "no TrueType font found on this machine, so a badge would print at "
+            "an unreadable size. Install one with: "
+            "sudo apt-get install -y fonts-dejavu-core "
+            "(or set FONT_BOLD and FONT_REGULAR in .env to font files)"
+        )
 
-    font = ImageFont.load_default()
+    try:
+        font = ImageFont.truetype(path, size_px)
+    except OSError as exc:
+        raise RuntimeError(f"could not load the font at {path}: {exc}") from exc
     _FONT_CACHE[key] = font
     return font
 

@@ -5,6 +5,14 @@ set -euo pipefail
 
 cd "$(dirname "$0")/.."  # -> bridge/
 
+# A badge is almost entirely text, and Raspberry Pi OS Lite ships with no
+# TrueType fonts at all. Without one the bridge now refuses to render rather
+# than printing a badge at an unreadable size.
+if command -v apt-get >/dev/null 2>&1; then
+  echo "Installing fonts..."
+  sudo apt-get install -y fonts-dejavu-core
+fi
+
 echo "Creating virtualenv..."
 python3 -m venv venv
 ./venv/bin/pip install --upgrade pip

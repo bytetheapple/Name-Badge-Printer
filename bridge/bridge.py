@@ -17,6 +17,7 @@ from io import BytesIO
 import requests
 from PIL import Image
 
+import badge
 import client as client_module
 import config
 import discover
@@ -317,6 +318,13 @@ def main():
     config.require()
     client = client_module.make_client()
     _log(f"bridge starting; auth: {client.mode}; polling every {config.POLL_INTERVAL}s")
+    # Say which font we found at startup. A machine with none prints a badge
+    # nobody can read, and until this line existed you only found out from the
+    # badge itself.
+    try:
+        _log(f"font: {badge._load_font(60, bold=True).path}")
+    except Exception as e:
+        _log(f"WARNING: {e}", err=True)
     if client.mode.startswith("service_role"):
         _log(
             "WARNING: running on the project-wide service_role key, which can reach "
