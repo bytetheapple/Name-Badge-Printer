@@ -648,6 +648,23 @@ check("redacts the passphrase under this firmware's name too",
 check("1.32 callers are unaffected",
       pc.wifi_changes("Lobby", "hunter2")[0].get(pc.F_SSID) == "Lobby")
 
+print("— the printer is switched into raster mode —")
+# The factory default is P-touch Template, in which raster sent to port 9100 is
+# read as template commands. The printer accepts the job, prints, and reports
+# no error; what comes out is not a badge. A congregation's first printer was
+# configured by this wizard and produced unreadable labels for exactly this
+# reason, while an identical printer set to Raster by hand printed perfectly
+# from the same roll.
+_posted = {p: c for p, c in Stub.posts}
+check("configure posts a command-mode change",
+      any(pc.F_COMMAND_MODE in c for _p, c in Stub.posts),
+      str([sorted(c) for _p, c in Stub.posts]))
+check("and the mode it sets is raster, not the default",
+      any(c.get(pc.F_COMMAND_MODE) == pc.COMMAND_MODE_RASTER for _p, c in Stub.posts),
+      str([c.get(pc.F_COMMAND_MODE) for _p, c in Stub.posts if pc.F_COMMAND_MODE in c]))
+check("raster is 21 and the factory default it replaces is not",
+      pc.COMMAND_MODE_RASTER == "21")
+
 print()
 if FAILURES:
     print(f"RESULT: {len(FAILURES)} failure(s): {', '.join(FAILURES)}")

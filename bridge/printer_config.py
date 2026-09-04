@@ -75,6 +75,13 @@ F_PASSWORD = "B128"          # login (1.32; read from the page at run time)
 F_PASSWORD_ALT = "B126"      # login (1.23)
 F_AUTO_POWER_ON = "B1c"      # 0 disable, 1 enable
 F_AUTO_POWER_OFF_AC = "B1d"  # 0 None … 6 60 Mins
+#: Command Mode. The factory default is P-touch Template, in which raster
+#: data sent to port 9100 is read as template commands — the printer prints,
+#: and what comes out is not the badge. It is the single setting that decides
+#: whether this product works, and it was the one the wizard did not touch.
+F_COMMAND_MODE = "B24"       # 20 ESC/P, 21 Raster, 22 P-touch Template
+COMMAND_MODE_RASTER = "21"
+
 F_LANGUAGE = "B28"           # 3 English
 F_RADIO_ON_POWER = "B31"     # 0 on by default, 1 off by default, 2 keep current state
 F_INTERFACE = "B32"          # 0 infrastructure/adhoc, 1 +wireless direct, 2 direct
@@ -742,6 +749,12 @@ def configure_printer(
             F_HOUR: f"{t.tm_hour:02d}",
             F_MINUTE: f"{t.tm_min:02d}",
         })
+
+    # First of the device settings, because nothing else matters if this is
+    # wrong: the printer accepts the job, prints something, and reports no
+    # error. A congregation discovers it by looking at the label.
+    step("switch the printer to raster mode", PAGE_DEVICE,
+         {F_COMMAND_MODE: COMMAND_MODE_RASTER})
 
     step("set the panel language to English", PAGE_DEVICE, {F_LANGUAGE: "3"})
 
