@@ -236,6 +236,12 @@ export default function Integrations({ specs = PLATFORM_SPECS }: { specs?: Spec[
   const pending = (row: Integration) => dirty(row) || Boolean(secretInput[row.id]?.trim())
   const specOf = (kind: IntegrationKind) => specs.find((s) => s.kind === kind)
 
+  /** Whether this kind has anything an operator types. A destination that
+   *  names itself, holds no settings and needs no credential has nothing for a
+   *  Save button to do — the switches write themselves. */
+  const hasEditableText = (spec: Spec) =>
+    !spec.autoNamed || spec.fields.length > 0 || Boolean(spec.secret)
+
   const load = useCallback(async () => {
     if (!orgId) return
     setLoading(true)
@@ -695,7 +701,7 @@ export default function Integrations({ specs = PLATFORM_SPECS }: { specs?: Spec[
 
             {/* The switches are already live, so this can only ever be about the
                 text fields — which is why it names them. */}
-            {pending(row) && (
+            {hasEditableText(spec) && pending(row) && (
               <p className="muted small" style={{ marginTop: 10 }}>
                 The settings above have been edited and not saved yet.
               </p>
@@ -710,16 +716,19 @@ export default function Integrations({ specs = PLATFORM_SPECS }: { specs?: Spec[
               >
                 Delete
               </button>
-              {/* Dim until there is text to save. The switches below write
-                  themselves, so an enabled card with nothing typed has
-                  genuinely nothing for this button to do. */}
-              <button
-                type="button"
-                disabled={busy === row.id || !pending(row)}
-                onClick={() => void save(row)}
-              >
-                {busy === row.id ? 'Saving…' : 'Save'}
-              </button>
+              {/* Only where something can be typed. The switches write
+                  themselves, so on a destination that names itself and holds
+                  no settings this button could never do anything — and a
+                  permanently dimmed button reads as something being wrong. */}
+              {hasEditableText(spec) && (
+                <button
+                  type="button"
+                  disabled={busy === row.id || !pending(row)}
+                  onClick={() => void save(row)}
+                >
+                  {busy === row.id ? 'Saving…' : 'Save'}
+                </button>
+              )}
             </div>
 
           </section>
