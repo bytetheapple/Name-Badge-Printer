@@ -47,7 +47,7 @@ type Field = {
 type Spec = {
   kind: IntegrationKind
   title: string
-  blurb: string
+  blurb?: string
   fields: Field[]
   /** Set when the form itself can be read to list its fields. `urlKey` names
    *  the config entry holding the address to read. */
@@ -145,9 +145,6 @@ const CUSTOM_SPECS: Spec[] = [
       fromId: { key: 'spreadsheet_id', prefix: 'https://docs.google.com/spreadsheets/d/' },
       label: 'Open the sheet',
     },
-    blurb:
-      'Visitors who ask to hear more are added as a row of a spreadsheet in your own ' +
-      'Drive. Members are never sent.',
     autoNamed: true,
     fields: [],
   },
@@ -695,7 +692,7 @@ export default function Integrations({ specs = PLATFORM_SPECS }: { specs?: Spec[
               /* Nothing to name. The destination makes its own file and calls
                  it what it calls it; a box asking the operator for a different
                  name would be asking about something they never see. */
-              <p className="muted small">{spec.blurb}</p>
+              spec.blurb ? <p className="muted small">{spec.blurb}</p> : null
             ) : (
               <label className="field">
                 Name
@@ -704,10 +701,11 @@ export default function Integrations({ specs = PLATFORM_SPECS }: { specs?: Spec[
                   onChange={(e) => patch(row.id, { name: e.target.value })}
                   placeholder={spec.title}
                 />
-                <span className="muted small">{spec.blurb}</span>
+                {spec.blurb && <span className="muted small">{spec.blurb}</span>}
               </label>
             )}
 
+            {spec.fields.length > 0 && (
             <div className="grid2">
               {spec.fields.map((f) =>
                 f.type === 'checkbox' ? (
@@ -772,6 +770,7 @@ export default function Integrations({ specs = PLATFORM_SPECS }: { specs?: Spec[
                 ),
               )}
             </div>
+            )}
 
             {spec.kind === 'google_sheet' && !config.spreadsheet_id && (
               /* No sheet yet, and nothing to do about it. One is made the
