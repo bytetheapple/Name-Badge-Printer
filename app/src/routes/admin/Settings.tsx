@@ -18,6 +18,11 @@ export default function Settings() {
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  //: The connected Google account, for owners. Admins cannot read the
+  //: integration at all — it belongs to the owner — so they see whether
+  //: photographs are possible and not whose Drive they land in.
+  const [connection, setConnection] = useState<{ id: string; email: string } | null>(null)
+  const [testing, setTesting] = useState(false)
   //: What the Google round trip came back saying, if this page started one.
   const [notice, setNotice] = useState<string | null>(null)
 
@@ -57,6 +62,19 @@ export default function Settings() {
       setSelfieMode(mode)
       setPronounsEnabled(pronouns)
 
+      // Not filtered on enabled: a revoked connection is exactly the one worth
+      // showing, because Reconnect is the way out of it.
+      const { data: conn } = await supabase
+        .from('integrations')
+        .select('id, config')
+        .eq('org_id', orgId)
+        .eq('kind', 'google_oauth')
+        .order('created_at', { ascending: true })
+        .limit(1)
+        .maybeSingle()
+      const email = (conn?.config as Record<string, unknown> | null)?.connected_email
+      setConnection(conn && typeof email === 'string' ? { id: conn.id as string, email } : null)
+
       const { data: ready } = await supabase.rpc('integration_ready', {
         p_org: orgId,
         p_kind: 'google_drive',
@@ -83,6 +101,48 @@ export default function Settings() {
       setError(error.message)
       return
     }
+  }
+
+  /** Send the owner back to Google, landing here again afterwards. */
+  async function reconnect() {
+    setSaving(true)
+    setError(null)
+    const res = await invokeFn('google-oauth-begin', {
+      org_id: orgId,
+      return_to: '/admin/settings',
+    })
+    setSaving(false)
+    if (!res.ok || typeof res.url !== 'string') {
+      setError(res.error ?? 'Could not start the Google connection.')
+      return
+    }
+    window.location.assign(res.url as string)
+  }
+
+  /** Spend the refresh token, because nothing else can tell a live credential
+   *  from a dead one — the database holds the same row either way. */
+  async function testConnection() {
+    if (!connection) return
+    setTesting(true)
+    setError(null)
+    setNotice(null)
+    const res = await invokeFn('google-oauth-check', {
+      org_id: orgId,
+      integration_id: connection.id,
+    })
+    setTesting(false)
+    if (!res.ok) {
+      setError(res.error ?? 'The connection failed.')
+      return
+    }
+    const mins = Math.round(Number(res.expires_in ?? 0) / 60)
+    setNotice(
+      `Working. Google issued an access token for ${res.connected_email ?? connection.email}` +
+        (mins ? `, good for ${mins} minutes` : '') +
+        (res.can_write_files
+          ? ', with permission to create files in Drive.'
+          : ' — but WITHOUT file access. Reconnect to grant it.'),
+    )
   }
 
   /**
@@ -214,6 +274,36 @@ export default function Settings() {
               <option value="required">Required selfie</option>
             </select>
           </label>
+
+          {/* Whose Drive this is, and the two things worth doing to it. Only
+              owners see this: an admin cannot read the integration at all, and
+              the address of a congregation's Google account is not theirs to
+              hand around. */}
+          {isOwner && connection && (
+            <div style={{ marginTop: 16 }}>
+              <div className="muted small">
+                Photographs and sign-ins go to <strong>{connection.email}</strong>.
+              </div>
+              <div style={{ marginTop: 6, display: 'flex', gap: 8 }}>
+                <button
+                  type="button"
+                  className="secondary btn-sm"
+                  disabled={saving}
+                  onClick={() => void reconnect()}
+                >
+                  Reconnect Google
+                </button>
+                <button
+                  type="button"
+                  className="secondary btn-sm"
+                  disabled={testing}
+                  onClick={() => void testConnection()}
+                >
+                  {testing ? 'Asking Google…' : 'Test connection'}
+                </button>
+              </div>
+            </div>
+          )}
 
           {/* Already asking for photos, and Drive has gone away underneath it.
               The urgent case, and the only one where something is actively

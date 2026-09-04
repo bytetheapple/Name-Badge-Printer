@@ -50,16 +50,9 @@ type Spec = {
   scan?: { urlKey: string; fn: string }
   /** Set when this integration is configured by connecting an account rather
    *  than by typing credentials — the card shows a Connect button. */
-  connect?: { fn: string; label: string; test?: string }
   /** A destination this integration made for itself, worth offering a way in
    *  to — the config holds the address, but nobody thinks to look there. */
   opens?: { urlKey: string; label: string; fromId?: { key: string; prefix: string } }
-  /** Config key that must be set before this is worth showing. For a Google
-   *  connection there is nothing to see until one exists, and nothing to add
-   *  by hand — it is made when something needs it. */
-  showWhen?: string
-  /** Kept out of "Add an integration": it is not something to add. */
-  notAddable?: boolean
   /** Set when this integration also stores a credential in Vault. */
   secret?: { label: string; hint: string }
 }
@@ -143,24 +136,17 @@ const CUSTOM_SPECS: Spec[] = [
   },
 ]
 
-// Note: there is deliberately no card for kind 'google_drive'. The row still
+// Note: there is deliberately no card for 'google_oauth' or 'google_drive'.
+// The Google account is shown under Settings, beside the photographs it
+// exists for — it has no name, no enable switch and no per-printer routing,
+// which is most of what a card on this page is.
+//
+// And for 'google_drive': The row still
 // exists — per-printer routing and the delivery record for each photograph
 // attach to it — but it holds no settings at all now that the credential lives
 // on the Google connection, so it is created when photographs are switched on
 // in Settings rather than added by hand here.
 const PLATFORM_SPECS: Spec[] = [
-  {
-    kind: 'google_oauth',
-    title: 'Google account',
-    blurb:
-      'Sign-ins and photographs are written to this account\'s Drive, on its own storage. ' +
-      'We can only see the files we create — nothing else in the Drive is visible to us. ' +
-      'Reconnect if access is ever revoked or the password changes.',
-    connect: { fn: 'google-oauth-begin', label: 'Connect Google', test: 'google-oauth-check' },
-    showWhen: 'connected_email',
-    notAddable: true,
-    fields: [],
-  },
 ]
 
 /**
@@ -198,58 +184,39 @@ export default function Integrations({ specs = PLATFORM_SPECS }: { specs?: Spec[
    * where a congregation's visitors are sent, which is the one thing this must
    * never do on its own.
    */
-  /** Send the owner to Google to approve, then come back to this page.
+  /**
+   * Make the spreadsheet now, rather than on the first visitor.
    *
-   *  A full navigation rather than a popup or a fetch: the consent screen is
-   *  Google's page and must be seen, and a 302 answered to fetch() would be
-   *  followed invisibly by the browser.
+   * Waiting until a sign-in meant configuring a destination and being shown
+   * nothing — no sheet, no link, no way to tell whether it had worked. If the
+   * organization has not connected Google yet, this is also the moment to ask.
    */
-  async function connectAccount(row: Integration, spec: Spec) {
-    if (!spec.connect) return
-    setBusy(row.id)
-    setError(null)
-    const res = await invokeFn(spec.connect.fn, {
-      org_id: row.org_id,
-      integration_id: row.id,
-    })
-    if (!res.ok || typeof res.url !== 'string') {
-      setBusy(null)
-      setError(res.error ?? 'Could not start the connection.')
-      return
-    }
-    window.location.assign(res.url as string)
-  }
-
-  /** Spend the refresh token, and say what came back.
-   *
-   *  The only way to know a connection still works. A credential Google has
-   *  stopped honouring looks identical in the database to a good one, so
-   *  "connected" on this page is a claim about the past until something
-   *  actually asks Google.
-   */
-  async function testConnection(row: Integration, spec: Spec) {
-    if (!spec.connect?.test) return
+  async function createSheetFor(row: Integration) {
     setBusy(row.id)
     setError(null)
     setScanNote((p) => ({ ...p, [row.id]: '' }))
-    const res = await invokeFn(spec.connect.test, {
+    const res = await invokeFn('google-provision', {
       org_id: row.org_id,
+      what: 'sheet',
       integration_id: row.id,
     })
     setBusy(null)
-    if (!res.ok) {
-      setScanNote((p) => ({ ...p, [row.id]: res.error ?? 'The connection failed.' }))
-      if (res.revoked) void load()
+    if (res.ok) {
+      setScanNote((p) => ({ ...p, [row.id]: 'Sheet created in your Drive.' }))
+      await load()
       return
     }
-    const mins = Math.round(Number(res.expires_in ?? 0) / 60)
-    setScanNote((p) => ({
-      ...p,
-      [row.id]:
-        `Working. Google issued an access token for ${res.connected_email ?? 'this account'}` +
-        (mins ? `, good for ${mins} minutes` : '') +
-        (res.can_write_files ? '.' : ' — but WITHOUT file access; reconnect to grant it.'),
-    }))
+    if (res.needs_connect) {
+      const begin = await invokeFn('google-oauth-begin', {
+        org_id: row.org_id,
+        return_to: '/admin/integrations',
+      })
+      if (begin.ok && typeof begin.url === 'string') {
+        window.location.assign(begin.url as string)
+        return
+      }
+    }
+    setScanNote((p) => ({ ...p, [row.id]: res.error ?? 'Could not create the sheet.' }))
   }
 
   async function scanFormFor(row: Integration, spec: Spec) {
@@ -498,10 +465,6 @@ export default function Integrations({ specs = PLATFORM_SPECS }: { specs?: Spec[
         const spec = specOf(row.kind)
         if (!spec) return null
         const config = (row.config ?? {}) as Record<string, unknown>
-        // Nothing to show yet. A connection begun and abandoned leaves a row
-        // behind; a card for it would be an empty box inviting somebody to
-        // configure something that configures itself.
-        if (spec.showWhen && !config[spec.showWhen]) return null
         return (
           <section className="card" key={row.id}>
             {/* The name, as typed, with what it is behind it. Live rather than
@@ -625,6 +588,24 @@ export default function Integrations({ specs = PLATFORM_SPECS }: { specs?: Spec[
               )}
             </div>
 
+            {spec.kind === 'google_sheet' && !config.spreadsheet_id && (
+              <div style={{ marginTop: 10 }}>
+                <button
+                  type="button"
+                  className="secondary btn-sm"
+                  disabled={busy === row.id}
+                  onClick={() => void createSheetFor(row)}
+                >
+                  {busy === row.id ? 'Creating…' : 'Create the sheet'}
+                </button>
+                <span className="muted small" style={{ marginLeft: 10 }}>
+                  {scanNote[row.id] ||
+                    'Makes the spreadsheet in your Google Drive. Connects a Google account ' +
+                      'first if there is not one.'}
+                </span>
+              </div>
+            )}
+
             {spec.opens && openHref(spec.opens, config) && (
               <div style={{ marginTop: 10 }}>
                 <a href={openHref(spec.opens, config)!} target="_blank" rel="noreferrer noopener">
@@ -635,36 +616,6 @@ export default function Integrations({ specs = PLATFORM_SPECS }: { specs?: Spec[
                     An earlier sheet holds the sign-ins from before the switch.
                   </span>
                 )}
-              </div>
-            )}
-
-            {spec.connect && (
-              <div style={{ marginTop: 10 }}>
-                <button
-                  type="button"
-                  className="secondary btn-sm"
-                  disabled={busy === row.id}
-                  onClick={() => void connectAccount(row, spec)}
-                >
-                  {config.connected_email ? 'Reconnect Google' : spec.connect.label}
-                </button>
-                {Boolean(config.connected_email) && spec.connect.test && (
-                  <button
-                    type="button"
-                    className="secondary btn-sm"
-                    style={{ marginLeft: 8 }}
-                    disabled={busy === row.id}
-                    onClick={() => void testConnection(row, spec)}
-                  >
-                    {busy === row.id ? 'Asking Google…' : 'Test connection'}
-                  </button>
-                )}
-                <span className="muted small" style={{ marginLeft: 10 }}>
-                  {scanNote[row.id] ||
-                    (config.connected_email
-                      ? `Connected as ${String(config.connected_email)}.`
-                      : 'Not connected yet.')}
-                </span>
               </div>
             )}
 
@@ -761,13 +712,11 @@ export default function Integrations({ specs = PLATFORM_SPECS }: { specs?: Spec[
               onChange={(e) => setAddKind(e.target.value as IntegrationKind | '')}
             >
               <option value="">Choose…</option>
-              {specs
-                .filter((s) => !s.notAddable)
-                .map((s) => (
-                  <option key={s.kind} value={s.kind}>
-                    {s.title}
-                  </option>
-                ))}
+              {specs.map((s) => (
+                <option key={s.kind} value={s.kind}>
+                  {s.title}
+                </option>
+              ))}
             </select>
           </label>
           <label className="field">
