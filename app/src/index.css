@@ -2205,6 +2205,19 @@ button.danger:disabled {
 /* What can be done to the destination, as a pair, at the right edge — away
    from the switches, so Delete is never the button beside one somebody is
    reaching for. */
+/* "Send [ … ]" on the banner. Inline so it reads as one phrase rather than a
+   label above a box, which is how a form field looks and this is not one. */
+.integration-audience {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.integration-audience select {
+  font-size: 0.85rem;
+  padding: 2px 6px;
+  width: auto;
+}
+
 .integration-actions {
   display: flex;
   align-items: center;

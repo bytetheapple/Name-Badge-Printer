@@ -147,10 +147,11 @@ Deno.serve(async (req) => {
       party_id: partyId,
       is_primary: true,
       // Members are recorded but never sent to Google / ShulCloud.
-      // "skipped" for anyone not being sent — a member, or a visitor who did
-      // not ask to hear more. Pending would say a sync is coming that never is.
-      google_sync_status: wantsFollowup ? "pending" : "skipped",
-      shulcloud_sync_status: wantsFollowup ? "pending" : "skipped",
+      // Pending for everyone, because whether anything is sent now depends on
+      // what each destination takes, and that is not knowable here. The syncs
+      // resolve it to sent or skipped within the second.
+      google_sync_status: "pending",
+      shulcloud_sync_status: "pending",
       source_ip: ip,
     }),
   });
@@ -220,14 +221,17 @@ Deno.serve(async (req) => {
 
   // Only the primary (with contact info) is pushed to Google and ShulCloud in
   // the background; members and members-only sign-ins are skipped.
-  // Only a visitor who asked to hear more. The syncs check this too — it is a
-  // consent rule, so it holds on a resend as well — but there is no reason to
-  // wake three functions to discover it.
-  if (wantsFollowup) {
-    triggerSync("google-sync", entry.id);
-    triggerSync("shulcloud-sync", entry.id);
-    triggerSync("google-sheet-sync", entry.id);
-  }
+  // Every primary sign-in, member or visitor. Who is actually sent is now a
+  // property of each destination — one may take only the visitors who asked to
+  // hear more while another keeps a record of everyone — so it cannot be
+  // decided here. Each sync skips the destinations that do not want this
+  // sign-in, and records that it did.
+  //
+  // The additional family members are still never sent: they are name-only
+  // rows with no contact details, and no destination has asked for those.
+  triggerSync("google-sync", entry.id);
+  triggerSync("shulcloud-sync", entry.id);
+  triggerSync("google-sheet-sync", entry.id);
 
   return json({ ok: true, job_id: job.id, entry_id: entry.id, job_ids: jobIds });
 });

@@ -18,6 +18,7 @@ import {
 } from "../_shared/google.ts";
 import { anyKnown, colName, COLUMNS, rowFor, sheetId } from "../_shared/sheetrow.ts";
 import {
+  audienceAllows,
   recordDelivery,
   REST,
   restHeaders,
@@ -33,6 +34,7 @@ interface Entry {
   id: string;
   org_id: string;
   wants_followup: boolean;
+  visitor_type: string;
   first_name: string;
   last_name: string | null;
   email: string | null;
@@ -202,7 +204,7 @@ Deno.serve(async (req) => {
   const res = await fetch(
     `${REST}/form_entries?id=eq.${entryId}` +
       `&select=id,org_id,first_name,last_name,email,phone,created_at,selfie_link,`+
-      `wants_followup,`+
+      `wants_followup,visitor_type,`+
       `printer:printers(name)`,
     { headers: restHeaders },
   );
@@ -213,21 +215,18 @@ Deno.serve(async (req) => {
   const targets = await targetsFor(entryId, "google_sheet", String(body.only ?? "") || null);
   if (!targets.length) return json({ ok: true, skipped: true });
 
-  // Consent, not scheduling. A visitor who left the follow-up box unticked
-  // asked not to hear more, and sending their name, email and telephone number
-  // to a congregation's systems anyway is the thing they declined. Enforced
-  // here rather than only where the sync is triggered, so a resend from the
-  // Entries table honours it too.
-  if (entry.wants_followup !== true) {
-    for (const t of targets) {
-      await recordDelivery(entryId, t.id, "skipped", "the visitor did not ask to hear more");
-    }
-    return json({ ok: true, skipped: true, reason: "no follow-up requested" });
-  }
 
 
   const results: Array<{ ok: boolean; error?: string }> = [];
   for (const t of targets) {
+    // Who this destination takes. Asked per destination rather than once for
+    // the sign-in: a congregation may want every visit in a spreadsheet and
+    // only the interested ones in their CRM.
+    const wanted = audienceAllows(t.config, entry);
+    if (!wanted.ok) {
+      await recordDelivery(entryId, t.id, "skipped", wanted.reason);
+      continue;
+    }
     const r = await sendTo(entry, t);
     // A note on a successful delivery: it went, and something about where it
     // went is worth knowing. The Entries pill shows this text on the row.

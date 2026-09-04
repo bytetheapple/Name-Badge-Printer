@@ -6,7 +6,7 @@
 // (integrations, kind 'shulcloud'), and from nowhere else. An org that has not
 // configured it syncs nowhere rather than posting into anyone's CRM.
 import { corsHeaders, json } from "../_shared/cors.ts";
-import { recordDelivery, rollUp, targetsFor, type Target } from "../_shared/integration.ts";
+import { audienceAllows, recordDelivery, rollUp, targetsFor, type Target } from "../_shared/integration.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_ROLE = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -71,17 +71,6 @@ Deno.serve(async (req) => {
     return json({ ok: false, error: "No ShulCloud destinations for this sign-in" });
   }
 
-  // Consent, not scheduling. A visitor who left the follow-up box unticked
-  // asked not to hear more, and sending their name, email and telephone number
-  // into a congregation's systems anyway is precisely what they declined.
-  // Enforced here rather than only where the sync is triggered, so a resend
-  // from the Entries table honours it too.
-  if (entry.wants_followup !== true) {
-    for (const t of targets) {
-      await recordDelivery(entryId, t.id, "skipped", "the visitor did not ask to hear more");
-    }
-    return json({ ok: true, skipped: true, reason: "no follow-up requested" });
-  }
 
   /**
    * One submission to one ShulCloud form.
@@ -153,6 +142,14 @@ Deno.serve(async (req) => {
 
   const results: Array<{ ok: boolean; error?: string }> = [];
   for (const t of targets) {
+    // Who this destination takes. Asked per destination rather than once for
+    // the sign-in: a congregation may want every visit in a spreadsheet and
+    // only the interested ones in their CRM.
+    const wanted = audienceAllows(t.config, entry);
+    if (!wanted.ok) {
+      await recordDelivery(entryId, t.id, "skipped", wanted.reason);
+      continue;
+    }
     let outcome: { ok: boolean; error?: string };
     try {
       outcome = await deliver(t);

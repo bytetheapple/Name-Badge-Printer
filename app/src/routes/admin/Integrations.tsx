@@ -323,6 +323,30 @@ export default function Integrations({ specs = PLATFORM_SPECS }: { specs?: Spec[
    * text fields is not dragged live along with it — those still need Save,
    * and the card says so while they differ.
    */
+  /** Written on change, like the switches beside it — there is nothing for a
+   *  Save to coordinate, and this is the state of the thing rather than part
+   *  of its configuration. */
+  async function setAudience(row: Integration, value: string) {
+    const before = (row.config ?? {}) as Record<string, unknown>
+    const next = { ...before, audience: value }
+    patch(row.id, { config: next })
+    setBusy(row.id)
+    setError(null)
+    const { error } = await supabase
+      .from('integrations')
+      .update({ config: next })
+      .eq('id', row.id)
+    setBusy(null)
+    if (error) {
+      // Back where it was: a control showing a state the database does not
+      // hold is worse than the failure.
+      patch(row.id, { config: before })
+      setError(error.message)
+      return
+    }
+    await load()
+  }
+
   async function toggleNow(row: Integration, key: 'enabled' | 'default_enabled', value: boolean) {
     const before = row[key]
     patch(row.id, { [key]: value } as Partial<Integration>)
@@ -546,6 +570,25 @@ export default function Integrations({ specs = PLATFORM_SPECS }: { specs?: Spec[
                 />
                 Enabled
               </label>
+
+              {/* Who this destination takes. Under Enabled because it only
+                  means anything once something is being sent, and per
+                  destination because a congregation may want every visit in a
+                  spreadsheet and only the interested ones in their CRM. */}
+              {row.enabled && (
+                <label className="integration-audience">
+                  <span className="muted small">Send</span>
+                  <select
+                    value={String((row.config as Record<string, unknown>)?.audience ?? 'interested')}
+                    onChange={(e) => void setAudience(row, e.target.value)}
+                    disabled={busy === row.id}
+                  >
+                    <option value="interested">Interested visitors</option>
+                    <option value="visitors">All visitors</option>
+                    <option value="all">All sign-ins</option>
+                  </select>
+                </label>
+              )}
 
               {/* Only once it is enabled. "On by default" for something
                   switched off describes a state no printer can be in, and the

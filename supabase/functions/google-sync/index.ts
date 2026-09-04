@@ -12,7 +12,7 @@
 // Body: { entry_id, integration_id? }. With integration_id, only that
 // destination is attempted — a resend from one row of the expanded pill.
 import { corsHeaders, json } from "../_shared/cors.ts";
-import { recordDelivery, rollUp, targetsFor } from "../_shared/integration.ts";
+import { audienceAllows, recordDelivery, rollUp, targetsFor } from "../_shared/integration.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_ROLE = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -59,21 +59,18 @@ Deno.serve(async (req) => {
     return json({ ok: false, error: "No Google Form destinations for this sign-in" });
   }
 
-  // Consent, not scheduling. A visitor who left the follow-up box unticked
-  // asked not to hear more, and sending their name, email and telephone number
-  // into a congregation's systems anyway is precisely what they declined.
-  // Enforced here rather than only where the sync is triggered, so a resend
-  // from the Entries table honours it too.
-  if (entry.wants_followup !== true) {
-    for (const t of targets) {
-      await recordDelivery(entryId, t.id, "skipped", "the visitor did not ask to hear more");
-    }
-    return json({ ok: true, skipped: true, reason: "no follow-up requested" });
-  }
 
   const results: Array<{ ok: boolean; error?: string }> = [];
 
   for (const t of targets) {
+    // Who this destination takes. Asked per destination rather than once for
+    // the sign-in: a congregation may want every visit in a spreadsheet and
+    // only the interested ones in their CRM.
+    const wanted = audienceAllows(t.config, entry);
+    if (!wanted.ok) {
+      await recordDelivery(entryId, t.id, "skipped", wanted.reason);
+      continue;
+    }
     const FORM_URL = String(t.config.response_url ?? "");
     const F_FIRST = String(t.config.entry_first ?? "");
     const F_LAST = String(t.config.entry_last ?? "");

@@ -76,6 +76,43 @@ export async function resolveSettings(
   return { config: own.config, secret: own.secret, source: "org" };
 }
 
+/**
+ * Who a destination wants.
+ *
+ *   interested  visitors who asked to hear more. The safe default, and what
+ *               every destination did before this was configurable.
+ *   visitors    every visitor, whether or not they asked.
+ *   all         members too — a record of who came, rather than a list of
+ *               people to contact.
+ *
+ * Per destination rather than per organization: a congregation may well want
+ * every sign-in in a spreadsheet and only the interested ones in their CRM,
+ * and those are different answers to different questions.
+ */
+export type Audience = "interested" | "visitors" | "all";
+
+export function audienceOf(config: Record<string, unknown>): Audience {
+  const v = String(config?.audience ?? "");
+  return v === "visitors" || v === "all" ? v : "interested";
+}
+
+/** Whether this destination wants this sign-in, and why not if it does not. */
+export function audienceAllows(
+  config: Record<string, unknown>,
+  entry: { visitor_type?: string | null; wants_followup?: boolean | null },
+): { ok: true } | { ok: false; reason: string } {
+  const want = audienceOf(config);
+  const isVisitor = entry.visitor_type === "visitor";
+
+  if (want === "all") return { ok: true };
+  if (!isVisitor) {
+    return { ok: false, reason: "this destination takes visitors only, and this is a member" };
+  }
+  if (want === "visitors") return { ok: true };
+  if (entry.wants_followup === true) return { ok: true };
+  return { ok: false, reason: "the visitor did not ask to hear more" };
+}
+
 /** One destination a sign-in should reach, with its credential. */
 export interface Target {
   id: string;
