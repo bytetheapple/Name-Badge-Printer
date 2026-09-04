@@ -1,7 +1,6 @@
-import { useEffect, useState, type FormEvent } from 'react'
+import { useEffect, useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import { useOrg } from '../../lib/org'
-import { driveFolderId } from '../../lib/drive'
 import OrgLogo from './OrgLogo'
 
 type SelfieMode = 'off' | 'optional' | 'required'
@@ -9,34 +8,16 @@ type SelfieMode = 'off' | 'optional' | 'required'
 export default function Settings() {
   const { orgId, isAdmin } = useOrg()
   const [selfieMode, setSelfieMode] = useState<SelfieMode>('off')
-  //: Where the photos go. Edited here rather than under Integrations: which
-  //: folder to file visitor photos in is a decision about how the congregation
-  //: runs its welcome desk, not part of connecting a Google account.
-  const [folderId, setFolderId] = useState('')
-  //: Whether Drive is connected at all — service account, key, and switched
-  //: on. An admin cannot read the integration itself (it belongs to the
-  //: owner), so this is the one fact the database will tell them about it.
+  //: Whether anything can write to this organization's Drive — a connected
+  //: Google account, or the service account that path is replacing. An admin
+  //: cannot read the integration itself (it belongs to the owner), so this is
+  //: the one fact the database will tell them about it.
   const [driveConnected, setDriveConnected] = useState(false)
   const [pronounsEnabled, setPronounsEnabled] = useState(false)
-  // Snapshot of the last-saved values, so the Save button can grey out until
-  // something actually changes.
-  const [saved, setSaved] = useState({
-    selfieMode: 'off' as SelfieMode,
-    folderId: '',
-    pronounsEnabled: false,
-  })
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  //: Pronouns is excluded: it writes itself, so it is never pending.
-  const dirty = selfieMode !== saved.selfieMode || folderId.trim() !== saved.folderId
-
-  // Asking for a photo with nowhere to put it can only fail at upload time,
-  // in front of a visitor. Both halves have to be true before it is offered:
-  // an account that can write to Drive, and a folder to write into.
-  const hasFolder = folderId.trim() !== ''
-  const needsFolder = selfieMode !== 'off' && !hasFolder
 
   useEffect(() => {
     if (!orgId) return
@@ -52,12 +33,9 @@ export default function Settings() {
         return
       }
       const mode = (data?.selfie_mode ?? 'off') as SelfieMode
-      const folder = data?.selfie_drive_folder_id ?? ''
       const pronouns = Boolean(data?.pronouns_enabled)
       setSelfieMode(mode)
-      setFolderId(folder)
       setPronounsEnabled(pronouns)
-      setSaved({ selfieMode: mode, folderId: folder, pronounsEnabled: pronouns })
 
       const { data: ready } = await supabase.rpc('integration_ready', {
         p_org: orgId,
@@ -85,40 +63,28 @@ export default function Settings() {
       setError(error.message)
       return
     }
-    setSaved((p) => ({ ...p, pronounsEnabled: value }))
   }
 
-  async function save(e: FormEvent) {
-    e.preventDefault()
+  /** Written on change, like the pronouns switch. There is nothing left for a
+   *  Save button to coordinate: the folder used to be saved alongside this and
+   *  had to agree with it, and the folder is now made by the connected account
+   *  rather than typed in. */
+  async function chooseSelfieMode(next: SelfieMode) {
+    const before = selfieMode
+    setSelfieMode(next)
     setError(null)
-    // Refused rather than saved-and-broken: this is exactly the state where a
-    // visitor is asked for a photo that cannot be stored.
-    if (needsFolder) {
-      setError('Choose a Google Drive folder before asking visitors for a photo.')
-      return
-    }
-    // Stored as an id whatever was pasted. Refused rather than saved when a
-    // link turns out not to name a folder — a link to a file looks right and
-    // fails at the first upload, in front of a visitor.
-    const folder = driveFolderId(folderId)
-    if (folderId.trim() && !folder) {
-      setError(
-        'That does not look like a Google Drive folder. Open the folder in Drive and copy the ' +
-          'address from your browser.',
-      )
-      return
-    }
     setSaving(true)
     const { error } = await supabase
       .from('app_settings')
-      .update({ selfie_mode: selfieMode, selfie_drive_folder_id: folder || null })
+      .update({ selfie_mode: next })
       .eq('org_id', orgId)
     setSaving(false)
     if (error) {
+      // Back where it was: a control showing a state the database does not
+      // hold is worse than the failure.
+      setSelfieMode(before)
       setError(error.message)
-    } else {
-      setFolderId(folder)
-      setSaved({ selfieMode, folderId: folder, pronounsEnabled })
+      return
     }
   }
 
@@ -137,20 +103,19 @@ export default function Settings() {
       <h1>Settings</h1>
       {error && <div className="error">{error}</div>}
 
-      {/* The column, so the panes line up whether or not they are part of the
-          form. The selfie settings are; pronouns writes itself. */}
+      {/* The column, so the panes line up. Every control on this page writes
+          itself on change — there is nothing left to submit. */}
       <div className="config-form">
-      <form onSubmit={save}>
         <section className="card">
           <h2>Selfie (visitors only)</h2>
           {/* Said before the control rather than after it, because it is the
               reason the control is unavailable. */}
           {!driveConnected && (
             <p className="muted small" style={{ marginBottom: 12 }}>
-              Visitor photos are stored in your congregation's Google Drive, so Drive has to be
-              connected before selfies can be collected. An owner can do that under{' '}
-              <strong>Integrations → Google Drive</strong>. Until then the only option here is no
-              selfie.
+              Visitor photos are stored in your congregation's Google Drive, so a Google account
+              has to be connected before they can be collected. An owner can do that under{' '}
+              <strong>Integrations → Google account</strong>. Until then the only option here is
+              no selfie.
             </p>
           )}
 
@@ -163,6 +128,7 @@ export default function Settings() {
                 the one value that would stop the failures. */}
             <select
               value={selfieMode}
+              disabled={saving}
               onChange={(e) => {
                 const next = e.target.value as SelfieMode
                 // Belt and braces: the options are disabled, but a keyboard or
@@ -170,13 +136,13 @@ export default function Settings() {
                 // the choice would look like the page was broken.
                 if (next !== 'off' && !driveConnected) {
                   setError(
-                    'Connect Google Drive under Integrations → Google Drive before collecting ' +
-                      'visitor photos.',
+                    'Connect a Google account under Integrations before collecting visitor ' +
+                      'photos.',
                   )
                   return
                 }
                 setError(null)
-                setSelfieMode(next)
+                void chooseSelfieMode(next)
               }}
             >
               <option value="off">No selfie</option>
@@ -189,64 +155,17 @@ export default function Settings() {
             </select>
           </label>
 
-          {/* The folder is only a question once photos are actually being
-              collected. Asking for it up front is asking for something that
-              may never be used. */}
-          {driveConnected && selfieMode !== 'off' && (
-            <>
-            {/* Before the field, not after it: it explains why the box is
-                there at all. */}
-            <p className="muted small" style={{ marginTop: 12 }}>
-              Selfies are stored in your Google Drive, in the folder you specify below. Paste the
-              URL for the Google Drive folder you want to use.
-            </p>
-            <label className="field">
-              Google Drive folder
-              <input
-                value={folderId}
-                onChange={(e) => setFolderId(e.target.value)}
-                onBlur={(e) => {
-                  // Reduced to the id when they leave the box rather than as
-                  // they type: a field that rewrites itself under the cursor is
-                  // unusable, and seeing the id appear on blur is what confirms
-                  // the link was understood.
-                  const id = driveFolderId(e.target.value)
-                  if (id) setFolderId(id)
-                }}
-                placeholder="https://drive.google.com/drive/folders/…"
-              />
-            </label>
-            </>
-          )}
-
           {/* Already asking for photos, and Drive has gone away underneath it.
               The urgent case, and the only one where something is actively
               failing in front of visitors. */}
           {!driveConnected && selfieMode !== 'off' && (
             <p className="warn" style={{ marginTop: 8 }}>
-              Visitors are being asked for a photo, but Google Drive is not connected, so every
+              Visitors are being asked for a photo, but no Google account is connected, so every
               upload is failing. Choose <strong>No selfie</strong> here, or ask an owner to
-              reconnect Drive under Integrations.
+              connect one under Integrations.
             </p>
           )}
-
-          {needsFolder && (
-            <p className="warn" style={{ marginTop: 8 }}>
-              Choose a folder before saving — without one every photo a visitor takes would fail
-              to store.
-            </p>
-          )}
-
-          {/* Inside the pane it applies to. It used to sit below every card,
-              between Pronouns and the name mark, which made it look like it
-              saved those too — it saves neither. The mode and the folder stay
-              behind it together on purpose: saving a mode with no folder is
-              the one broken state this pane exists to prevent. */}
-          <button type="submit" disabled={saving || !dirty} style={{ marginTop: 16 }}>
-            {saving ? 'Saving…' : 'Save selfie settings'}
-          </button>
         </section>
-      </form>
 
       <section className="card">
         <h2>Pronouns</h2>
