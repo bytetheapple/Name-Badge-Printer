@@ -158,6 +158,36 @@ for _len in (0, -5, None):
 check("and a real length is untouched",
       badge_mod._label_render_size('62', 90.0) == badge_mod._label_render_size('62', 0.0))
 
+print("— a label table that reports oddly still yields a drawable canvas —")
+# A continuous roll has no fixed length, so one of the two numbers in
+# dots_printable is zero. Which one is not something every build of brother_ql
+# agrees on, and reading the zero as the head width gave a canvas with no
+# height — reported by PIL as "height and width must be > 0", which sounds
+# like a bug in the image and is a fact about a label table.
+class _Endless:
+    identifier = "fake"
+    form_factor = "FormFactor.ENDLESS"
+    dots_printable = (0, 696)          # the other order
+
+class _Zeroes:
+    identifier = "broken"
+    form_factor = "FormFactor.ENDLESS"
+    dots_printable = (0, 0)            # no help at all
+
+_saved = dict(badge_mod._LABELS)
+try:
+    badge_mod._LABELS["fake"] = _Endless()
+    badge_mod._LABELS["broken"] = _Zeroes()
+    for _lab in ("fake", "broken", "62", "60x86"):
+        _w, _h = badge_mod._label_render_size(_lab, 90.0)
+        check(f"{_lab} gives a drawable canvas", _w > 0 and _h > 0, f"{_w}x{_h}")
+    # And the one that matters: a real badge comes out rather than an exception.
+    _img = badge_mod.render_badge("Ada", "L", {}, "fake")
+    check("and a badge actually renders on it", _img.size[0] > 0 and _img.size[1] > 0)
+finally:
+    badge_mod._LABELS.clear()
+    badge_mod._LABELS.update(_saved)
+
 print()
 if FAILURES:
     print(f"RESULT: {len(FAILURES)} failure(s): {', '.join(FAILURES)}")

@@ -78,6 +78,25 @@ def _label_render_size(label: str, length_mm: float) -> tuple[int, int]:
             )
         length_mm = 90.0
 
+    def _sane(w: int, h: int) -> tuple[int, int]:
+        """Never hand back a dimension that cannot be drawn.
+
+        Everything above reads numbers out of a third-party label table, and a
+        zero anywhere in it fails every badge for an organization with a
+        message about images. One roll's metadata is not worth a lobby.
+        """
+        if w > 0 and h > 0:
+            return w, h
+        if "size" not in _WARNED_LABELS:
+            _WARNED_LABELS.add("size")
+            print(
+                f"[badge] label '{label}' gave a canvas of {w}x{h} — "
+                "rendering as 62 mm continuous instead.",
+                file=sys.stderr,
+                flush=True,
+            )
+        return round(length_mm * MM), 696
+
     spec = _LABELS.get(label)
     if spec is None:
         # Falling back silently means badges render at a size nobody chose and
@@ -92,11 +111,18 @@ def _label_render_size(label: str, length_mm: float) -> tuple[int, int]:
                 file=sys.stderr,
                 flush=True,
             )
-        return round(length_mm * MM), 696  # fallback: 62 mm continuous
+        return _sane(round(length_mm * MM), 696)  # fallback: 62 mm continuous
     head_px, feed_px = spec.dots_printable
     if "ENDLESS" in str(spec.form_factor):
-        return round(length_mm * MM), head_px
-    return feed_px, head_px  # die-cut: fixed in both dimensions
+        # A continuous roll has no fixed length, so one of these two numbers is
+        # zero — and which one is not something every build of brother_ql
+        # agrees on. Taking whichever is set beats trusting the order: reading
+        # the zero as the head width produced a canvas with no height, and PIL
+        # reported it as "height and width must be > 0", a sentence about an
+        # image rather than about a label.
+        head = head_px or feed_px
+        return _sane(round(length_mm * MM), head)
+    return _sane(feed_px, head_px)  # die-cut: fixed in both dimensions
 
 
 def _load_font(size_px: int, bold: bool = True) -> ImageFont.FreeTypeFont:
