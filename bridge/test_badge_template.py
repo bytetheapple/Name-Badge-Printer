@@ -199,6 +199,29 @@ finally:
     badge_mod._LABELS.clear()
     badge_mod._LABELS.update(_saved)
 
+print("— the test print shows what a real badge looks like —")
+# It used to print the date as the first name, the time as the last, its own
+# header, and this project's former name as the subtitle. So it verified none
+# of the organization's own settings, and because a ten-character date must
+# shrink to fit, it printed the name at half the size a real one gets —
+# reported from the field as "the text is so small I can't read it".
+_t = {"header": "WELCOME", "subtitle": "Temple Beth El", "length_mm": 90}
+_test = badge_mod.render_test_badge(_t, "62")
+_real = badge_mod.render_badge("Test", "Print", _t, "62")
+check("it is the organization's own badge, not a substitute",
+      _test.size == _real.size)
+check("no former product name survives anywhere",
+      "Name Badge Printer" not in open("badge.py", encoding="utf-8").read())
+# The name is the thing being judged, so it must be sized like a real one.
+from PIL import ImageDraw as _D
+_inner = _test.width - 2 * round(4 * badge_mod.MM)
+_f_test = badge_mod._fit_line(_D.Draw(_test), "Test", _inner,
+                              round(30 * badge_mod.MM), round(12 * badge_mod.MM))
+_f_date = badge_mod._fit_line(_D.Draw(_test), "2026-09-04", _inner,
+                              round(30 * badge_mod.MM), round(12 * badge_mod.MM))
+check("and it is sized like a name, not like a date",
+      _f_test.size > _f_date.size, f"{_f_test.size} vs {_f_date.size}")
+
 print()
 if FAILURES:
     print(f"RESULT: {len(FAILURES)} failure(s): {', '.join(FAILURES)}")

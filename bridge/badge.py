@@ -359,14 +359,31 @@ def render_badge(
 
 
 def render_test_badge(template: dict | None = None, label: str = "62") -> Image.Image:
-    """A badge used by the admin 'test print' button."""
+    """A badge used by the admin 'test print' button.
+
+    It shows the organization's own header and subtitle, because the question
+    a test print answers is "what will our badges look like" — and one that
+    substitutes its own wording answers a different question.
+
+    It used to print the date as the first name and the time as the last, over
+    a header reading TEST PRINT and a subtitle carrying this project's former
+    name. That looked nothing like a badge, hid whether the congregation's own
+    header graphic worked, and — because a ten-character date has to shrink to
+    fit — printed the name at half the size a real one gets. Somebody testing
+    their setup reasonably concluded the text was too small.
+
+    The timestamp moves to the pronouns line, which is small and already
+    positioned for a short note. It is the one thing a test badge must carry:
+    proof that this label came out now rather than being one found on a desk.
+    """
     t = dict(template or {})
     now = datetime.now()
     return render_badge(
-        now.strftime("%Y-%m-%d"),
-        now.strftime("%H:%M"),
-        {**t, "header": "TEST PRINT", "subtitle": "Name Badge Printer"},
+        "Test",
+        "Print",
+        t,
         label,
+        pronouns=now.strftime("%d %b %Y, %H:%M"),
     )
 
 
