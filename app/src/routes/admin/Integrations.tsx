@@ -180,41 +180,6 @@ export default function Integrations({ specs = PLATFORM_SPECS }: { specs?: Spec[
    * where a congregation's visitors are sent, which is the one thing this must
    * never do on its own.
    */
-  /**
-   * Make the spreadsheet now, rather than on the first visitor.
-   *
-   * Waiting until a sign-in meant configuring a destination and being shown
-   * nothing — no sheet, no link, no way to tell whether it had worked. If the
-   * organization has not connected Google yet, this is also the moment to ask.
-   */
-  async function createSheetFor(row: Integration) {
-    setBusy(row.id)
-    setError(null)
-    setScanNote((p) => ({ ...p, [row.id]: '' }))
-    const res = await invokeFn('google-provision', {
-      org_id: row.org_id,
-      what: 'sheet',
-      integration_id: row.id,
-    })
-    setBusy(null)
-    if (res.ok) {
-      setScanNote((p) => ({ ...p, [row.id]: 'Sheet created in your Drive.' }))
-      await load()
-      return
-    }
-    if (res.needs_connect) {
-      const begin = await invokeFn('google-oauth-begin', {
-        org_id: row.org_id,
-        return_to: '/admin/integrations',
-      })
-      if (begin.ok && typeof begin.url === 'string') {
-        window.location.assign(begin.url as string)
-        return
-      }
-    }
-    setScanNote((p) => ({ ...p, [row.id]: res.error ?? 'Could not create the sheet.' }))
-  }
-
   async function scanFormFor(row: Integration, spec: Spec) {
     if (!spec.scan) return
     const cfg = (row.config ?? {}) as Record<string, unknown>
@@ -654,27 +619,14 @@ export default function Integrations({ specs = PLATFORM_SPECS }: { specs?: Spec[
               )}
             </div>
 
-            {/* Should never be reached in the ordinary flow: adding the
-                destination makes its sheet, and coming back from Google
-                finishes one that was interrupted. It remains because "should
-                never" is not "cannot", and the alternative to a repair is
-                deleting the destination and starting again. */}
             {spec.kind === 'google_sheet' && !config.spreadsheet_id && (
-              <div style={{ marginTop: 10 }}>
-                <button
-                  type="button"
-                  className="secondary btn-sm"
-                  disabled={busy === row.id}
-                  onClick={() => void createSheetFor(row)}
-                >
-                  {busy === row.id ? 'Creating…' : 'Finish setting up'}
-                </button>
-                <span className="muted small" style={{ marginLeft: 10 }}>
-                  {scanNote[row.id] ||
-                    'This destination has no sheet — setting it up did not finish. This makes ' +
-                      'one.'}
-                </span>
-              </div>
+              /* No sheet yet, and nothing to do about it. One is made the
+                 first time a visitor needs recording — so the absence is a
+                 stage rather than a fault, and saying so beats a button that
+                 does what is going to happen anyway. */
+              <p className="muted small" style={{ marginTop: 10 }}>
+                The spreadsheet is created when the first visitor is recorded.
+              </p>
             )}
 
             {spec.opens && openHref(spec.opens, config) && (
