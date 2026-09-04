@@ -399,6 +399,12 @@ export default function Integrations({ specs = PLATFORM_SPECS }: { specs?: Spec[
     }
 
     setBusy(null)
+    // Open, if there is anything to fill in. A destination arrives switched
+    // off and unconfigured, so landing collapsed would hide the one thing
+    // that has to happen next behind a button nobody has been told about.
+    if (made?.id && specOf(addKind) && hasEditableText(specOf(addKind)!)) {
+      setOpen((p) => ({ ...p, [made.id as string]: true }))
+    }
     setAddKind('')
     setAddName('')
     await load()
@@ -779,10 +785,6 @@ export default function Integrations({ specs = PLATFORM_SPECS }: { specs?: Spec[
 
       <section className="card">
         <h2>Add an integration</h2>
-        <p className="muted small">
-          Choose what kind of place this is, and what to call it. It arrives switched off so you
-          can fill in its settings before anything is sent.
-        </p>
         <div className="grid2">
           <label className="field">
             Kind
