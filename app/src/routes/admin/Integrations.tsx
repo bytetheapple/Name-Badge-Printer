@@ -709,11 +709,6 @@ export default function Integrations({ specs = PLATFORM_SPECS }: { specs?: Spec[
                     {config.spreadsheet_title}
                   </span>
                 )}
-                {typeof config.previous_spreadsheet_id === 'string' && (
-                  <span className="muted small" style={{ marginLeft: 10 }}>
-                    An earlier sheet holds the sign-ins from before the switch.
-                  </span>
-                )}
               </div>
             )}
 
