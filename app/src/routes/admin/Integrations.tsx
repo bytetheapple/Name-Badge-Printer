@@ -50,6 +50,9 @@ type Spec = {
   scan?: { urlKey: string; fn: string }
   /** Set when this integration is configured by connecting an account rather
    *  than by typing credentials — the card shows a Connect button. */
+  /** Named by the application rather than by the operator: there is nothing
+   *  to distinguish, because the destination makes its own. */
+  autoNamed?: boolean
   /** A destination this integration made for itself, worth offering a way in
    *  to — the config holds the address, but nobody thinks to look there. */
   opens?: { urlKey: string; label: string; fromId?: { key: string; prefix: string } }
@@ -122,17 +125,10 @@ const CUSTOM_SPECS: Spec[] = [
       label: 'Open the sheet',
     },
     blurb:
-      'Each visitor is added as a row of a spreadsheet in your own Drive. Members are ' +
-      'never sent. We create the sheet the first time somebody signs in, and you can ' +
-      'open it from the link below. It needs no credentials of its own — connect Google ' +
-      'and it works.',
-    fields: [
-      {
-        key: 'tab_name',
-        label: 'Tab name',
-        hint: 'Leave empty for the first tab. Only needed if the sheet has several.',
-      },
-    ],
+      'Visitors who ask to hear more are added as a row of a spreadsheet in your own ' +
+      'Drive. Members are never sent.',
+    autoNamed: true,
+    fields: [],
   },
 ]
 
@@ -353,11 +349,13 @@ export default function Integrations({ specs = PLATFORM_SPECS }: { specs?: Spec[
     setError(null)
     // Switched off on creation: an integration with no configuration yet would
     // otherwise start failing against every sign-in the moment it is added.
-    const { error } = await supabase
+    const { data: made, error } = await supabase
       .from('integrations')
       .insert({ org_id: orgId, kind: addKind, name, enabled: false, default_enabled: true, config: {} })
-    setBusy(null)
+      .select('id')
+      .maybeSingle()
     if (error) {
+      setBusy(null)
       setError(
         error.message.includes('integrations_org_name_key')
           ? `You already have an integration called "${name}".`
@@ -365,6 +363,36 @@ export default function Integrations({ specs = PLATFORM_SPECS }: { specs?: Spec[
       )
       return
     }
+
+    // A sheet destination with no sheet is not configured, it is half made. So
+    // make it here rather than leaving a button for somebody to find — and
+    // switch it on, because at that point there is nothing else to decide.
+    if (addKind === 'google_sheet' && made?.id) {
+      const res = await invokeFn('google-provision', {
+        org_id: orgId,
+        what: 'sheet',
+        integration_id: made.id,
+      })
+      if (res.ok) {
+        await supabase.from('integrations').update({ enabled: true }).eq('id', made.id)
+      } else if (res.needs_connect) {
+        // No Google account yet. Ask for one; the destination is waiting here
+        // when they come back.
+        const begin = await invokeFn('google-oauth-begin', {
+          org_id: orgId,
+          return_to: '/admin/integrations',
+        })
+        if (begin.ok && typeof begin.url === 'string') {
+          window.location.assign(begin.url as string)
+          return
+        }
+        setError(begin.error ?? 'Could not start the Google connection.')
+      } else {
+        setError(res.error ?? 'The destination was added, but its sheet could not be created.')
+      }
+    }
+
+    setBusy(null)
     setAddKind('')
     setAddName('')
     await load()
@@ -513,15 +541,22 @@ export default function Integrations({ specs = PLATFORM_SPECS }: { specs?: Spec[
               )}
             </div>
 
-            <label className="field">
-              Name
-              <input
-                value={row.name}
-                onChange={(e) => patch(row.id, { name: e.target.value })}
-                placeholder={spec.title}
-              />
-              <span className="muted small">{spec.blurb}</span>
-            </label>
+            {spec.autoNamed ? (
+              /* Nothing to name. The destination makes its own file and calls
+                 it what it calls it; a box asking the operator for a different
+                 name would be asking about something they never see. */
+              <p className="muted small">{spec.blurb}</p>
+            ) : (
+              <label className="field">
+                Name
+                <input
+                  value={row.name}
+                  onChange={(e) => patch(row.id, { name: e.target.value })}
+                  placeholder={spec.title}
+                />
+                <span className="muted small">{spec.blurb}</span>
+              </label>
+            )}
 
             <div className="grid2">
               {spec.fields.map((f) =>
@@ -611,6 +646,11 @@ export default function Integrations({ specs = PLATFORM_SPECS }: { specs?: Spec[
                 <a href={openHref(spec.opens, config)!} target="_blank" rel="noreferrer noopener">
                   {spec.opens.label}
                 </a>
+                {typeof config.spreadsheet_title === 'string' && (
+                  <span className="muted small" style={{ marginLeft: 8 }}>
+                    {config.spreadsheet_title}
+                  </span>
+                )}
                 {typeof config.previous_spreadsheet_id === 'string' && (
                   <span className="muted small" style={{ marginLeft: 10 }}>
                     An earlier sheet holds the sign-ins from before the switch.

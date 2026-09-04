@@ -12,6 +12,7 @@ const SHEETS = "https://sheets.googleapis.com/v4/spreadsheets";
 export interface MadeSheet {
   id: string;
   url: string;
+  title: string;
 }
 
 /**
@@ -27,10 +28,11 @@ export async function createSpreadsheet(
   integrationId: string,
   config: Record<string, unknown>,
 ): Promise<MadeSheet> {
+  const title = "Guest Badges — visitor sign-ins";
   const res = await fetch(SHEETS, {
     method: "POST",
     headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-    body: JSON.stringify({ properties: { title: "Guest Badges — visitor sign-ins" } }),
+    body: JSON.stringify({ properties: { title } }),
   });
   const body = (await res.json().catch(() => ({}))) as {
     spreadsheetId?: string;
@@ -57,6 +59,9 @@ export async function createSpreadsheet(
         ...config,
         spreadsheet_id: id,
         spreadsheet_url: url,
+        // Shown beside the Open link, so an operator can tell which file they
+        // are about to open without opening it.
+        spreadsheet_title: title,
         // What tells this sheet apart from one configured by hand, which an
         // OAuth token cannot reach at all.
         sheet_is_ours: true,
@@ -66,5 +71,5 @@ export async function createSpreadsheet(
       },
     }),
   });
-  return { id, url };
+  return { id, url, title };
 }

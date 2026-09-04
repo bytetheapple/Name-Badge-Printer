@@ -62,7 +62,10 @@ async function sheetsFetch(
   return { ok: res.ok, status: res.status, body };
 }
 
-async function sendTo(entry: Entry, t: Target): Promise<{ ok: boolean; error?: string }> {
+async function sendTo(
+  entry: Entry,
+  t: Target,
+): Promise<{ ok: boolean; error?: string; note?: string }> {
   const tab = String(t.config.tab_name ?? "").trim();
 
   let auth: GoogleAuth;
@@ -100,7 +103,25 @@ async function sendTo(entry: Entry, t: Target): Promise<{ ok: boolean; error?: s
   //    once; a sheet that already has them keeps whatever it has, including
   //    columns of their own that this does not fill in.
   const headRange = `${tab ? `'${tab}'!` : ""}1:1`;
-  const head = await sheetsFetch(token, `${id}/values/${encodeURIComponent(headRange)}`);
+  let head = await sheetsFetch(token, `${id}/values/${encodeURIComponent(headRange)}`);
+
+  // The sheet is gone — deleted from Drive, or emptied out of the bin. Make
+  // another rather than failing every sign-in from now on: the alternative is
+  // a destination that is permanently broken and can only be fixed by someone
+  // noticing. Said out loud on the delivery, because silently writing to a
+  // different file than the one somebody last opened is not something to
+  // discover later.
+  let replaced = "";
+  if (head.status === 404 && auth.kind === "oauth") {
+    try {
+      const made = await createSpreadsheet(token, t.id, { ...t.config, spreadsheet_id: id });
+      replaced = `The previous sheet was gone, so a new one was created: ${made.url}`;
+      id = made.id;
+      head = await sheetsFetch(token, `${id}/values/${encodeURIComponent(headRange)}`);
+    } catch (e) {
+      return { ok: false, error: `The sheet was gone and could not be replaced: ${e}` };
+    }
+  }
   if (!head.ok) return { ok: false, error: explainGoogleError(head.status, head.body, saEmail) };
 
   let headers = (((head.body.values as string[][]) ?? [])[0] ?? []).map(String);
@@ -140,7 +161,7 @@ async function sendTo(entry: Entry, t: Target): Promise<{ ok: boolean; error?: s
       { method: "PUT", body: JSON.stringify({ values: [row] }) },
     );
     if (!put.ok) return { ok: false, error: explainGoogleError(put.status, put.body, saEmail) };
-    return { ok: true };
+    return { ok: true, note: replaced || undefined };
   }
 
   const lastCol = colName(Math.max(headers.length, 1) - 1);
@@ -163,7 +184,7 @@ async function sendTo(entry: Entry, t: Target): Promise<{ ok: boolean; error?: s
       body: JSON.stringify({ p_entry: entry.id, p_integration: t.id, p_ref: written }),
     });
   }
-  return { ok: true };
+  return { ok: true, note: replaced || undefined };
 }
 
 Deno.serve(async (req) => {
@@ -208,7 +229,9 @@ Deno.serve(async (req) => {
   const results: Array<{ ok: boolean; error?: string }> = [];
   for (const t of targets) {
     const r = await sendTo(entry, t);
-    await recordDelivery(entryId, t.id, r.ok ? "sent" : "failed", r.error ?? null);
+    // A note on a successful delivery: it went, and something about where it
+    // went is worth knowing. The Entries pill shows this text on the row.
+    await recordDelivery(entryId, t.id, r.ok ? "sent" : "failed", r.error ?? r.note ?? null);
     results.push(r);
   }
 
