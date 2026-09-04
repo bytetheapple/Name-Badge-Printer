@@ -2174,7 +2174,10 @@ button.danger:disabled {
 }
 .integration-controls {
   display: flex;
-  align-items: center;
+  /* Top, not centre: one control is two lines tall and the rest are one, and
+     centring them puts the two checkboxes on different lines as though they
+     were unrelated. */
+  align-items: flex-start;
   gap: 14px;
   flex-wrap: wrap;
   font-size: 14px;
@@ -2184,6 +2187,21 @@ button.danger:disabled {
 }
 .integration-controls .danger {
   margin-left: 6px;
+}
+
+/* "On by default", and beneath it what to do about it. Aligned to the
+   checkbox rather than to the row, so the reset reads as belonging to the
+   setting above it. */
+.integration-default {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+}
+.integration-default .linkish {
+  font-size: 0.82rem;
+  /* Indented to the checkbox's label, past the box itself. */
+  padding-left: 21px;
 }
 .integration-title {
   margin: 0;

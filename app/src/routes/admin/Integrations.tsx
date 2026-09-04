@@ -528,22 +528,27 @@ export default function Integrations({ specs = PLATFORM_SPECS }: { specs?: Spec[
                   Printers tab would show it as On while nothing was sent. */}
               {row.enabled && (
                 <>
-                  <label className="check">
-                    <input
-                      type="checkbox"
-                      checked={Boolean(row.default_enabled)}
-                      onChange={(e) => void toggleNow(row, 'default_enabled', e.target.checked)}
-                    />
-                    On by default for printers
-                  </label>
-                  <button
-                    type="button"
-                    className="linkish"
-                    disabled={busy === row.id}
-                    onClick={() => void resetPrinters(row)}
-                  >
-                    Reset all printers to the default
-                  </button>
+                  {/* The reset belongs under the default it resets to, not
+                      beside it: it is what to do about that setting rather
+                      than another setting of its own. */}
+                  <div className="integration-default">
+                    <label className="check">
+                      <input
+                        type="checkbox"
+                        checked={Boolean(row.default_enabled)}
+                        onChange={(e) => void toggleNow(row, 'default_enabled', e.target.checked)}
+                      />
+                      On by default for printers
+                    </label>
+                    <button
+                      type="button"
+                      className="linkish"
+                      disabled={busy === row.id}
+                      onClick={() => void resetPrinters(row)}
+                    >
+                      Reset all printers to the default
+                    </button>
+                  </div>
                 </>
               )}
                 <button
