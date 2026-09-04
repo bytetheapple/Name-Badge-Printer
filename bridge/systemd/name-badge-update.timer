@@ -2,12 +2,17 @@
 Description=Check for a new print bridge version
 
 [Timer]
-# Every 15 minutes, with a spread so a fleet does not all fetch at once when a
-# release lands — and a first run shortly after boot, so a device that was off
-# while a release went out catches up rather than waiting a quarter of an hour.
-OnBootSec=3min
-OnUnitActiveSec=15min
-RandomizedDelaySec=5min
+# Every minute. A run that finds nothing to do is one local git rev-parse and
+# one HTTPS call — the fetch only happens when there is actually a new version
+# to move to — so the cost of asking often is close to nothing, and the benefit
+# is that a release reaches a device while somebody is still watching for it.
+#
+# The jitter is deliberately well under the interval: a spread larger than the
+# period does not stagger a fleet, it makes the period unpredictable. Raise
+# both together if a larger fleet ever makes this worth metering.
+OnBootSec=1min
+OnUnitActiveSec=1min
+RandomizedDelaySec=15s
 Persistent=true
 
 [Install]
