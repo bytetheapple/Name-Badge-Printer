@@ -99,6 +99,12 @@ async function createSheet(
         ...config,
         spreadsheet_id: id,
         spreadsheet_url: String((res.body as { spreadsheetUrl?: string })?.spreadsheetUrl ?? ""),
+        sheet_is_ours: true,
+        // Kept rather than overwritten: it is where the organization's earlier
+        // sign-ins are, and the only record of that once this field moves on.
+        ...(config.spreadsheet_id && config.spreadsheet_id !== id
+          ? { previous_spreadsheet_id: config.spreadsheet_id }
+          : {}),
       },
     }),
   });
@@ -118,15 +124,25 @@ async function sendTo(entry: Entry, t: Target): Promise<{ ok: boolean; error?: s
   const saEmail = auth.kind === "service_account" ? auth.email : "";
 
   let id = sheetId(String(t.config.spreadsheet_id ?? ""));
-  if (!id) {
-    if (auth.kind !== "oauth") {
-      return { ok: false, error: "No sheet link is set for this destination." };
-    }
+
+  // On a connection we can only write to a sheet we made. A link configured
+  // under the service-account setup points at one the customer made and shared
+  // — invisible to this token — so switching over means making a new sheet,
+  // not failing against the old one with a permission error nobody can act on.
+  //
+  // `sheet_is_ours` is how we tell the two apart: set when we create one, and
+  // absent on every sheet configured by hand before this existed.
+  const oursAlready = t.config.sheet_is_ours === true;
+  const needsOwnSheet = auth.kind === "oauth" && (!id || !oursAlready);
+
+  if (needsOwnSheet) {
     try {
       id = await createSheet(token, t.id, t.config);
     } catch (e) {
       return { ok: false, error: `Could not create the sheet: ${e}` };
     }
+  } else if (!id) {
+    return { ok: false, error: "No sheet link is set for this destination." };
   }
 
   // 1. The headings. A sheet the congregation made is empty, so write them

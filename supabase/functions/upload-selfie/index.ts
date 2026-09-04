@@ -45,7 +45,12 @@ const restHeaders = {
 };
 
 /** The folder this application owns for one organization's selfies. */
-async function createSelfieFolder(token: string, orgId: string): Promise<string> {
+async function createSelfieFolder(
+  token: string,
+  orgId: string,
+  integrationId: string,
+  config: Record<string, unknown>,
+): Promise<string> {
   const res = await fetch("https://www.googleapis.com/drive/v3/files?fields=id", {
     method: "POST",
     headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
@@ -65,6 +70,24 @@ async function createSelfieFolder(token: string, orgId: string): Promise<string>
     method: "PATCH",
     headers: restHeaders,
     body: JSON.stringify({ selfie_drive_folder_id: id }),
+  });
+
+  // Both halves matter. The id above says where photographs go; this says the
+  // folder is one we made and may therefore write to. Without it every
+  // photograph would satisfy "not ours" and make another folder — a folder per
+  // visitor, discovered weeks later.
+  await fetch(`${SUPABASE_URL}/rest/v1/integrations?id=eq.${integrationId}`, {
+    method: "PATCH",
+    headers: restHeaders,
+    body: JSON.stringify({
+      config: {
+        ...config,
+        folder_is_ours: true,
+        ...(config.selfie_drive_folder_id && config.selfie_drive_folder_id !== id
+          ? { previous_folder_id: config.selfie_drive_folder_id }
+          : {}),
+      },
+    }),
   });
   return id;
 }
@@ -152,9 +175,10 @@ Deno.serve(async (req) => {
   // and shared — which is how the service-account path works — is invisible to
   // an OAuth token. That is why migrating produces a new folder rather than
   // adopting the old one; the photographs already uploaded keep their links.
-  if (!folderId && auth.kind === "oauth") {
+  const folderIsOurs = target.config.folder_is_ours === true;
+  if (auth.kind === "oauth" && (!folderId || !folderIsOurs)) {
     try {
-      folderId = await createSelfieFolder(auth.token, orgId);
+      folderId = await createSelfieFolder(auth.token, orgId, target.id, target.config);
     } catch (e) {
       const err = `Could not create a Drive folder: ${e}`;
       await noteSelfie(entryId, "failed", err);
