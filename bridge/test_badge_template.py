@@ -144,6 +144,20 @@ check("and a configured one is still drawn",
       != badge_mod.render_badge("Ada", "L", template={"length_mm": 90, "subtitle": "Temple Beth El"},
                             label="62").tobytes())
 
+print("— a badge length nobody set does not crash the renderer —")
+# Reported from the field: every job on one organization failed with "height
+# and width must be > 0", which is PIL describing an image to somebody whose
+# actual problem was an unfilled setting. A default badge is useful; a
+# traceback in a lobby is not.
+for _len in (0, -5, None):
+    try:
+        _w, _h = badge_mod._label_render_size('62', float(_len or 0))
+        check(f"length {_len!r} still renders", _w > 0 and _h > 0, f"{_w}x{_h}")
+    except Exception as _e:
+        check(f"length {_len!r} still renders", False, str(_e))
+check("and a real length is untouched",
+      badge_mod._label_render_size('62', 90.0) == badge_mod._label_render_size('62', 0.0))
+
 print()
 if FAILURES:
     print(f"RESULT: {len(FAILURES)} failure(s): {', '.join(FAILURES)}")

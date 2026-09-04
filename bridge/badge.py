@@ -60,6 +60,24 @@ def _label_render_size(label: str, length_mm: float) -> tuple[int, int]:
     rolls have a fixed head width and an admin-set length; die-cut labels are a
     fixed size in both dimensions.
     """
+    # A length of zero renders a canvas of zero width, which fails inside PIL
+    # as "height and width must be > 0" — a message about an image, given to
+    # somebody whose actual problem is a setting. Seen in the field on an
+    # organization whose badge length was never filled in.
+    #
+    # Clamped rather than raised: a badge at the default length is useful and a
+    # traceback is not, and the warning says what to change.
+    if not length_mm or length_mm <= 0:
+        if "length" not in _WARNED_LABELS:
+            _WARNED_LABELS.add("length")
+            print(
+                f"[badge] badge length is {length_mm!r} — rendering at 90 mm. "
+                "Set the badge length for this organization.",
+                file=sys.stderr,
+                flush=True,
+            )
+        length_mm = 90.0
+
     spec = _LABELS.get(label)
     if spec is None:
         # Falling back silently means badges render at a size nobody chose and
