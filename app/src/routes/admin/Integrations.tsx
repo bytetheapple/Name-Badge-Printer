@@ -115,6 +115,30 @@ const CUSTOM_SPECS: Spec[] = [
     ],
   },
   {
+    kind: 'google_sheet',
+    title: 'Google Sheet',
+    opens: {
+      urlKey: 'spreadsheet_url',
+      fromId: { key: 'spreadsheet_id', prefix: 'https://docs.google.com/spreadsheets/d/' },
+      label: 'Open the sheet',
+    },
+    blurb:
+      'Each visitor is added as a row of a spreadsheet in your own Drive. Members are ' +
+      'never sent. We create the sheet the first time somebody signs in, and you can ' +
+      'open it from the link below. It needs no credentials of its own — connect Google ' +
+      'and it works.',
+    fields: [
+      {
+        key: 'tab_name',
+        label: 'Tab name',
+        hint: 'Leave empty for the first tab. Only needed if the sheet has several.',
+      },
+    ],
+  },
+]
+
+const PLATFORM_SPECS: Spec[] = [
+  {
     kind: 'google_oauth',
     title: 'Google account',
     blurb:
@@ -125,74 +149,14 @@ const CUSTOM_SPECS: Spec[] = [
     fields: [],
   },
   {
-    kind: 'google_sheet',
-    title: 'Google Sheet',
-    opens: {
-      urlKey: 'spreadsheet_url',
-      fromId: { key: 'spreadsheet_id', prefix: 'https://docs.google.com/spreadsheets/d/' },
-      label: 'Open the sheet',
-    },
-    blurb:
-      'Each visitor is added as a row of your own spreadsheet. Members are never sent. ' +
-      'With a connected Google account we make the sheet for you, in your Drive. ' +
-      'Switching an existing destination over starts a NEW sheet — we can only reach files ' +
-      'we created, so the old one keeps its history and stops growing. ' +
-      'Make the sheet in your Google Drive, then Share it with the service account ' +
-      'below as an Editor — it stays your sheet, in your Drive.',
-    fields: [
-      {
-        key: 'spreadsheet_id',
-        label: 'Sheet link',
-        placeholder: 'https://docs.google.com/spreadsheets/d/…/edit',
-        hint: 'Paste the whole address from the browser, or just the id.',
-      },
-      {
-        key: 'sa_client_email',
-        label: 'Service account email',
-        placeholder: 'name@project.iam.gserviceaccount.com',
-        hint: 'Share the sheet with this address, as an Editor. It may be the same ' +
-          'service account used for selfies.',
-      },
-      {
-        key: 'tab_name',
-        label: 'Tab name',
-        hint: 'Leave empty for the first tab. Only needed if the sheet has several.',
-      },
-      {
-        key: 'use_oauth',
-        label: 'Use the connected Google account instead of the service account',
-        type: 'checkbox',
-      },
-    ],
-    secret: {
-      label: 'Service account private key',
-      hint: 'The PEM private key from the service account JSON. Stored encrypted and never shown again.',
-    },
-  },
-]
-
-const PLATFORM_SPECS: Spec[] = [
-  {
     kind: 'google_drive',
-    title: 'Google Drive (selfies)',
+    title: 'Visitor photographs',
     blurb:
-      'The service account that uploads visitor selfies. Whether one is asked for at all is set under Settings → Selfie.',
-    fields: [
-      {
-        key: 'sa_client_email',
-        label: 'Service account email',
-        placeholder: 'name@project.iam.gserviceaccount.com',
-      },
-      {
-        key: 'use_oauth',
-        label: 'Use the connected Google account instead of the service account',
-        type: 'checkbox',
-      },
-    ],
-    secret: {
-      label: 'Service account private key',
-      hint: 'The PEM private key from the service account JSON. Stored encrypted and never shown again.',
-    },
+      'Photographs are uploaded to the Google account connected above, into a folder we ' +
+      'create in your Drive. Whether a photograph is asked for at all is set under ' +
+      'Settings → Selfie. This destination needs no credentials of its own — connect ' +
+      'Google and it works.',
+    fields: [],
   },
 ]
 

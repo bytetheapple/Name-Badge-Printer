@@ -53,9 +53,10 @@ export default function IntegrationsPage() {
         {tab === 'destinations' && (
           <>
             <p className="muted small">
-              Where the details from a visitor's badge are sent. Google Drive must be configured
-              to enable Selfies. The other destinations are available for sharing the other
-              visitor details with selected applications.
+              Where the details from a visitor's badge are sent. Connect a Google account
+              first — photographs and the sign-in sheet both go to your own Drive, and neither
+              needs any other credential. The remaining destinations share visitor details with
+              applications you already use.
             </p>
             <Integrations
               specs={
