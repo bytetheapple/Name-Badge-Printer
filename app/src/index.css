@@ -2205,17 +2205,21 @@ button.danger:disabled {
 /* What can be done to the destination, as a pair, at the right edge — away
    from the switches, so Delete is never the button beside one somebody is
    reaching for. */
-/* "Send [ … ]" on the banner. Inline so it reads as one phrase rather than a
-   label above a box, which is how a form field looks and this is not one. */
-.integration-audience {
+/* Enabled, and beneath it who it sends. Same shape as the default and its
+   reset beside them, so the banner reads as two stacked pairs rather than
+   four unrelated controls. */
+.integration-enabled {
   display: flex;
-  align-items: center;
-  gap: 6px;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 3px;
 }
-.integration-audience select {
+.integration-audience {
   font-size: 0.85rem;
-  padding: 2px 6px;
+  padding: 1px 6px;
   width: auto;
+  /* Lined up with the checkbox's label, past the box itself. */
+  margin-left: 21px;
 }
 
 .integration-actions {

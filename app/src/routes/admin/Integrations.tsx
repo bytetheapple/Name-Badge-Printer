@@ -562,23 +562,22 @@ export default function Integrations({ specs = PLATFORM_SPECS }: { specs?: Spec[
                   is being sent. Delete sits here for the same reason: it acts
                   on the destination, not on its settings. */}
               <div className="integration-controls">
-              <label className="check">
-                <input
-                  type="checkbox"
-                  checked={Boolean(row.enabled)}
-                  onChange={(e) => void toggleNow(row, 'enabled', e.target.checked)}
-                />
-                Enabled
-              </label>
-
-              {/* Who this destination takes. Under Enabled because it only
-                  means anything once something is being sent, and per
-                  destination because a congregation may want every visit in a
-                  spreadsheet and only the interested ones in their CRM. */}
-              {row.enabled && (
-                <label className="integration-audience">
-                  <span className="muted small">Send</span>
+              {/* Who this destination takes, under the switch that decides
+                  whether it takes anything. No label: the options say what
+                  they are, and a word above them would be explaining a
+                  sentence that already reads. */}
+              <div className="integration-enabled">
+                <label className="check">
+                  <input
+                    type="checkbox"
+                    checked={Boolean(row.enabled)}
+                    onChange={(e) => void toggleNow(row, 'enabled', e.target.checked)}
+                  />
+                  Enabled
+                </label>
+                {row.enabled && (
                   <select
+                    className="integration-audience"
                     value={String((row.config as Record<string, unknown>)?.audience ?? 'interested')}
                     onChange={(e) => void setAudience(row, e.target.value)}
                     disabled={busy === row.id}
@@ -587,8 +586,8 @@ export default function Integrations({ specs = PLATFORM_SPECS }: { specs?: Spec[
                     <option value="visitors">All visitors</option>
                     <option value="all">All sign-ins</option>
                   </select>
-                </label>
-              )}
+                )}
+              </div>
 
               {/* Only once it is enabled. "On by default" for something
                   switched off describes a state no printer can be in, and the
