@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import { useOrg } from '../../lib/org'
 import { lastSeenLabel } from '../../lib/secrets'
-import type { Printer, PrinterStatusRow, PrintJob } from '../../lib/types'
+import type { Printer, PrinterStatusRow, PrintJob, ServerInterface } from '../../lib/types'
 
 // The bridge heartbeats every ~15s; treat it as online if seen within 45s.
 const BRIDGE_FRESH_MS = 45000
@@ -69,6 +69,10 @@ export default function StatusPanel() {
 
   const lastSeen = bridge?.bridge_last_seen ? new Date(bridge.bridge_last_seen).getTime() : null
   const bridgeOnline = lastSeen !== null && Date.now() - lastSeen < BRIDGE_FRESH_MS
+  // Only while the bridge is online: an offline server's last known addresses
+  // are history, and reading them as current is how somebody concludes the
+  // network is fine when the server is simply gone.
+  const net = bridgeOnline ? bridge?.network ?? null : null
 
   return (
     <>
@@ -86,6 +90,42 @@ export default function StatusPanel() {
           {lastSeen ? `Last seen ${new Date(lastSeen).toLocaleTimeString()}` : 'Waiting for the print bridge'}
         </div>
       </div>
+
+      {/* Which networks the server is on, next to the printers it can reach.
+          Shown even when everything works: the question "are these two on the
+          same network" is unanswerable from a card that only appears once
+          something has already gone wrong, and by then somebody is at the
+          site guessing. */}
+      {net && net.interfaces.length > 0 && (
+        <div style={{ marginBottom: 20 }}>
+          <h2>Networks</h2>
+          <div className="status-row">
+            {net.interfaces.map((i: ServerInterface) => (
+              <div key={i.name} className={`status-card ${i.ip ? 'ok' : ''}`}>
+                <div className="status-label">
+                  {i.kind === 'wifi' ? 'WiFi' : i.kind === 'wired' ? 'Wired' : 'Network'}
+                  {i.name !== 'default' && <span className="muted"> · {i.name}</span>}
+                </div>
+                <div className="status-value">{i.ip ?? 'No address'}</div>
+                {i.kind === 'wifi' && (
+                  <div className="muted small">
+                    {i.ssid ? `${i.ssid}${i.signal != null ? ` · ${i.signal}%` : ''}` : 'Not joined'}
+                  </div>
+                )}
+                {!i.ip && <div className="muted small">{i.state}</div>}
+              </div>
+            ))}
+          </div>
+          {/* Only worth saying when it is actionable: a server with the radio
+              off cannot be put on a printer's WiFi without a visit. */}
+          {net.wifi_radio === 'disabled' && (
+            <p className="muted small">
+              The WiFi radio on this print server is switched off, so it can only
+              reach printers on its wired network.
+            </p>
+          )}
+        </div>
+      )}
 
       <h2 style={{ marginTop: 20 }}>Printers</h2>
       <div className="status-row">

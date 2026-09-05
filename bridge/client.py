@@ -28,6 +28,7 @@ import requests
 import config
 import credential
 import db
+import netstate
 
 #: Read once. See the note in poll().
 _VERSION = config.running_version()
@@ -107,6 +108,12 @@ class BridgeApiClient:
                 # which is what the updater does after a checkout.
                 "version": _VERSION,
                 "hostname": _HOSTNAME,
+                # Which networks this server is on. Cached inside netstate, so
+                # this is a dictionary lookup on most ticks rather than four
+                # subprocesses. A printer is only reachable from a network the
+                # server shares with it, and nothing used to say what those
+                # were — see netstate.py.
+                "network": netstate.describe(),
                 **({"rotation_error": self._rotation_error} if self._rotation_error else {}),
                 # Present only on the poll after a provisioning step finished.
                 **({"provision_result": provision_result} if provision_result else {}),

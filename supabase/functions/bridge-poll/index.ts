@@ -7,6 +7,8 @@
 // Request  (POST, header `x-bridge-key`):
 //   { printers?:   [{ id, reachable, media_type, media_width, error_state,
 //                     unreachable_reason, printer_ip?, mac?, wired_mac? }],
+//     network?:    { interfaces: [{name, kind, state, ip, ssid?, signal?}],
+//                    wifi_radio },   // which networks this server is on
 //     provision_result?: { session_id, task, ok, next_state, data, log, error },
 //     rotation_error?: "…" }   // could not store the replacement credential
 // Response:
@@ -64,16 +66,27 @@ Deno.serve(async (req) => {
 
   // The org-wide heartbeat the admin Status panel reads. A freshly provisioned
   // org may not have its row yet, so create it if the update touched nothing.
+  //
+  // The network description rides along with the heartbeat: it is the server
+  // describing itself, and it goes stale the same way the timestamp does.
+  // Written only when the bridge sent one, so an older bridge that knows
+  // nothing about this leaves the column alone rather than blanking it.
+  const netState = body.network;
+  const describesNetwork =
+    netState !== null && typeof netState === "object" && !Array.isArray(netState);
+  const heartbeat: Record<string, unknown> = { bridge_last_seen: now };
+  if (describesNetwork) heartbeat.network = netState;
+
   const beat = await fetch(`${REST}/printer_status?org_id=eq.${bridge.org_id}`, {
     method: "PATCH",
     headers: { ...restHeaders, Prefer: "return=representation" },
-    body: JSON.stringify({ bridge_last_seen: now }),
+    body: JSON.stringify(heartbeat),
   });
   if (beat.ok && (await beat.json()).length === 0) {
     await fetch(`${REST}/printer_status`, {
       method: "POST",
       headers: restHeaders,
-      body: JSON.stringify({ org_id: bridge.org_id, bridge_last_seen: now }),
+      body: JSON.stringify({ org_id: bridge.org_id, ...heartbeat }),
     });
   }
 

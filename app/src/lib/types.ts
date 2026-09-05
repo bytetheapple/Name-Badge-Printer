@@ -306,10 +306,32 @@ export interface PrinterConfigRow {
   updated_at: string
 }
 
+/** One network the print server is on. A printer is reachable only from a
+ *  network the server shares with it, which is the question this answers. */
+export interface ServerInterface {
+  name: string
+  kind: 'wired' | 'wifi' | 'unknown'
+  state: string
+  ip: string | null
+  ssid?: string | null
+  signal?: number | null
+}
+
+export interface ServerNetwork {
+  interfaces: ServerInterface[]
+  /** nmcli's word for the radio: 'enabled', 'disabled', or null where we
+   *  could not ask (a Mac running a demo bridge). */
+  wifi_radio?: string | null
+}
+
 export interface PrinterStatusRow {
   id: number
   org_id: string
   bridge_last_seen: string | null
+  /** Reported every heartbeat. Null from a bridge too old to send it — which
+   *  is not the same as a server with no networks, so it is shown as unknown
+   *  rather than as none. */
+  network: ServerNetwork | null
   updated_at: string
 }
 
