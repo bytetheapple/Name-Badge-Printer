@@ -10,6 +10,9 @@
 //           operator gets a link while they are still looking at the page
 //           instead of after somebody signs in.
 //
+//   rename_event  move the spreadsheet's title to follow the event's name.
+//           The title is derived from the name, so leaving them apart hands a
+//           customer a list they cannot find by the name they know it by.
 //   preflight  answer "could I make one of these?" without making anything.
 //           Asked before an integration that needs a spreadsheet is created,
 //           because such an integration without one is not half configured,
@@ -21,7 +24,7 @@
 //           attach to — so it is created here rather than asked for.
 import { corsHeaders, json } from "../_shared/cors.ts";
 import { createSpreadsheet } from "../_shared/gsheets.ts";
-import { createEventSpreadsheet } from "../_shared/eventsheet.ts";
+import { createEventSpreadsheet, renameEventSpreadsheet } from "../_shared/eventsheet.ts";
 import { googleAuthFor, GoogleAuthError } from "../_shared/google.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
@@ -223,6 +226,47 @@ Deno.serve(async (req) => {
         String(row.name ?? "Event"),
       );
       return json({ ok: true, url: made.url, spreadsheet_id: made.id });
+    } catch (e) {
+      const msg = e instanceof GoogleAuthError ? e.message : String(e);
+      return json({ ok: false, needs_connect: e instanceof GoogleAuthError, error: msg });
+    }
+  }
+
+  if (what === "rename_event") {
+    const integrationId = String(body.integration_id ?? "");
+    if (!integrationId) return json({ ok: false, error: "integration_id is required" }, 400);
+    const rowRes = await fetch(
+      `${SUPABASE_URL}/rest/v1/integrations?id=eq.${integrationId}&org_id=eq.${orgId}` +
+        `&kind=eq.event&select=id,name,config`,
+      { headers: restHeaders },
+    );
+    const row = rowRes.ok ? (await rowRes.json())[0] : null;
+    if (!row) return json({ ok: false, error: "No such event" }, 404);
+
+    const config = (row.config ?? {}) as Record<string, unknown>;
+    const spreadsheetId = String(config.spreadsheet_id ?? "");
+    // Nothing to rename is not a failure. An event whose list was never made
+    // gets the right title when it is.
+    if (!spreadsheetId || config.sheet_is_ours !== true) {
+      return json({ ok: true, skipped: true });
+    }
+
+    try {
+      const auth = await googleAuthFor(orgId, config, null, "");
+      if (auth.kind !== "oauth") {
+        return json({ ok: false, error: "This needs a connected Google account." });
+      }
+      const title = await renameEventSpreadsheet(
+        auth.token,
+        spreadsheetId,
+        String(row.name ?? "Event"),
+      );
+      await fetch(`${SUPABASE_URL}/rest/v1/integrations?id=eq.${integrationId}`, {
+        method: "PATCH",
+        headers: restHeaders,
+        body: JSON.stringify({ config: { ...config, spreadsheet_title: title } }),
+      });
+      return json({ ok: true, title });
     } catch (e) {
       const msg = e instanceof GoogleAuthError ? e.message : String(e);
       return json({ ok: false, needs_connect: e instanceof GoogleAuthError, error: msg });

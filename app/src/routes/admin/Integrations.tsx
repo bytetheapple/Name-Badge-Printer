@@ -458,6 +458,36 @@ export default function Integrations({
     setLoaded((prev) => ({ ...prev, [row.id]: JSON.stringify({ name, config }) }))
   }
 
+  /**
+   * Save a renamed row, and move anything named after it.
+   *
+   * An event's spreadsheet is titled from the event, so a rename that moves
+   * one and not the other leaves a customer looking for a list under a name
+   * it no longer has. Best effort and said out loud when it fails: the event
+   * is renamed either way, and a title that quietly stayed behind is the kind
+   * of drift nobody notices until they are searching Drive for it.
+   */
+  async function renamed(row: Integration) {
+    await persist(row, {})
+    if (row.kind !== 'event' || !orgId) return
+    const config = (row.config ?? {}) as Record<string, unknown>
+    if (!config.spreadsheet_id) return
+    const res = await invokeFn('google-provision', {
+      org_id: orgId,
+      what: 'rename_event',
+      integration_id: row.id,
+    })
+    if (res.ok) {
+      await load()
+      return
+    }
+    setNotice(
+      `The event was renamed, but its attendee list is still called ` +
+        `"${config.spreadsheet_title ?? 'its old name'}". ` +
+        String(res.error ?? ''),
+    )
+  }
+
   /** Make an event's attendee list after the fact, when creating it failed. */
   async function makeEventList(row: Integration) {
     if (!orgId) return
@@ -856,7 +886,7 @@ export default function Integrations({
                   // with no Save button still has a name, and saving on every
                   // keystroke would write a row per letter.
                   onBlur={() => {
-                    if (spec.savesItself && dirty(row)) void persist(row, {})
+                    if (spec.savesItself && dirty(row)) void renamed(row)
                   }}
                   placeholder={spec.title}
                 />

@@ -22,6 +22,18 @@ const ONSITE_HEADERS = [...HEADERS, "Registered"];
 /** Column the check-in time goes in; fifth, so column E. */
 const CHECKED_COL = "E";
 
+/**
+ * What the event's spreadsheet is called.
+ *
+ * One function rather than a literal in each place, because the title is
+ * derived from the event's name and the two have to agree: a rename that
+ * moves one and not the other leaves a customer with a list they cannot find
+ * by name.
+ */
+export function eventSheetTitle(eventName: string): string {
+  return `${(eventName || "Event").trim()} registration`;
+}
+
 export interface Person {
   first_name: string;
   last_name: string;
@@ -89,7 +101,7 @@ export async function createEventSpreadsheet(
   config: Record<string, unknown>,
   eventName: string,
 ): Promise<{ id: string; url: string; title: string }> {
-  const title = `${eventName || "Event"} registration`;
+  const title = eventSheetTitle(eventName);
   const made = await sheetsFetch(token, "", {
     method: "POST",
     body: JSON.stringify({
@@ -224,4 +236,28 @@ export async function appendOnsite(
       }),
     },
   );
+}
+
+/**
+ * Rename the spreadsheet to follow the event.
+ *
+ * Covered by drive.file: the scope reaches files this application created,
+ * which is exactly the ones this is ever called on. Returns the new title so
+ * the caller can record it beside the id.
+ */
+export async function renameEventSpreadsheet(
+  token: string,
+  spreadsheetId: string,
+  eventName: string,
+): Promise<string> {
+  const title = eventSheetTitle(eventName);
+  await sheetsFetch(token, `/${spreadsheetId}:batchUpdate`, {
+    method: "POST",
+    body: JSON.stringify({
+      requests: [
+        { updateSpreadsheetProperties: { properties: { title }, fields: "title" } },
+      ],
+    }),
+  });
+  return title;
 }
