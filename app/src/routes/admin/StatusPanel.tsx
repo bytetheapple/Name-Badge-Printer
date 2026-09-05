@@ -7,6 +7,23 @@ import type { Printer, PrinterStatusRow, PrintJob, ServerInterface } from '../..
 // The bridge heartbeats every ~15s; treat it as online if seen within 45s.
 const BRIDGE_FRESH_MS = 45000
 
+/**
+ * Why an interface has no address, in the reader's words rather than
+ * NetworkManager's.
+ *
+ * A wired port with the cable out reports "unavailable", which is precisely
+ * the question the person reading this card is asking — the first time it was
+ * looked at, it answered "did I leave the cable disconnected?" with a word
+ * that does not mean that to anyone. Hedged as "detected" because no carrier
+ * is also what a dead switch port looks like.
+ */
+function whyNoAddress(i: ServerInterface): string {
+  const idle = i.state === 'unavailable' || i.state === 'disconnected'
+  if (i.kind === 'wired' && idle) return 'No cable detected'
+  if (i.kind === 'wifi' && idle) return 'Not joined to a network'
+  return i.state
+}
+
 export default function StatusPanel() {
   const { orgId } = useOrg()
   const [bridge, setBridge] = useState<PrinterStatusRow | null>(null)
@@ -112,7 +129,7 @@ export default function StatusPanel() {
                     {i.ssid ? `${i.ssid}${i.signal != null ? ` · ${i.signal}%` : ''}` : 'Not joined'}
                   </div>
                 )}
-                {!i.ip && <div className="muted small">{i.state}</div>}
+                {!i.ip && <div className="muted small">{whyNoAddress(i)}</div>}
               </div>
             ))}
           </div>
