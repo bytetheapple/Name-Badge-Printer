@@ -270,8 +270,18 @@ export async function applyResult(
       ? await updatePrinter(orgId, String(session.printer_id), session, patch)
       : await createPrinter(orgId, session, patch);
     if (printerId) patch.printer_id = printerId;
-    // The passphrase has done its job. Keeping it would turn a credential the
-    // operator lent us for ten minutes into one we store.
+  }
+
+  // The passphrase has done its job. Keeping it would turn a credential the
+  // operator lent us for ten minutes into one we store.
+  //
+  // Both terminal states end that loan. "failed" used to keep them, which was
+  // an oversight rather than a decision: a locate that swept the network and
+  // found nothing is a complete answer, not a step anybody returns to. A step
+  // that merely errored is the case this must not catch — it sends the
+  // operator back to a recoverable state above and returns early, because the
+  // code they typed is still needed for the retry.
+  if (next === "done" || next === "failed") {
     await rpc("clear_provisioning_secrets", { p_session: sessionId });
   }
 
