@@ -1,6 +1,7 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useOrg } from '../../lib/org'
 import { supabase } from '../../lib/supabase'
+import type { IntegrationKind } from '../../lib/types'
 import ApiKeys from './ApiKeys'
 import Integrations, { CUSTOM_SPECS, EVENT_SPECS, PLATFORM_SPECS } from './Integrations'
 
@@ -36,8 +37,12 @@ export default function IntegrationsPage() {
   // organizations, wrong for answering "has Events been switched on since I
   // opened this page". So this asks that one question on its own: two
   // booleans, one row, no spinner.
-  const [events, setEvents] = useState(false)
-  const [custom, setCustom] = useState(false)
+  // Seeded from the organization rather than from false. This component only
+  // renders once the org has loaded, so the answer is already known — and
+  // starting at false meant one paint in which a customer's integrations were
+  // not on offer, which was long enough to matter.
+  const [events, setEvents] = useState(() => Boolean(org?.organization.events_enabled))
+  const [custom, setCustom] = useState(() => Boolean(org?.organization.custom_integrations))
 
   useEffect(() => {
     setEvents(Boolean(org?.organization.events_enabled))
@@ -55,6 +60,21 @@ export default function IntegrationsPage() {
     setEvents(Boolean(data.events_enabled))
     setCustom(Boolean(data.custom_integrations))
   }, [orgId])
+
+  // Stable between renders. A fresh array here is a new prop identity, and a
+  // child that keys any effect on it reloads for ever — which is exactly what
+  // happened when this was built inline.
+  const specs = useMemo(
+    () =>
+      custom
+        ? [...PLATFORM_SPECS, ...EVENT_SPECS, ...CUSTOM_SPECS]
+        : [...PLATFORM_SPECS, ...EVENT_SPECS],
+    [custom],
+  )
+  const unavailable = useMemo<IntegrationKind[]>(
+    () => (events ? [] : ['event']),
+    [events],
+  )
 
   if (!isAdmin) return null
   if (loading) return <p className="muted">Loading…</p>
@@ -91,12 +111,8 @@ export default function IntegrationsPage() {
               // deliberately not folded together: a customer may have bespoke
               // syncs without events or events without bespoke syncs, and they
               // are billed differently.
-              specs={
-                custom
-                  ? [...PLATFORM_SPECS, ...EVENT_SPECS, ...CUSTOM_SPECS]
-                  : [...PLATFORM_SPECS, ...EVENT_SPECS]
-              }
-              unavailable={events ? [] : ['event']}
+              specs={specs}
+              unavailable={unavailable}
               onOfferKinds={refreshEntitlements}
             />
             {!custom && <CustomOffer />}

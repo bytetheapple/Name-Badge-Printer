@@ -291,7 +291,6 @@ export default function Integrations({
   const [addKind, setAddKind] = useState<IntegrationKind | ''>('')
   const [addName, setAddName] = useState('')
 
-  const kinds = specs.map((s) => s.kind)
   /** Whether the text fields differ from what the server last returned. The
    *  switches are excluded on purpose: they are never pending. */
   const dirty = (row: Integration) =>
@@ -320,7 +319,13 @@ export default function Integrations({
       .order('kind')
       .order('name')
     if (error) setError(error.message)
-    const mine = ((data ?? []) as Integration[]).filter((r) => kinds.includes(r.kind))
+    // Every row this organization has, not only the ones this render knows how
+    // to draw. Filtering here dropped integrations permanently: the specs on
+    // offer depend on entitlements that arrive a moment after the first paint,
+    // so a load that ran in that moment kept only the kinds it happened to
+    // know about, and nothing reloaded afterwards. Which rows are *shown* is a
+    // render-time question, answered where the spec is looked up.
+    const mine = (data ?? []) as Integration[]
     setList(mine)
     setLoaded(
       Object.fromEntries(
@@ -337,9 +342,10 @@ export default function Integrations({
     }
     setHasSecret(flags)
     setLoading(false)
-    // kinds is derived from specs, which is a stable module constant
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [orgId, specs])
+    // Deliberately only the organization. This used to depend on `specs`,
+    // which the parent rebuilds on every render — so loading rebuilt it, which
+    // rebuilt this, which loaded again.
+  }, [orgId])
 
   useEffect(() => {
     void load()
