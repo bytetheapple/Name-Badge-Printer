@@ -83,6 +83,34 @@ async function ensureDrive(orgId: string): Promise<string | null> {
   return created.length ? String(created[0].id) : null;
 }
 
+/**
+ * Why an owner is needed, in terms of the thing being attempted.
+ *
+ * All of these come back to the same cause — only an owner may connect or
+ * spend the organization's Google account — but a refusal that names the
+ * wrong feature reads as a bug in the product rather than as a rule.
+ */
+function ownerMessage(what: string, body: Record<string, unknown>): string {
+  const subject = what === "preflight" ? String(body.for ?? "") : what;
+  const ask = "Ask an owner of this organization to do it.";
+  if (subject === "event") {
+    return "Creating an event needs the organization's Google account, and " +
+      "connecting or using that is an owner's job. " + ask +
+      " Nothing has been created.";
+  }
+  if (subject === "sheet") {
+    return "A Google Sheet destination needs the organization's Google " +
+      "account, and connecting or using that is an owner's job. " + ask +
+      " Nothing has been created.";
+  }
+  if (subject === "drive") {
+    return "Connecting a Google account is an owner's job. " + ask +
+      " Photographs can be switched on afterwards.";
+  }
+  return "This needs the organization's Google account, and connecting or " +
+    "using that is an owner's job. " + ask;
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
 
@@ -102,14 +130,15 @@ Deno.serve(async (req) => {
   // Owner, matching the RLS on integrations and the rule that connecting an
   // account is the owner's job. An admin gets told which it is rather than a
   // bare refusal — they are trying to switch on a feature, not break in.
+  //
+  // The sentence names what they were doing. This used to say photographs
+  // whatever had been asked for, because photographs was the only caller when
+  // it was written; an operator refused while adding an event was told to ask
+  // an owner so that photographs could be switched on, which is advice about
+  // something else entirely.
   const role = await roleIn(userId, orgId);
   if (role !== "owner") {
-    return json({
-      ok: false,
-      needs_owner: true,
-      error: "Connecting a Google account is an owner's job. Ask an owner of this " +
-        "organization to do it, and photographs can be switched on afterwards.",
-    }, 403);
+    return json({ ok: false, needs_owner: true, error: ownerMessage(what, body) }, 403);
   }
 
   // Reached only once the owner check above has passed, so the remaining

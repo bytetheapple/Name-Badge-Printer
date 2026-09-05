@@ -515,7 +515,13 @@ export default function Integrations({
     // an event that could not be finished and, for an operator, could not be
     // fixed either.
     if (NEEDS_SHEET.includes(addKind)) {
-      const pre = await invokeFn('google-provision', { org_id: orgId, what: 'preflight' })
+      const pre = await invokeFn('google-provision', {
+        org_id: orgId,
+        what: 'preflight',
+        // Named so a refusal can say what was refused. A preflight is the one
+        // call that does not otherwise reveal what it is for.
+        for: addKind === 'event' ? 'event' : 'sheet',
+      })
       if (!pre.ok) {
         setBusy(null)
         if (pre.needs_connect) {
