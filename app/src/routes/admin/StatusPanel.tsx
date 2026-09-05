@@ -104,7 +104,14 @@ export default function StatusPanel() {
         () => loadNetReq(),
       )
       .subscribe()
-    const timer = window.setInterval(() => setTick((n) => n + 1), 5000)
+    // Re-read rather than only re-render. Whether the server is online is
+    // judged against bridge_last_seen, so a page that never refetches it will
+    // eventually call a healthy server offline no matter what it is doing —
+    // which is exactly what a dropped realtime channel caused.
+    const timer = window.setInterval(() => {
+      setTick((n) => n + 1)
+      void loadBridge()
+    }, 5000)
     return () => {
       void supabase.removeChannel(channel)
       window.clearInterval(timer)
@@ -113,10 +120,12 @@ export default function StatusPanel() {
 
   const lastSeen = bridge?.bridge_last_seen ? new Date(bridge.bridge_last_seen).getTime() : null
   const bridgeOnline = lastSeen !== null && Date.now() - lastSeen < BRIDGE_FRESH_MS
-  // Only while the bridge is online: an offline server's last known addresses
-  // are history, and reading them as current is how somebody concludes the
-  // network is fine when the server is simply gone.
-  const net = bridgeOnline ? bridge?.network ?? null : null
+  // Shown whether or not the server is online, but never passed off as
+  // current: an offline server's addresses are history, and reading them as
+  // live is how somebody concludes the network is fine when the server is
+  // gone. Hiding them outright was worse — a section that silently vanishes
+  // reads as a bug in the page, which is precisely how it was reported.
+  const net = bridge?.network ?? null
 
   return (
     <>
@@ -168,7 +177,17 @@ export default function StatusPanel() {
               reach printers on its wired network.
             </p>
           )}
-          {isAdmin && orgId && net.wifi_radio !== 'disabled' && (
+          {!bridgeOnline && (
+            <p className="muted small">
+              As last reported
+              {lastSeen ? ` at ${new Date(lastSeen).toLocaleTimeString()}` : ''}. The print
+              server is not answering now, so these may be out of date.
+            </p>
+          )}
+          {/* Only while it is listening. A change queued for a server that is
+              not there would be applied whenever it returns, with nobody
+              standing at it — which is the one situation this must not create. */}
+          {isAdmin && orgId && bridgeOnline && net.wifi_radio !== 'disabled' && (
             <JoinNetwork
               orgId={orgId}
               request={netReq}
