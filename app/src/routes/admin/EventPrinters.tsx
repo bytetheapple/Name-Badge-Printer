@@ -13,6 +13,11 @@ import type { EventPrinterRow, Printer } from '../../lib/types'
  * opaque token, resolved server-side on every scan, so a code printed for last
  * year's event opens nothing once that event is switched off.
  *
+ * There is no button to reissue a code. Remove and add the printer again does
+ * exactly that — a new row with a new token — and an event code is thrown away
+ * after one afternoon, so a control of its own was a second way to do one
+ * thing.
+ *
  * On-site registrations may be routed away from the scanned printer to one
  * behind the desk, where an administrator collects them — usually to take
  * payment before handing a badge over. That is a property of the event rather
@@ -97,26 +102,6 @@ export default function EventPrinters({
     await load()
   }
 
-  async function rotate(row: EventPrinterRow) {
-    const printer = printers.find((p) => p.id === row.printer_id)
-    if (
-      !window.confirm(
-        `Issue a new QR code for ${printer?.name ?? 'this printer'}? Every code already ` +
-          'printed for it stops working.',
-      )
-    ) {
-      return
-    }
-    setBusy(true)
-    const { error } = await supabase
-      .from('event_printers')
-      .update({ token: newSecret('e_', 16) })
-      .eq('id', row.id)
-    setBusy(false)
-    if (error) setError(error.message)
-    await load()
-  }
-
   return (
     <div style={{ marginTop: 12 }}>
       <h4>Printers</h4>
@@ -155,22 +140,13 @@ export default function EventPrinters({
               eventName={eventName}
               printerName={printer?.name ?? 'Printer'}
               actions={
-                <>
-                  <button
-                    className="secondary btn-sm"
-                    disabled={busy}
-                    onClick={() => void rotate(row)}
-                  >
-                    New code
-                  </button>
-                  <button
-                    className="secondary btn-sm"
-                    disabled={busy}
-                    onClick={() => void removePrinter(row)}
-                  >
-                    Remove
-                  </button>
-                </>
+                <button
+                  className="secondary btn-sm"
+                  disabled={busy}
+                  onClick={() => void removePrinter(row)}
+                >
+                  Remove
+                </button>
               }
             />
           </div>
