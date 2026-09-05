@@ -1,8 +1,9 @@
 /**
  * Versions to choose from, read straight out of the repository.
  *
- * The commit subject is the description — this project writes them at length,
- * so a list of commits is already a list of changes. Tags are folded in on top
+ * Only the commits that changed something a print server runs — see
+ * PATH_THAT_SHIPS. The commit subject is the description: this project writes
+ * them at length, so a list of commits is already a list of changes. Tags are folded in on top
  * of that, with their annotation message when they have one.
  *
  * Read-only, and unauthenticated on purpose. Creating a tag would need
@@ -15,6 +16,23 @@ const REPO = 'bytetheapple/Name-Badge-Printer'
 const API = `https://api.github.com/repos/${REPO}`
 const BRANCH = 'main'
 const HOW_MANY = 40
+
+/**
+ * Only commits that touched this path are releases.
+ *
+ * Everything a print server runs lives under `bridge/` -- the service, its
+ * updater and its systemd units included. A push that changes the admin
+ * console or an Edge Function produces another commit for a device to be
+ * "behind", with nothing in it for the device: the list filled up with
+ * versions that were all, to a Pi, the same version.
+ *
+ * GitHub answers this directly, so it costs no extra request and no extra
+ * permission. The consequence worth knowing: a device sitting on a commit that
+ * did not touch this path is not found in the list, and its row shows the bare
+ * sha without a date. That is honest -- it is running a version nobody would
+ * choose today -- and it corrects itself at the next release.
+ */
+const PATH_THAT_SHIPS = 'bridge'
 
 export interface RepoVersion {
   sha: string
@@ -79,7 +97,9 @@ async function tagsByCommit(): Promise<Map<string, { name: string; message: stri
 
 export async function repoVersions(): Promise<RepoVersion[]> {
   const [commits, tags] = await Promise.all([
-    json(`${API}/commits?sha=${BRANCH}&per_page=${HOW_MANY}`) as Promise<
+    json(
+      `${API}/commits?sha=${BRANCH}&path=${PATH_THAT_SHIPS}&per_page=${HOW_MANY}`,
+    ) as Promise<
       { sha: string; commit: { message: string; committer: { date: string } } }[]
     >,
     tagsByCommit(),
