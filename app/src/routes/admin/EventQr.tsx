@@ -106,9 +106,11 @@ export default function EventQr({
     <div style={{ display: 'flex', gap: 14, alignItems: 'flex-start', marginTop: 8 }}>
       <canvas ref={canvasRef} style={{ width: 160, height: 160 }} />
       <div>
-        <div className="muted small" style={{ wordBreak: 'break-all', marginBottom: 8 }}>
-          {url}
-        </div>
+        {/* The address is deliberately not shown. It was here to be copied and
+            nothing offered to copy it; meanwhile a token that opens a
+            registration desk sat in plain text on a screen people share while
+            setting a room up. The code beside it is how this is meant to
+            travel. */}
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
           <button type="button" className="secondary btn-sm" onClick={() => void printSign()}>
             Print this code
