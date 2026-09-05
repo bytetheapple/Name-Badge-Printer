@@ -95,15 +95,31 @@ export default function Organizations() {
   }
 
   async function setCustom(org: PlatformOrg, on: boolean) {
+    await setEntitlement(org, 'custom_integrations', on, 'Custom integrations')
+  }
+
+  async function setEvents(org: PlatformOrg, on: boolean) {
+    // Turning this off leaves the customer's event integrations alone: they
+    // stop accepting registrations and say so, and come back untouched if it
+    // is turned on again. A billing decision should not delete anything.
+    await setEntitlement(org, 'events_enabled', on, 'Events')
+  }
+
+  async function setEntitlement(
+    org: PlatformOrg,
+    column: 'custom_integrations' | 'events_enabled',
+    on: boolean,
+    label: string,
+  ) {
     setBusy(org.org_id)
     setNotice(null)
     const { error } = await supabase
       .from('organizations')
-      .update({ custom_integrations: on })
+      .update({ [column]: on })
       .eq('id', org.org_id)
     setBusy(null)
     if (error) setError(error.message)
-    else setNotice(`Custom integrations ${on ? 'enabled' : 'disabled'} for ${org.name}.`)
+    else setNotice(`${label} ${on ? 'enabled' : 'disabled'} for ${org.name}.`)
     await load()
   }
 
@@ -188,6 +204,7 @@ export default function Organizations() {
               <th>Print server</th>
               <th>Activity</th>
               <th>Custom</th>
+              <th>Events</th>
               <th />
             </tr>
           </thead>
@@ -243,6 +260,16 @@ export default function Organizations() {
                       />
                     </label>
                   </td>
+                  <td>
+                    <label className="check">
+                      <input
+                        type="checkbox"
+                        checked={o.events_enabled}
+                        disabled={busy === o.org_id}
+                        onChange={(e) => void setEvents(o, e.target.checked)}
+                      />
+                    </label>
+                  </td>
                   <td className="actions-cell">
                     {/* First, because it is now the common one: setting a
                         congregation up happens inside the organization, and
@@ -287,7 +314,7 @@ export default function Organizations() {
             })}
             {!orgs.length && (
               <tr>
-                <td colSpan={6} className="muted">
+                <td colSpan={7} className="muted">
                   No organizations yet.
                 </td>
               </tr>

@@ -97,11 +97,11 @@ export function OrgProvider({ children }: { children: ReactNode }) {
     const { data: orgRows, error: orgError } = operator
       ? await supabase
           .from('organizations')
-          .select('id, slug, name, status, custom_integrations')
+          .select('id, slug, name, status, custom_integrations, events_enabled')
       : ids.length
         ? await supabase
             .from('organizations')
-            .select('id, slug, name, status, custom_integrations')
+            .select('id, slug, name, status, custom_integrations, events_enabled')
             .in('id', ids)
         : { data: [], error: null }
     if (orgError) {

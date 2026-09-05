@@ -11,6 +11,13 @@ export interface Organization {
    * cannot turn it on for itself.
    */
   custom_integrations: boolean
+  /**
+   * Whether this org may run Event integrations — a paid feature, switched on
+   * per customer by the platform team. Turning it off leaves existing events
+   * in place and stops them accepting registrations, so that a billing change
+   * never destroys a customer's data.
+   */
+  events_enabled: boolean
 }
 
 /** One organization the signed-in user belongs to, with their role in it. */
@@ -187,6 +194,7 @@ export interface PlatformOrg {
   name: string
   status: 'active' | 'suspended'
   custom_integrations: boolean
+  events_enabled: boolean
   created_at: string
   members: number
   printers: number
