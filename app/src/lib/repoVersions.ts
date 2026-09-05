@@ -2,7 +2,7 @@
  * Versions to choose from, read straight out of the repository.
  *
  * Only the commits that changed something a print server runs — see
- * PATH_THAT_SHIPS. The commit subject is the description: this project writes
+ * PATH_THAT_SHIPS — and only back as far as OLDEST_SAFE. The commit subject is the description: this project writes
  * them at length, so a list of commits is already a list of changes. Tags are folded in on top
  * of that, with their annotation message when they have one.
  *
@@ -33,6 +33,31 @@ const HOW_MANY = 40
  * choose today -- and it corrects itself at the next release.
  */
 const PATH_THAT_SHIPS = 'bridge'
+
+/**
+ * The oldest release a device may be sent to.
+ *
+ * Not a preference. Below this commit a print server cannot be recovered
+ * without physically reaching it, for two reasons found in the history:
+ *
+ *   62b7a0f  update.sh ran git as root against a checkout owned by the login
+ *            user, and git refuses. Auto-update had never worked. A device
+ *            sent below this cannot update itself forward again -- the
+ *            updater is part of what you rolled back.
+ *   d04ae80  before this the credential came from .env. A device that has
+ *            since renewed its credential has an .env token that was
+ *            superseded and then revoked, so old code authenticates as
+ *            nobody, for ever.
+ *
+ * The floor is the later of the two. Rolling back above it is safe by design:
+ * a credential is revoked when its replacement is *used*, never when it is
+ * minted, so a bridge that ignores a replacement keeps one that works.
+ *
+ * Everything above this line is a judgement an operator can make. This one is
+ * not -- it cannot be read off a commit subject, which is why it lives here
+ * rather than in somebody's memory.
+ */
+export const OLDEST_SAFE = '62b7a0f'
 
 export interface RepoVersion {
   sha: string
@@ -105,13 +130,21 @@ export async function repoVersions(): Promise<RepoVersion[]> {
     tagsByCommit(),
   ])
 
-  return commits.map((c) => ({
+  const all = commits.map((c) => ({
     sha: c.sha,
     short: c.sha.slice(0, 7),
     subject: c.commit.message.split('\n')[0],
     date: c.commit.committer.date,
     tags: tags.get(c.sha) ?? [],
   }))
+
+  // Truncated at the floor rather than filtered by date: the list is already
+  // newest-first along one branch, so everything past that entry is older than
+  // it. The floor itself stays — it is the oldest safe release, not an unsafe
+  // one. If it has fallen out of the window entirely, nothing is dropped,
+  // because then every version on offer is newer than it anyway.
+  const floor = all.findIndex((v) => v.sha.startsWith(OLDEST_SAFE))
+  return floor === -1 ? all : all.slice(0, floor + 1)
 }
 
 /** ISO-ish and unambiguous. A console read by one person in one place still

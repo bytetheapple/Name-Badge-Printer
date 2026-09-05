@@ -92,14 +92,21 @@ export default function Fleet() {
 
   async function setReleaseRef() {
     const ref = refDraft.trim()
-    if (
-      ref &&
-      !window.confirm(
-        `Every print server not pinned to something else will move to ${ref} within about ` +
-          `fifteen minutes. A device that fails to start on it reverts itself. Continue?`,
+    if (ref) {
+      // One question, not two. The fleet release reaches every device that is
+      // not pinned elsewhere, so those are what a rollback is measured
+      // against — and the warning belongs in the same dialog as the rest of
+      // what is about to happen, rather than in a second one after it.
+      const warning = rollbackWarning(
+        ref,
+        devices.filter((d) => !d.pinned_ref),
       )
-    ) {
-      return
+      const asked =
+        `Every print server not pinned to something else will move to ${ref} within about ` +
+        `fifteen minutes. A device that fails to start on it reverts itself.` +
+        (warning ? `\n\n${warning}` : '') +
+        `\n\nContinue?`
+      if (!window.confirm(asked)) return
     }
     setBusy('release')
     setError(null)
@@ -128,6 +135,13 @@ export default function Fleet() {
   async function applyHold(ref: string | null) {
     const serials = [...selected]
     if (!serials.length) return
+    if (ref) {
+      const warning = rollbackWarning(
+        ref,
+        devices.filter((d) => serials.includes(d.serial)),
+      )
+      if (warning && !window.confirm(`${warning}\n\nContinue?`)) return
+    }
     setBusy('hold')
     setError(null)
     setNotice(null)
@@ -169,6 +183,47 @@ export default function Fleet() {
   function known(short: string | null): RepoVersion | null {
     if (!short) return null
     return versions.find((v) => v.short === short || v.sha.startsWith(short)) ?? null
+  }
+
+  /**
+   * How new a version is, as a position in the list. Lower is newer; null when
+   * the version is not in the window at all.
+   */
+  function rank(short: string | null): number | null {
+    if (!short) return null
+    const i = versions.findIndex((v) => v.short === short || v.sha.startsWith(short))
+    return i === -1 ? null : i
+  }
+
+  /**
+   * Stop and ask when this would move a device backwards.
+   *
+   * Rolling back is a legitimate and sometimes urgent thing to do — a release
+   * that breaks in the field is fixed fastest by leaving it — so this asks
+   * rather than refuses. What it prevents is the accidental version: picking
+   * an entry off a list without noticing it is behind what a device already
+   * runs, which looks like nothing happening until somebody wonders why a bug
+   * they watched get fixed is back.
+   *
+   * Devices whose version is not in the list are left out of the question. We
+   * cannot tell whether that is older or newer, and guessing either way would
+   * make this warning untrustworthy, which is worse than not showing it.
+   */
+  function rollbackWarning(target: string, over: PiDevice[]): string | null {
+    const to = rank(target)
+    if (to === null) return null
+    const back = over.filter((d) => {
+      const from = rank(d.running_ref)
+      return from !== null && from < to
+    })
+    if (!back.length) return null
+    const names = back.map((d) => `${d.customer ?? d.serial} (${d.running_ref})`).join('\n  ')
+    return (
+      `${target} is older than what ${
+        back.length === 1 ? 'this server is' : 'these servers are'
+      } running:\n\n  ${names}\n\n` +
+      'Rolling back reintroduces anything fixed since.'
+    )
   }
 
   function toggle(serial: string) {
