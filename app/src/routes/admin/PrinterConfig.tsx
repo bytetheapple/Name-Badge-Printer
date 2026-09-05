@@ -123,6 +123,16 @@ function PrinterDialog({
               ? "The printer's address on your network."
               : 'Change this if the printer has moved to a new address.'}
           </span>
+          {/* The print server's own account of why this address does not
+              answer, shown where the address is typed rather than only on the
+              status card. Typing a correct address and watching nothing happen
+              is how a customer lost a morning: the app said "could not find
+              the printer" and the real answer -- that the two were on
+              networks with no route between them -- was known to the bridge
+              and never asked for. */}
+          {printer?.reachable === false && printer.unreachable_reason && (
+            <span className="muted small">{printer.unreachable_reason}</span>
+          )}
         </label>
         <div className="modal-actions">
           <button className="secondary" onClick={onClose} disabled={saving}>

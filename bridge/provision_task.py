@@ -140,6 +140,24 @@ def _discover(ctx, say) -> TaskResult:
     for f in found:
         mark = "" if f.ip.strip() not in known_set else "  (already in service)"
         say(f"  {f.ip}  {f.mac or '?'}  {f.model or '?'}{mark}")
+    # A printer found one router away is reachable right now -- the sweep only
+    # returns addresses whose print port answered -- but it is reachable
+    # *because this site happens to route between those networks*, and plenty
+    # do not. Saying so here costs a line and lands while somebody can still
+    # move a cable; the alternative is discovering it the first time a badge
+    # does not print. This is a note, not a refusal: nothing about it is known
+    # to be wrong.
+    own = discover.local_subnet()
+    if own:
+        elsewhere = sorted({discover.net24(f.ip) for f in fresh
+                            if discover.net24(f.ip) != own})
+        if elsewhere:
+            say(f"note: this print server is on {own}.x, and "
+                f"{'a printer' if len(elsewhere) == 1 else 'printers'} answered on "
+                f"{', '.join(n + '.x' for n in elsewhere)}. That works here, so the "
+                "networks are routed — but a printer on the print server's own "
+                "network is one less thing to depend on.")
+
     if not fresh:
         return TaskResult(
             ok=False,

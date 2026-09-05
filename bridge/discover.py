@@ -373,7 +373,8 @@ def answers_ping(ip: str, timeout: float = 3.0) -> bool | None:
     return done.returncode == 0
 
 
-def _net24(ip: str) -> str:
+def net24(ip: str) -> str:
+    """The /24 prefix of an address, as a dotted string like '192.168.3'."""
     return ip.rsplit(".", 1)[0]
 
 
@@ -397,7 +398,7 @@ def diagnose(ip: str | None, port: int = PRINT_PORT, ping: bool = True) -> str |
             "direction. Put the print server on the same network as the printer."
         )
 
-    same_net = _net24(src) == _net24(ip)
+    same_net = net24(src) == net24(ip)
     replies = answers_ping(ip) if ping else None
 
     if replies is True:
@@ -413,7 +414,7 @@ def diagnose(ip: str | None, port: int = PRINT_PORT, ping: bool = True) -> str |
     if not same_net:
         return (
             f"This print server is on {src} and {ip} is on a different network "
-            f"({_net24(src)}.x and {_net24(ip)}.x)."
+            f"({net24(src)}.x and {net24(ip)}.x)."
             + (" It does not answer ping." if replies is False else "")
             + " Reaching it depends on the site routing between those two "
             "networks, and many do not — a wired drop and the WiFi are "

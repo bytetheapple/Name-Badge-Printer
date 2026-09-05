@@ -395,6 +395,36 @@ check("the passphrase is not in the transcript",
       not any("hunter2" in line for line in (r.log or [])),
       repr(r.log))
 
+print("— discovery says when a printer sits on another network —")
+# It is reachable: the sweep only returns addresses whose print port answered.
+# The point is that it works *because this site routes between the two*, which
+# is exactly the assumption that failed at Beth El once a printer moved to WiFi.
+_saved = (discover.local_subnet, pt._wait_for_printers)
+
+
+class _F:
+    def __init__(self, ip):
+        self.ip, self.mac, self.model = ip, None, "QL-820NWB"
+        self.via, self.name = "sweep", None
+
+
+try:
+    discover.local_subnet = lambda: "192.168.3"
+    pt._wait_for_printers = lambda subnet, timeout, say, known=(): [_F("192.168.0.40")]
+    r = pt.run("discover", {"subnet": "192.168.3"})
+    joined = " ".join(r.log or [])
+    check("notes both networks", "192.168.3.x" in joined and "192.168.0.x" in joined, joined)
+    check("does not call it a failure", r.ok is True, str(r.error))
+
+    # Same network: nothing to warn about, and a note that always fires is a
+    # note nobody reads.
+    pt._wait_for_printers = lambda subnet, timeout, say, known=(): [_F("192.168.3.40")]
+    r = pt.run("discover", {"subnet": "192.168.3"})
+    check("stays quiet when they share a network",
+          "note:" not in " ".join(r.log or []), " ".join(r.log or []))
+finally:
+    discover.local_subnet, pt._wait_for_printers = _saved
+
 print()
 if FAILURES:
     print(f"RESULT: {len(FAILURES)} failure(s): {', '.join(FAILURES)}")
