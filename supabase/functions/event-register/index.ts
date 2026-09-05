@@ -113,9 +113,12 @@ Deno.serve(async (req) => {
     const auth = await googleAuthFor(code.org_id, code.config, null, SCOPE);
     let spreadsheetId = String(code.config.spreadsheet_id ?? "");
     if (!spreadsheetId) {
-      // Configured but never opened. Making it here means the first person
-      // through the door does not fail; the on-site tab is then the only one
-      // with anything in it, which is the correct record of what happened.
+      // A safety net, not the normal path: the list is made when the event is
+      // created, so that a pre-registered guest list can be pasted into it
+      // beforehand. Getting here means that failed and nobody noticed, and a
+      // desk with a queue is the wrong place to find out -- so make it now and
+      // carry on. Everyone then lands on the on-site tab, which is the correct
+      // record of what actually happened.
       const made = await createEventSpreadsheet(
         auth.token,
         code.integration_id,

@@ -2,6 +2,10 @@
 //
 // Two jobs, both owner-only:
 //
+//   event   create an event's attendee list, with both tabs, the moment the
+//           event is created. Unlike a sign-in sheet this one is needed
+//           *before* anybody uses it: the whole point is to paste a
+//           pre-registered guest list into it beforehand.
 //   sheet   create the spreadsheet for a Google Sheet destination, so the
 //           operator gets a link while they are still looking at the page
 //           instead of after somebody signs in.
@@ -11,6 +15,7 @@
 //           attach to — so it is created here rather than asked for.
 import { corsHeaders, json } from "../_shared/cors.ts";
 import { createSpreadsheet } from "../_shared/gsheets.ts";
+import { createEventSpreadsheet } from "../_shared/eventsheet.ts";
 import { googleAuthFor, GoogleAuthError } from "../_shared/google.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
@@ -129,6 +134,40 @@ Deno.serve(async (req) => {
         return json({ ok: false, error: "This needs a connected Google account." }, 400);
       }
       const made = await createSpreadsheet(auth.token, integrationId, config);
+      return json({ ok: true, url: made.url, spreadsheet_id: made.id });
+    } catch (e) {
+      const msg = e instanceof GoogleAuthError ? e.message : String(e);
+      return json({ ok: false, needs_connect: e instanceof GoogleAuthError, error: msg });
+    }
+  }
+
+  if (what === "event") {
+    const integrationId = String(body.integration_id ?? "");
+    if (!integrationId) return json({ ok: false, error: "integration_id is required" }, 400);
+    const rowRes = await fetch(
+      `${SUPABASE_URL}/rest/v1/integrations?id=eq.${integrationId}&org_id=eq.${orgId}` +
+        `&kind=eq.event&select=id,name,config`,
+      { headers: restHeaders },
+    );
+    const row = rowRes.ok ? (await rowRes.json())[0] : null;
+    if (!row) return json({ ok: false, error: "No such event" }, 404);
+
+    const config = (row.config ?? {}) as Record<string, unknown>;
+    if (config.sheet_is_ours === true && config.spreadsheet_id) {
+      return json({ ok: true, already: true, url: config.spreadsheet_url ?? null });
+    }
+
+    try {
+      const auth = await googleAuthFor(orgId, config, null, "");
+      if (auth.kind !== "oauth") {
+        return json({ ok: false, error: "This needs a connected Google account." }, 400);
+      }
+      const made = await createEventSpreadsheet(
+        auth.token,
+        integrationId,
+        config,
+        String(row.name ?? "Event"),
+      );
       return json({ ok: true, url: made.url, spreadsheet_id: made.id });
     } catch (e) {
       const msg = e instanceof GoogleAuthError ? e.message : String(e);

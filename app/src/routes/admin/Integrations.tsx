@@ -422,6 +422,34 @@ export default function Integrations({
     }
   }
 
+  /** Make an event's attendee list after the fact, when creating it failed. */
+  async function makeEventList(row: Integration) {
+    if (!orgId) return
+    setBusy(row.id)
+    setError(null)
+    const res = await invokeFn('google-provision', {
+      org_id: orgId,
+      what: 'event',
+      integration_id: row.id,
+    })
+    setBusy(null)
+    if (res.ok) {
+      await load()
+      return
+    }
+    if (res.needs_connect) {
+      const begin = await invokeFn('google-oauth-begin', {
+        org_id: orgId,
+        return_to: '/admin/integrations',
+      })
+      if (begin.ok && typeof begin.url === 'string') {
+        window.location.assign(begin.url as string)
+        return
+      }
+    }
+    setError(res.error ?? 'Could not create the attendee list.')
+  }
+
   function setField(id: string, key: string, value: unknown) {
     setList((prev) =>
       prev.map((r) => (r.id === id ? { ...r, config: { ...(r.config ?? {}), [key]: value } } : r)),
@@ -455,10 +483,16 @@ export default function Integrations({
     // A sheet destination with no sheet is not configured, it is half made. So
     // make it here rather than leaving a button for somebody to find — and
     // switch it on, because at that point there is nothing else to decide.
-    if (addKind === 'google_sheet' && made?.id) {
+    //
+    // An event's list is made the same way but for a stronger reason: a
+    // sign-in sheet is only read after the first visitor, while an attendee
+    // list has to exist *before* anyone uses it, because the pre-registered
+    // guests go into it beforehand. Making it lazily was a mistake copied
+    // from the sheet destination.
+    if ((addKind === 'google_sheet' || addKind === 'event') && made?.id) {
       const res = await invokeFn('google-provision', {
         org_id: orgId,
-        what: 'sheet',
+        what: addKind === 'event' ? 'event' : 'sheet',
         integration_id: made.id,
       })
       if (res.ok) {
@@ -476,7 +510,12 @@ export default function Integrations({
         }
         setError(begin.error ?? 'Could not start the Google connection.')
       } else {
-        setError(res.error ?? 'The destination was added, but its sheet could not be created.')
+        setError(
+          res.error ??
+            (addKind === 'event'
+              ? 'The event was added, but its attendee list could not be created.'
+              : 'The destination was added, but its sheet could not be created.'),
+        )
       }
     }
 
@@ -825,14 +864,44 @@ export default function Integrations({
 
             {spec.kind === 'event' && orgId && !idle && (
               <>
-                {!config.spreadsheet_id && (
-                  /* Made on the first registration rather than now, so an
-                     event set up in advance does not depend on Google being
-                     reachable at the moment somebody clicks Save. */
-                  <p className="muted small" style={{ marginTop: 10 }}>
-                    The attendee list is created when this event is first used. Paste your
-                    pre-registered guests into its Pre-registered tab.
+                {config.spreadsheet_url || config.spreadsheet_id ? (
+                  /* The link belongs here, not only in the banner: filling the
+                     list in is the first thing anybody does after making an
+                     event, and it is done in the spreadsheet rather than on
+                     this page. */
+                  <p style={{ marginTop: 10 }}>
+                    <a
+                      href={
+                        (config.spreadsheet_url as string) ||
+                        `https://docs.google.com/spreadsheets/d/${config.spreadsheet_id}`
+                      }
+                      target="_blank"
+                      rel="noreferrer"
+                    >
+                      Open the attendee list
+                    </a>
+                    <span className="muted small">
+                      {' '}
+                      — paste your pre-registered guests into the Pre-registered tab.
+                    </span>
                   </p>
+                ) : (
+                  /* Normally made as the event is created. Getting here means
+                     that failed — usually no Google account yet — so the way
+                     to finish it is on the page rather than in a message. */
+                  <div style={{ marginTop: 10 }}>
+                    <button
+                      type="button"
+                      className="secondary btn-sm"
+                      disabled={busy === row.id}
+                      onClick={() => void makeEventList(row)}
+                    >
+                      {busy === row.id ? 'Creating…' : 'Create the attendee list'}
+                    </button>
+                    <span className="muted small" style={{ marginLeft: 10 }}>
+                      This event has no list yet. It needs a connected Google account.
+                    </span>
+                  </div>
                 )}
                 <EventPrinters
                   orgId={orgId}
