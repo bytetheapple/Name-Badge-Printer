@@ -38,13 +38,12 @@ export default function EventQr({
       const QRCode = (await import('qrcode')).default
       if (cancelled) return
       await QRCode.toCanvas(canvas, url, { width: 480, margin: 2, errorCorrectionLevel: 'H' })
-      // qrcode writes an inline width/height onto the canvas, which beats the
-      // stylesheet; clearing them lets it size to its container.
-      canvas.removeAttribute('width')
+      // Only the CSS size, never the width or height attributes: assigning to
+      // either of those resets a canvas to blank, which is what the first
+      // version of this did immediately after drawing the code. The 480px
+      // bitmap stays as it is, and that is what the printed sign uses.
       canvas.style.width = '160px'
       canvas.style.height = '160px'
-      canvas.setAttribute('width', '480')
-      canvas.setAttribute('height', '480')
     })()
     return () => {
       cancelled = true
