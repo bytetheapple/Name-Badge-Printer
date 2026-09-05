@@ -76,20 +76,20 @@ export default function StatusPanel() {
 
   return (
     <>
-      <h1>Print Server</h1>
-
-      <div
-        className={`status-card ${bridgeOnline ? 'ok' : 'bad'}`}
-        style={{ marginBottom: 20, maxWidth: 400 }}
-      >
-        <div className="status-label">Bridge</div>
-        <div className="status-value">
-          {bridgeOnline ? 'Online' : lastSeen ? 'Offline' : 'Never connected'}
-        </div>
-        <div className="muted small">
-          {lastSeen ? `Last seen ${new Date(lastSeen).toLocaleTimeString()}` : 'Waiting for the print bridge'}
-        </div>
-      </div>
+      {/* On the heading rather than in a card of its own. Whether the server
+          is up is context for everything below it, not a finding — and a card
+          that says "Online" every day of the year is a card people stop
+          reading, which is the last thing this one can afford to be. */}
+      <h1 style={{ display: 'flex', alignItems: 'baseline', gap: 12, flexWrap: 'wrap' }}>
+        Print Server
+        <span className="muted small" style={{ fontWeight: 400 }}>
+          <span className={`tab-dot ${bridgeOnline ? 'ok' : 'bad'}`} aria-hidden="true" />{' '}
+          {lastSeen === null
+            ? 'Never connected'
+            : `${bridgeOnline ? 'Online' : 'Offline'} · last seen ` +
+              new Date(lastSeen).toLocaleTimeString()}
+        </span>
+      </h1>
 
       {/* Which networks the server is on, next to the printers it can reach.
           Shown even when everything works: the question "are these two on the
