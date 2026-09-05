@@ -185,11 +185,14 @@ const EVENT_SPECS: Spec[] = [
     title: 'Event',
     savesItself: true,
     notADestination: true,
-    // No `opens` here, though there is a spreadsheet to open. The link lives
-    // in the panel instead, next to the sentence that says what to do with it
-    // — paste your pre-registered guests into the Pre-registered tab — and a
-    // second one in the banner was the same link twice with the useful half
-    // missing.
+    // In the banner rather than in the panel. Filling the list in is what
+    // somebody comes to this page to do, and it should not be behind
+    // Configure.
+    opens: {
+      urlKey: 'spreadsheet_url',
+      fromId: { key: 'spreadsheet_id', prefix: 'https://docs.google.com/spreadsheets/d/' },
+      label: 'Open the list',
+    },
     fields: [],
   },
 ]
@@ -987,31 +990,12 @@ export default function Integrations({
 
             {spec.kind === 'event' && orgId && !idle && (
               <>
-                {config.spreadsheet_url || config.spreadsheet_id ? (
-                  /* The link belongs here, not only in the banner: filling the
-                     list in is the first thing anybody does after making an
-                     event, and it is done in the spreadsheet rather than on
-                     this page. */
-                  <p style={{ marginTop: 10 }}>
-                    <a
-                      href={
-                        (config.spreadsheet_url as string) ||
-                        `https://docs.google.com/spreadsheets/d/${config.spreadsheet_id}`
-                      }
-                      target="_blank"
-                      rel="noreferrer"
-                    >
-                      Open the attendee list
-                    </a>
-                    <span className="muted small">
-                      {' '}
-                      — paste your pre-registered guests into the Pre-registered tab.
-                    </span>
-                  </p>
-                ) : (
-                  /* Normally made as the event is created. Getting here means
-                     that failed — usually no Google account yet — so the way
-                     to finish it is on the page rather than in a message. */
+                {!config.spreadsheet_id && (
+                  /* Only when there is no list. Opening one is in the banner;
+                     this is making one, and it lives here because getting this
+                     far without a list means something failed — usually no
+                     Google account yet — and the fix belongs on the page
+                     rather than in a message. */
                   <div style={{ marginTop: 10 }}>
                     <button
                       type="button"
