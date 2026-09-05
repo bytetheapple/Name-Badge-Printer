@@ -201,8 +201,13 @@ const EVENT_SPECS: Spec[] = [
 export default function Integrations({
   specs = PLATFORM_SPECS,
   unavailable = [],
+  onOfferKinds,
 }: {
   specs?: Spec[]
+  /** Called as somebody reaches for the list of kinds, so what it offers can
+   *  be re-read first. Which kinds exist depends on entitlements the platform
+   *  team sets, and those change while a customer has this page open. */
+  onOfferKinds?: () => void
   /** Kinds this organization may no longer use but may still have. An
    *  entitlement that lapses stops the work without deleting it: the rows stay
    *  on the page, say why they are idle, and come back untouched if it is
@@ -921,7 +926,18 @@ export default function Integrations({
         )
       })}
 
-      <section className="card">
+      {/* Which kinds are on offer comes from the organization's entitlements,
+          which are read once when the admin loads. An operator switching Events
+          on for a customer mid-session would otherwise not appear until the
+          page happened to be reloaded, with nothing on screen suggesting it —
+          so the row is re-read as somebody reaches for it. On hover as well as
+          on focus, because the answer needs to be in hand before the list
+          opens rather than while it is open. */}
+      <section
+        className="card"
+        onMouseEnter={() => onOfferKinds?.()}
+        onFocusCapture={() => onOfferKinds?.()}
+      >
         <h2>Add an integration</h2>
         <div className="grid2">
           <label className="field">

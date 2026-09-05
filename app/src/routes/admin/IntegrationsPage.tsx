@@ -1,5 +1,6 @@
-import { useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { useOrg } from '../../lib/org'
+import { supabase } from '../../lib/supabase'
 import ApiKeys from './ApiKeys'
 import Integrations, { CUSTOM_SPECS, EVENT_SPECS, PLATFORM_SPECS } from './Integrations'
 
@@ -24,8 +25,36 @@ const TABS: { key: Tab; label: string }[] = [
  * the organization and a database trigger enforces it, not this component.
  */
 export default function IntegrationsPage() {
-  const { org, isAdmin, loading } = useOrg()
+  const { org, orgId, isAdmin, loading } = useOrg()
   const [tab, setTab] = useState<Tab>('destinations')
+
+  // Entitlements, kept locally so they can be re-read without disturbing
+  // anything else.
+  //
+  // The org context loads once at sign-in and its reload() raises the global
+  // loading flag, which blanks the whole admin shell -- fine when switching
+  // organizations, wrong for answering "has Events been switched on since I
+  // opened this page". So this asks that one question on its own: two
+  // booleans, one row, no spinner.
+  const [events, setEvents] = useState(false)
+  const [custom, setCustom] = useState(false)
+
+  useEffect(() => {
+    setEvents(Boolean(org?.organization.events_enabled))
+    setCustom(Boolean(org?.organization.custom_integrations))
+  }, [org])
+
+  const refreshEntitlements = useCallback(async () => {
+    if (!orgId) return
+    const { data } = await supabase
+      .from('organizations')
+      .select('custom_integrations, events_enabled')
+      .eq('id', orgId)
+      .maybeSingle()
+    if (!data) return
+    setEvents(Boolean(data.events_enabled))
+    setCustom(Boolean(data.custom_integrations))
+  }, [orgId])
 
   if (!isAdmin) return null
   if (loading) return <p className="muted">Loading…</p>
@@ -63,13 +92,14 @@ export default function IntegrationsPage() {
               // syncs without events or events without bespoke syncs, and they
               // are billed differently.
               specs={
-                org?.organization.custom_integrations
+                custom
                   ? [...PLATFORM_SPECS, ...EVENT_SPECS, ...CUSTOM_SPECS]
                   : [...PLATFORM_SPECS, ...EVENT_SPECS]
               }
-              unavailable={org?.organization.events_enabled ? [] : ['event']}
+              unavailable={events ? [] : ['event']}
+              onOfferKinds={refreshEntitlements}
             />
-            {!org?.organization.custom_integrations && <CustomOffer />}
+            {!custom && <CustomOffer />}
           </>
         )}
 
