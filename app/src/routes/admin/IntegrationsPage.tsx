@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useOrg } from '../../lib/org'
 import ApiKeys from './ApiKeys'
-import Integrations, { CUSTOM_SPECS, PLATFORM_SPECS } from './Integrations'
+import Integrations, { CUSTOM_SPECS, EVENT_SPECS, PLATFORM_SPECS } from './Integrations'
 
 type Tab = 'destinations' | 'api'
 
@@ -53,11 +53,21 @@ export default function IntegrationsPage() {
         {tab === 'destinations' && (
           <>
             <Integrations
+              // Events are always described, so an event a customer already
+              // has never disappears from the page when the entitlement
+              // lapses; `unavailable` then stops it running and says why.
+              //
+              // Custom integrations keep their existing behaviour of being
+              // absent entirely without the grant. Two entitlements,
+              // deliberately not folded together: a customer may have bespoke
+              // syncs without events or events without bespoke syncs, and they
+              // are billed differently.
               specs={
                 org?.organization.custom_integrations
-                  ? [...PLATFORM_SPECS, ...CUSTOM_SPECS]
-                  : PLATFORM_SPECS
+                  ? [...PLATFORM_SPECS, ...EVENT_SPECS, ...CUSTOM_SPECS]
+                  : [...PLATFORM_SPECS, ...EVENT_SPECS]
               }
+              unavailable={org?.organization.events_enabled ? [] : ['event']}
             />
             {!org?.organization.custom_integrations && <CustomOffer />}
           </>

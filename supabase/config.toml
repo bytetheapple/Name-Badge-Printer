@@ -458,3 +458,12 @@ verify_jwt = true
 
 [functions.google-sheet-sync]
 verify_jwt = true
+
+# Answers a QR code printed on paper, so there is no JWT to verify. Every gate
+# -- the event enabled, the organization active, the Events entitlement on --
+# is applied inside resolveEventCode on every call.
+[functions.event-config]
+verify_jwt = false
+
+[functions.event-register]
+verify_jwt = false

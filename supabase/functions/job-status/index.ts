@@ -5,6 +5,7 @@
 // org — so a job id alone can never be used to probe another tenant.
 import { corsHeaders, json } from "../_shared/cors.ts";
 import { REST, resolveKiosk, restHeaders } from "../_shared/kiosk.ts";
+import { resolveEventCode } from "../_shared/eventcode.ts";
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -26,6 +27,12 @@ Deno.serve(async (req) => {
   if (body.kiosk_token || body.printer_id) {
     const { kiosk } = await resolveKiosk(body);
     if (kiosk) scope = `&org_id=eq.${kiosk.org_id}`;
+  } else if (body.event_token) {
+    // An event desk has no kiosk token -- its codes are per event and per
+    // printer -- but it scopes the same way, so a job id alone still cannot be
+    // used to probe another tenant.
+    const code = await resolveEventCode(String(body.event_token));
+    if (code) scope = `&org_id=eq.${code.org_id}`;
   }
 
   const res = await fetch(

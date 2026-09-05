@@ -1,0 +1,224 @@
+import { useCallback, useEffect, useState } from 'react'
+import { supabase } from '../../lib/supabase'
+import { newSecret } from '../../lib/secrets'
+import { eventUrl } from '../../lib/publicUrl'
+import type { EventPrinterRow, Printer } from '../../lib/types'
+
+/**
+ * Which printers an event uses, and the QR code for each.
+ *
+ * One code per printer per event, rather than one per event, so a queue can be
+ * split across desks and each desk's badges come out beside the person
+ * standing at it. A code carries no event name and no organization: it is an
+ * opaque token, resolved server-side on every scan, so a code printed for last
+ * year's event opens nothing once that event is switched off.
+ *
+ * On-site registrations may be routed away from the scanned printer to one
+ * behind the desk, where an administrator collects them — usually to take
+ * payment before handing a badge over. That is a property of the event rather
+ * than of any one code: when it is set, every code's walk-ins go there.
+ */
+export default function EventPrinters({
+  orgId,
+  integrationId,
+  config,
+  onConfig,
+}: {
+  orgId: string
+  integrationId: string
+  config: Record<string, unknown>
+  onConfig: (key: string, value: unknown) => void
+}) {
+  const [printers, setPrinters] = useState<Printer[]>([])
+  const [rows, setRows] = useState<EventPrinterRow[]>([])
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [addId, setAddId] = useState('')
+
+  const load = useCallback(async () => {
+    const [{ data: ps }, { data: eps }] = await Promise.all([
+      supabase.from('printers').select('*').eq('org_id', orgId).order('name'),
+      supabase
+        .from('event_printers')
+        .select('*')
+        .eq('integration_id', integrationId)
+        .order('created_at'),
+    ])
+    setPrinters((ps ?? []) as Printer[])
+    setRows((eps ?? []) as EventPrinterRow[])
+  }, [orgId, integrationId])
+
+  useEffect(() => {
+    void load()
+  }, [load])
+
+  const used = new Set(rows.map((r) => r.printer_id))
+  const spare = printers.filter((p) => !used.has(p.id))
+  const sameprinter = config.onsite_same_printer !== false
+  const onsitePrinterId = String(config.onsite_printer_id ?? '')
+
+  async function addPrinter(printerId: string) {
+    if (!printerId) return
+    setBusy(true)
+    setError(null)
+    const { error } = await supabase.from('event_printers').insert({
+      org_id: orgId,
+      integration_id: integrationId,
+      printer_id: printerId,
+      token: newSecret('e_', 16),
+    })
+    setBusy(false)
+    if (error) setError(error.message)
+    setAddId('')
+    await load()
+  }
+
+  async function removePrinter(row: EventPrinterRow) {
+    const printer = printers.find((p) => p.id === row.printer_id)
+    // Said plainly, because the code is on paper somewhere and taking the row
+    // away is what stops it working.
+    if (
+      !window.confirm(
+        `Remove ${printer?.name ?? 'this printer'} from this event? Any printed QR code ` +
+          'for it stops working immediately.',
+      )
+    ) {
+      return
+    }
+    setBusy(true)
+    const { error } = await supabase.from('event_printers').delete().eq('id', row.id)
+    setBusy(false)
+    if (error) setError(error.message)
+    await load()
+  }
+
+  async function rotate(row: EventPrinterRow) {
+    const printer = printers.find((p) => p.id === row.printer_id)
+    if (
+      !window.confirm(
+        `Issue a new QR code for ${printer?.name ?? 'this printer'}? Every code already ` +
+          'printed for it stops working.',
+      )
+    ) {
+      return
+    }
+    setBusy(true)
+    const { error } = await supabase
+      .from('event_printers')
+      .update({ token: newSecret('e_', 16) })
+      .eq('id', row.id)
+    setBusy(false)
+    if (error) setError(error.message)
+    await load()
+  }
+
+  return (
+    <div style={{ marginTop: 12 }}>
+      <h4>Registration codes</h4>
+      <p className="muted small">
+        One code per printer. Print each one and put it where that printer&apos;s queue
+        forms.
+      </p>
+
+      {rows.map((row) => {
+        const printer = printers.find((p) => p.id === row.printer_id)
+        return (
+          <div key={row.id} className="field-group" style={{ marginBottom: 10 }}>
+            <div>
+              <strong>{printer?.name ?? 'Printer no longer set up'}</strong>
+              {printer?.location && <span className="muted"> · {printer.location}</span>}
+            </div>
+            <div className="muted small" style={{ wordBreak: 'break-all' }}>
+              {eventUrl(row.token)}
+            </div>
+            <div className="modal-actions">
+              <a
+                className="button secondary btn-sm"
+                href={`/admin/config?event_qr=${row.id}`}
+                onClick={(e) => {
+                  e.preventDefault()
+                  window.open(eventUrl(row.token), '_blank', 'noopener')
+                }}
+              >
+                Open the form
+              </a>
+              <button className="secondary btn-sm" disabled={busy} onClick={() => void rotate(row)}>
+                New code
+              </button>
+              <button
+                className="secondary btn-sm"
+                disabled={busy}
+                onClick={() => void removePrinter(row)}
+              >
+                Remove
+              </button>
+            </div>
+          </div>
+        )
+      })}
+
+      {!rows.length && (
+        <p className="muted small">
+          No printers yet. Add one to get a code people can scan.
+        </p>
+      )}
+
+      {spare.length > 0 && (
+        <div className="modal-actions">
+          <select value={addId} onChange={(e) => setAddId(e.target.value)}>
+            <option value="">Add a printer…</option>
+            {spare.map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.name}
+              </option>
+            ))}
+          </select>
+          <button disabled={!addId || busy} onClick={() => void addPrinter(addId)}>
+            Add
+          </button>
+        </div>
+      )}
+
+      <h4 style={{ marginTop: 16 }}>On-site registrations</h4>
+      <label className="check">
+        <input
+          type="checkbox"
+          checked={sameprinter}
+          onChange={(e) => onConfig('onsite_same_printer', e.target.checked)}
+        />
+        On-site registrations go to the same printer?
+      </label>
+      {!sameprinter && (
+        <label className="field" style={{ maxWidth: 320 }}>
+          Printer for on-site registrations
+          <select
+            value={onsitePrinterId}
+            onChange={(e) => onConfig('onsite_printer_id', e.target.value)}
+          >
+            <option value="">Choose a printer…</option>
+            {printers.map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.name}
+              </option>
+            ))}
+          </select>
+          <span className="muted small">
+            Everyone not on the pre-registration list prints here, whichever code they
+            scanned. It may be one of the printers above or a different one.
+          </span>
+        </label>
+      )}
+      {/* A setting that is on but unfinished does nothing, silently. Saying so
+          beats letting a desk discover it when the first walk-in's badge comes
+          out at the wrong end of the room. */}
+      {!sameprinter && !onsitePrinterId && (
+        <p className="muted small">
+          Until a printer is chosen here, on-site badges print at whichever code was
+          scanned.
+        </p>
+      )}
+
+      {error && <p className="error small">{error}</p>}
+    </div>
+  )
+}

@@ -239,6 +239,7 @@ def render_badge(
     label: str = "62",
     pronouns: str = "",
     visitor: bool = False,
+    corner: str = "",
 ) -> Image.Image:
     """Render one badge.
 
@@ -246,6 +247,13 @@ def render_badge(
     white and "Visitor" in the corner, so the two kinds of badge are told apart
     across a room rather than by reading them. Members are unchanged: the
     ordinary badge is the one most people get, and it stays the quiet one.
+
+    `corner` overrides the word in that corner, and puts one there on a badge
+    that is not inverted. An event desk uses it for ON-SITE, to mark someone
+    who was not on the pre-registration list -- often the difference between a
+    badge that is handed over and one that is handed over after payment. The
+    slot is shared rather than duplicated: one corner that carries whichever
+    word applies beats a second corner per case.
     """
     t = template or {}
     header = t.get("header", "WELCOME")
@@ -309,16 +317,22 @@ def render_badge(
 
     # The word itself, in the corner of the band. Small, because the inversion
     # is what carries across a room and this is what confirms it up close.
-    if visitor and banner_h:
+    #
+    # An explicit `corner` wins over the visitor label and works with or
+    # without the band: on an event badge the header is never inverted, so the
+    # word is drawn in black on white and is the only thing distinguishing the
+    # two kinds of badge on that desk.
+    word = (corner or "").strip() or (str(t.get("visitor_label", "Visitor")) if visitor else "")
+    if word and banner_h:
         # Smaller than the header wording: the inversion is what reads across a
         # room, and this only has to confirm it once someone is close enough to
         # shake a hand.
         vf = _load_font(round(float(t.get("visitor_mm", 2.4)) * MM), bold=True)
         draw.text(
             (width - margin, round(2 * MM)),
-            str(t.get("visitor_label", "Visitor")),
+            word,
             font=vf,
-            fill="white",
+            fill=("white" if visitor else "black"),
             anchor="ra",
         )
 

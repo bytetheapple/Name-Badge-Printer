@@ -58,7 +58,13 @@ export interface ApiKey {
   revoked_at: string | null
 }
 
-export type IntegrationKind = 'google_form' | 'shulcloud' | 'google_drive' | 'google_sheet' | 'google_oauth'
+export type IntegrationKind =
+  | 'google_form'
+  | 'shulcloud'
+  | 'google_drive'
+  | 'google_sheet'
+  | 'google_oauth'
+  | 'event'
 
 /** One organization's settings for one external system. Credentials are not
  *  here — they live in Vault and are never returned to the browser. */
@@ -370,4 +376,19 @@ export interface PrintJob {
   created_at: string
   claimed_at: string | null
   printed_at: string | null
+}
+
+/** One printer taking part in one event, and the QR code that reaches it.
+ *
+ *  Per printer and per event rather than per event: a queue can be split
+ *  across desks, and retiring one desk's code leaves the others alone. */
+export interface EventPrinterRow {
+  id: string
+  org_id: string
+  integration_id: string
+  printer_id: string
+  /** Opaque; what the printed code carries. Rotatable without touching the
+   *  event, which is what makes a lost or photographed code recoverable. */
+  token: string
+  created_at: string
 }

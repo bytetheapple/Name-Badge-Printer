@@ -7,6 +7,7 @@ import { OrgProvider } from './lib/org'
 import { RequireAuth } from './components/RequireAuth'
 import { useSearchParams } from 'react-router-dom'
 import PublicForm from './routes/PublicForm'
+import EventForm from './routes/EventForm'
 import Landing from './routes/public/Landing'
 import Pricing from './routes/public/Pricing'
 import Privacy from './routes/public/Privacy'
@@ -45,6 +46,10 @@ const router = createBrowserRouter([
   { path: '/terms', element: <Terms /> },
   // Opaque per-printer kiosk link, encoded in the lobby QR code.
   { path: '/k/:token', element: <PublicForm /> },
+  // The same idea for an event desk: one code per printer per event, so a
+  // queue can be split across desks and a code from last year's event opens
+  // nothing.
+  { path: '/e/:token', element: <EventForm /> },
   { path: '/admin/login', element: <Login /> },
   { path: '/admin/set-password', element: <SetPassword /> },
   {

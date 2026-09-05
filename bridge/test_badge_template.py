@@ -253,6 +253,29 @@ check("a font honours the size it was asked for",
 check("and the name on a badge is drawn far larger than a fallback's 10px",
       _f_test.size > 40, f"{_f_test.size}px")
 
+print("— an event walk-in is marked in the corner, without inverting the header —")
+# The desk hands a pre-registered guest their badge and an on-site one to an
+# administrator who may take payment first, so the two have to be told apart at
+# a glance. Inverting the header is how a *visitor* is marked, and an event
+# badge is never inverted: reusing the inversion here would say the wrong thing
+# to everyone who already knows what a dark badge means.
+_t2 = {"header": "GALA", "subtitle": "Temple Beth El", "length_mm": 90}
+_plain = badge_mod.render_badge("Miriam", "Rosenbaum", _t2, "62")
+_onsite = badge_mod.render_badge("Miriam", "Rosenbaum", _t2, "62", corner="ON-SITE")
+check("the corner word changes the badge", list(_plain.getdata()) != list(_onsite.getdata()))
+check("and it is the same size as any other", _plain.size == _onsite.size)
+# White in the top-left corner means no black band: the header is normal.
+check("the header is not inverted", _onsite.getpixel((4, 4)) == (255, 255, 255),
+      str(_onsite.getpixel((4, 4))))
+_visitor = badge_mod.render_badge("Miriam", "Rosenbaum", _t2, "62", visitor=True)
+check("where a visitor badge still is", _visitor.getpixel((4, 4)) == (0, 0, 0),
+      str(_visitor.getpixel((4, 4))))
+# A visitor with no explicit corner keeps saying "Visitor".
+_v_corner = badge_mod.render_badge("Miriam", "Rosenbaum", _t2, "62", visitor=True, corner="")
+check("a visitor badge is unchanged by the new argument",
+      list(_visitor.getdata()) == list(_v_corner.getdata()))
+
+
 print()
 if FAILURES:
     print(f"RESULT: {len(FAILURES)} failure(s): {', '.join(FAILURES)}")

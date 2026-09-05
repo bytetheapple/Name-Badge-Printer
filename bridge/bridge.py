@@ -143,6 +143,10 @@ def handle_job(client, job: dict, cfg: dict, printers: list):
             visitor = job.get("visitor_type") == "visitor"
             if not first:
                 raise RuntimeError("no name or form entry for this job")
+            # An event desk marks a walk-in with a word in the header corner.
+            # It is carried on the job rather than derived here: whether
+            # somebody was on a pre-registration list is a fact established
+            # when they registered, and the bridge has no way to know it.
             image = render_badge(
                 first or "",
                 last or "",
@@ -150,6 +154,7 @@ def handle_job(client, job: dict, cfg: dict, printers: list):
                 label,
                 pronouns=pronouns or "",
                 visitor=visitor,
+                corner=str(job.get("corner_note") or ""),
             )
 
         printer.print_image(

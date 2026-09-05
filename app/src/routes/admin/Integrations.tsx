@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useState } from 'react'
 import { supabase } from '../../lib/supabase'
+import EventPrinters from './EventPrinters'
 import { invokeFn } from '../../lib/functions'
 import { useOrg } from '../../lib/org'
 import type { Integration, IntegrationKind } from '../../lib/types'
 
-export { CUSTOM_SPECS, PLATFORM_SPECS }
+export { CUSTOM_SPECS, EVENT_SPECS, PLATFORM_SPECS }
 
 const COLUMNS =
   'id, org_id, kind, name, enabled, default_enabled, config, updated_at, created_at'
@@ -163,6 +164,28 @@ const CUSTOM_SPECS: Spec[] = [
 const PLATFORM_SPECS: Spec[] = [
 ]
 
+// Events are charged for and switched on per customer from Operations, so this
+// is offered separately rather than sitting in PLATFORM_SPECS. An organization
+// without the entitlement never sees the option, and one whose entitlement is
+// withdrawn keeps its events on the page — marked unavailable — because a
+// billing change should not delete anybody's work.
+const EVENT_SPECS: Spec[] = [
+  {
+    kind: 'event',
+    title: 'Event',
+    blurb:
+      'A registration desk for one event. Everyone who prints a badge is matched ' +
+      'against your pre-registration list and checked off; anyone not on it is added ' +
+      'to an On-site registration tab and their badge is marked ON-SITE.',
+    opens: {
+      urlKey: 'spreadsheet_url',
+      fromId: { key: 'spreadsheet_id', prefix: 'https://docs.google.com/spreadsheets/d/' },
+      label: 'Open the list',
+    },
+    fields: [],
+  },
+]
+
 /**
  * An organization's integrations, of which there may be several of a kind.
  *
@@ -175,7 +198,19 @@ const PLATFORM_SPECS: Spec[] = [
  * Vault, and no route reads it back, so the field shows only whether one is
  * stored.
  */
-export default function Integrations({ specs = PLATFORM_SPECS }: { specs?: Spec[] } = {}) {
+export default function Integrations({
+  specs = PLATFORM_SPECS,
+  unavailable = [],
+}: {
+  specs?: Spec[]
+  /** Kinds this organization may no longer use but may still have. An
+   *  entitlement that lapses stops the work without deleting it: the rows stay
+   *  on the page, say why they are idle, and come back untouched if it is
+   *  granted again. Removing them from `specs` instead would hide them
+   *  entirely, which leaves a printed QR code failing with nothing on any
+   *  screen to explain it. */
+  unavailable?: IntegrationKind[]
+} = {}) {
   const { orgId, isOwner } = useOrg()
   const [list, setList] = useState<Integration[]>([])
   //: What the server last told us, so the card can say when the text fields
@@ -558,6 +593,7 @@ export default function Integrations({ specs = PLATFORM_SPECS }: { specs?: Spec[
         const spec = specOf(row.kind)
         if (!spec) return null
         const config = (row.config ?? {}) as Record<string, unknown>
+        const idle = unavailable.includes(row.kind)
         return (
           <section
             className={`card${
@@ -772,6 +808,36 @@ export default function Integrations({ specs = PLATFORM_SPECS }: { specs?: Spec[
             </div>
             )}
 
+            {idle && (
+              /* Stated once, at the top of the card, rather than disabling
+                 every control on it: the settings are still worth reading, and
+                 an operator who can see why it is idle can act on it. */
+              <p className="muted small" style={{ marginTop: 10 }}>
+                This is not running. {spec.title} is not enabled for your organization —
+                contact support to turn it back on. Nothing here has been deleted.
+              </p>
+            )}
+
+            {spec.kind === 'event' && orgId && !idle && (
+              <>
+                {!config.spreadsheet_id && (
+                  /* Made on the first registration rather than now, so an
+                     event set up in advance does not depend on Google being
+                     reachable at the moment somebody clicks Save. */
+                  <p className="muted small" style={{ marginTop: 10 }}>
+                    The attendee list is created when this event is first used. Paste your
+                    pre-registered guests into its Pre-registered tab.
+                  </p>
+                )}
+                <EventPrinters
+                  orgId={orgId}
+                  integrationId={row.id}
+                  config={config}
+                  onConfig={(key, value) => setField(row.id, key, value)}
+                />
+              </>
+            )}
+
             {spec.kind === 'google_sheet' && !config.spreadsheet_id && (
               /* No sheet yet, and nothing to do about it. One is made the
                  first time a visitor needs recording — so the absence is a
@@ -864,11 +930,13 @@ export default function Integrations({ specs = PLATFORM_SPECS }: { specs?: Spec[
               onChange={(e) => setAddKind(e.target.value as IntegrationKind | '')}
             >
               <option value="">Choose…</option>
-              {specs.map((s) => (
-                <option key={s.kind} value={s.kind}>
-                  {s.title}
-                </option>
-              ))}
+              {specs
+                .filter((s) => !unavailable.includes(s.kind))
+                .map((s) => (
+                  <option key={s.kind} value={s.kind}>
+                    {s.title}
+                  </option>
+                ))}
             </select>
           </label>
           <label className="field">

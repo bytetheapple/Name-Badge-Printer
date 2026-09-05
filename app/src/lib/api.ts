@@ -80,7 +80,7 @@ export type JobStatus = 'queued' | 'printing' | 'printed' | 'failed'
 /** Poll a single print job's status via the job-status Edge Function. */
 export async function getJobStatus(
   jobId: string,
-  kiosk: KioskRef,
+  kiosk: KioskRef | { event_token: string },
 ): Promise<{ status: JobStatus; error: string | null }> {
   const { data, error } = await supabase.functions.invoke('job-status', {
     body: { job_id: jobId, ...kiosk },
@@ -88,4 +88,62 @@ export async function getJobStatus(
   if (error) throw new Error('status check failed')
   if (!data?.ok) throw new Error(data?.error ?? 'status check failed')
   return { status: data.status, error: data.error }
+}
+
+/** What an event registration page shows before anybody types anything. */
+export interface EventConfig {
+  event_name: string
+  org_name: string
+  printer_name: string | null
+}
+
+/**
+ * Resolve a printed event QR code.
+ *
+ * Returns null when the code is not open — a finished event, a disabled one,
+ * or a customer whose Events feature has been switched off. The page says so
+ * rather than failing blankly, because the code is on a table in front of
+ * somebody and the answer has to be actionable by whoever is standing there.
+ */
+export async function getEventConfig(token: string): Promise<EventConfig | null> {
+  try {
+    const { data } = await supabase.functions.invoke('event-config', { body: { token } })
+    if (!data?.ok) return null
+    return {
+      event_name: String(data.event_name ?? 'Event'),
+      org_name: String(data.org_name ?? ''),
+      printer_name: (data.printer_name as string | null) ?? null,
+    }
+  } catch {
+    return null
+  }
+}
+
+export interface EventRegisterResult {
+  job_ids: string[]
+  /** True when they were not on the pre-registration list. The page does not
+   *  say so — being told you are a walk-in is the desk's business, not the
+   *  guest's — but the badge is marked and the desk can see it. */
+  onsite: boolean
+  /** Set when the spreadsheet could not be written. The badge still printed;
+   *  this is what the desk would otherwise have no way to know. */
+  sheet_error: string | null
+}
+
+export async function registerForEvent(input: {
+  token: string
+  first_name: string
+  last_name: string
+  phone: string
+  email: string
+  wants_followup: boolean
+}): Promise<EventRegisterResult> {
+  const { data, error } = await supabase.functions.invoke('event-register', { body: input })
+  if (error) throw new Error('Could not reach the server. Please try again.')
+  if (!data?.ok) throw new Error(data?.error ?? 'Something went wrong. Please try again.')
+  return {
+    job_ids: data.job_ids ?? [],
+    onsite: Boolean(data.onsite),
+    sheet_error: (data.sheet_error as string | null) ?? null,
+  }
 }

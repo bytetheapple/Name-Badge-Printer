@@ -14,3 +14,6 @@ export const publicBaseUrl = (configured?.replace(/\/+$/, '') || window.location
 
 /** The URL a printer's QR code should encode. */
 export const kioskUrl = (kioskToken: string) => `${publicBaseUrl}/k/${kioskToken}`
+
+/** The URL an event's per-printer QR code should encode. */
+export const eventUrl = (eventToken: string) => `${publicBaseUrl}/e/${eventToken}`
