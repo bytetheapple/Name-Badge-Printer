@@ -185,11 +185,11 @@ const EVENT_SPECS: Spec[] = [
     title: 'Event',
     savesItself: true,
     notADestination: true,
-    opens: {
-      urlKey: 'spreadsheet_url',
-      fromId: { key: 'spreadsheet_id', prefix: 'https://docs.google.com/spreadsheets/d/' },
-      label: 'Open the list',
-    },
+    // No `opens` here, though there is a spreadsheet to open. The link lives
+    // in the panel instead, next to the sentence that says what to do with it
+    // — paste your pre-registered guests into the Pre-registered tab — and a
+    // second one in the banner was the same link twice with the useful half
+    // missing.
     fields: [],
   },
 ]
