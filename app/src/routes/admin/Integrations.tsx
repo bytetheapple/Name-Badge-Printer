@@ -71,6 +71,11 @@ type Spec = {
   }
   /** Set when this integration also stores a credential in Vault. */
   secret?: { label: string; hint: string }
+  /** Not somewhere sign-ins are delivered. An event is its own destination:
+   *  registrations go to its attendee list and its badges to the printer whose
+   *  code was scanned, so "enabled", "who does it take" and "on by default for
+   *  printers" are all answering questions it does not have. */
+  notADestination?: boolean
   /** Every control on this kind writes as it is changed, so there is nothing
    *  for a Save button to do. Mixing the two in one panel is worse than
    *  either: adding a printer took effect immediately while the setting
@@ -179,6 +184,7 @@ const EVENT_SPECS: Spec[] = [
     kind: 'event',
     title: 'Event',
     savesItself: true,
+    notADestination: true,
     opens: {
       urlKey: 'spreadsheet_url',
       fromId: { key: 'spreadsheet_id', prefix: 'https://docs.google.com/spreadsheets/d/' },
@@ -570,11 +576,21 @@ export default function Integrations({
         return
       }
     }
-    // Switched off on creation: an integration with no configuration yet would
-    // otherwise start failing against every sign-in the moment it is added.
     const { data: made, error } = await supabase
       .from('integrations')
-      .insert({ org_id: orgId, kind: addKind, name, enabled: false, default_enabled: true, config: {} })
+      .insert({
+        org_id: orgId,
+        kind: addKind,
+        name,
+        // Switched off on creation: an integration with no configuration yet
+        // would otherwise start failing against every sign-in the moment it is
+        // added. An event is the exception — it delivers nothing anywhere, its
+        // codes do not exist until printers are added, and it has no switch to
+        // be turned on with afterwards.
+        enabled: specOf(addKind)?.notADestination === true,
+        default_enabled: true,
+        config: {},
+      })
       .select('id')
       .maybeSingle()
     if (error) {
@@ -768,6 +784,7 @@ export default function Integrations({
                   whether it takes anything. No label: the options say what
                   they are, and a word above them would be explaining a
                   sentence that already reads. */}
+              {!spec.notADestination && (
               <div className="integration-enabled">
                 <label className="check">
                   <input
@@ -790,11 +807,12 @@ export default function Integrations({
                   </select>
                 )}
               </div>
+              )}
 
               {/* Only once it is enabled. "On by default" for something
                   switched off describes a state no printer can be in, and the
                   Printers tab would show it as On while nothing was sent. */}
-              {row.enabled && (
+              {row.enabled && !spec.notADestination && (
                 <>
                   {/* The reset belongs under the default it resets to, not
                       beside it: it is what to do about that setting rather

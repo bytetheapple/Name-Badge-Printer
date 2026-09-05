@@ -54,7 +54,14 @@ export async function resolveEventCode(token: string): Promise<EventCode | null>
     | null;
   const printer = row.printer as { name?: string } | null;
 
-  if (!integration || integration.kind !== "event" || integration.enabled !== true) return null;
+  // `enabled` is deliberately not consulted. An event is not a destination
+  // anything is delivered to, so it has no enable switch in the console —
+  // which means a row left switched off has no way to be switched on, and
+  // requiring it here would make every code on the table dead with nothing to
+  // explain it. What decides whether an event takes registrations is that it
+  // exists, its organization is active, and Events is paid for. Stopping one
+  // is deleting it, or removing its printers.
+  if (!integration || integration.kind !== "event") return null;
   // The entitlement is checked on every registration, not only when the event
   // is created. Turning Events off for a customer has to stop the codes that
   // are already on tables, or it is not really off.
