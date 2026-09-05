@@ -7,11 +7,13 @@ reported and logged rather than silently assumed to match.
 
 What this does *not* do, and why:
 
-* **It does not touch Command Mode.** brother_ql puts `ESC i a 01` in every job
-  preamble, which switches the printer to raster for that connection whatever
-  its stored default. Verified on hardware: a badge printed while the front
-  panel still showed form mode. The persistent setting affects only status
-  queries, which this model does not answer anyway.
+* **It sets Command Mode to Raster, but printing does not depend on it.**
+  brother_ql puts `ESC i a 01` in every job preamble, which switches the
+  printer to raster for that connection whatever its stored default. Verified
+  on hardware, and confirmed across the fleet: wizard-configured printers sit
+  at the factory default and print correctly for months. We set it because the
+  persistent value governs status queries, and because a printer whose stored
+  mode matches what we send is one less thing to explain in the field.
 * **It cannot turn off the panel's form mode.** No page in the web UI exposes
   it. Given the above, that does not matter.
 
@@ -75,10 +77,11 @@ F_PASSWORD = "B128"          # login (1.32; read from the page at run time)
 F_PASSWORD_ALT = "B126"      # login (1.23)
 F_AUTO_POWER_ON = "B1c"      # 0 disable, 1 enable
 F_AUTO_POWER_OFF_AC = "B1d"  # 0 None … 6 60 Mins
-#: Command Mode. The factory default is P-touch Template, in which raster
-#: data sent to port 9100 is read as template commands — the printer prints,
-#: and what comes out is not the badge. It is the single setting that decides
-#: whether this product works, and it was the one the wizard did not touch.
+#: Command Mode. One selector with three values, so choosing Raster *is* taking
+#: the printer out of P-touch Template — they are not separate steps. Suspected
+#: once of causing unreadable badges; it was not. A printer manually forced to
+#: Raster still printed specks, and the actual fault (no font on the Pi, see
+#: badge.py) was fixed with no printer change at all.
 F_COMMAND_MODE = "B24"       # 20 ESC/P, 21 Raster, 22 P-touch Template
 COMMAND_MODE_RASTER = "21"
 
@@ -750,9 +753,9 @@ def configure_printer(
             F_MINUTE: f"{t.tm_min:02d}",
         })
 
-    # First of the device settings, because nothing else matters if this is
-    # wrong: the printer accepts the job, prints something, and reports no
-    # error. A congregation discovers it by looking at the label.
+    # First of the device settings, so the stored mode matches what every job
+    # asks for anyway. Not load-bearing for printing -- see the note on
+    # F_COMMAND_MODE -- but it makes status queries answerable.
     step("switch the printer to raster mode", PAGE_DEVICE,
          {F_COMMAND_MODE: COMMAND_MODE_RASTER})
 
