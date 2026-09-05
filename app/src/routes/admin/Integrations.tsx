@@ -71,6 +71,11 @@ type Spec = {
   }
   /** Set when this integration also stores a credential in Vault. */
   secret?: { label: string; hint: string }
+  /** Every control on this kind writes as it is changed, so there is nothing
+   *  for a Save button to do. Mixing the two in one panel is worse than
+   *  either: adding a printer took effect immediately while the setting
+   *  beside it waited for a button, and no label distinguished them. */
+  savesItself?: boolean
 }
 
 // What each integration needs, in the same shape the Edge Functions read.
@@ -173,6 +178,7 @@ const EVENT_SPECS: Spec[] = [
   {
     kind: 'event',
     title: 'Event',
+    savesItself: true,
     blurb:
       'A registration desk for one event. Everyone who prints a badge is matched ' +
       'against your pre-registration list and checked off; anyone not on it is added ' +
@@ -420,6 +426,30 @@ export default function Integrations({
       setError(error.message)
       return
     }
+  }
+
+  /**
+   * Write a change immediately, for controls that save themselves.
+   *
+   * The loaded snapshot moves with it, so the row does not read as edited
+   * afterwards — otherwise a self-saving control would leave a Save button
+   * lit for work already done.
+   */
+  async function persist(row: Integration, patch: Partial<Integration>) {
+    const next = { ...row, ...patch }
+    const name = next.name.trim()
+    const config = next.config ?? {}
+    setError(null)
+    const { error } = await supabase
+      .from('integrations')
+      .update({ name, config })
+      .eq('id', row.id)
+    if (error) {
+      setError(error.message)
+      return
+    }
+    setList((prev) => prev.map((r) => (r.id === row.id ? { ...next, name } : r)))
+    setLoaded((prev) => ({ ...prev, [row.id]: JSON.stringify({ name, config }) }))
   }
 
   /** Make an event's attendee list after the fact, when creating it failed. */
@@ -779,6 +809,12 @@ export default function Integrations({
                 <input
                   value={row.name}
                   onChange={(e) => patch(row.id, { name: e.target.value })}
+                  // Kept as you type, written when you leave the field. A kind
+                  // with no Save button still has a name, and saving on every
+                  // keystroke would write a row per letter.
+                  onBlur={() => {
+                    if (spec.savesItself && dirty(row)) void persist(row, {})
+                  }}
                   placeholder={spec.title}
                 />
                 {spec.blurb && <span className="muted small">{spec.blurb}</span>}
@@ -908,7 +944,9 @@ export default function Integrations({
                   integrationId={row.id}
                   eventName={row.name}
                   config={config}
-                  onConfig={(key, value) => setField(row.id, key, value)}
+                  onConfig={(key, value) =>
+                    void persist(row, { config: { ...config, [key]: value } })
+                  }
                 />
               </>
             )}
@@ -971,13 +1009,13 @@ export default function Integrations({
 
             {/* The switches are already live, so this can only ever be about the
                 text fields — which is why it names them. */}
-            {hasEditableText(spec) && pending(row) && (
+            {hasEditableText(spec) && !spec.savesItself && pending(row) && (
               <p className="muted small" style={{ marginTop: 10 }}>
                 The settings above have been edited and not saved yet.
               </p>
             )}
 
-            {hasEditableText(spec) && (
+            {hasEditableText(spec) && !spec.savesItself && (
               <div className="modal-actions" style={{ marginTop: 20 }}>
                 <button
                   type="button"
