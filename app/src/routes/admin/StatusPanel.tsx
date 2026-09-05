@@ -24,9 +24,10 @@ const BRIDGE_FRESH_MS = 45000
  * that does not mean that to anyone. Hedged as "detected" because no carrier
  * is also what a dead switch port looks like.
  */
-function whyNoAddress(i: ServerInterface): string {
+function whyNoAddress(i: ServerInterface, radio?: string | null): string {
   const idle = i.state === 'unavailable' || i.state === 'disconnected'
   if (i.kind === 'wired' && idle) return 'No cable detected'
+  if (i.kind === 'wifi' && radio === 'disabled') return 'Radio switched off'
   if (i.kind === 'wifi' && idle) return 'Not joined to a network'
   return i.state
 }
@@ -40,6 +41,7 @@ export default function StatusPanel() {
   //: and the Printers tab that used to answer it is an admin's.
   const [printers, setPrinters] = useState<Printer[]>([])
   const [netReq, setNetReq] = useState<ServerNetworkRequest | null>(null)
+  const [joining, setJoining] = useState(false)
   const [, setTick] = useState(0)
 
   const loadBridge = useCallback(async () => {
@@ -126,6 +128,7 @@ export default function StatusPanel() {
   // gone. Hiding them outright was worse — a section that silently vanishes
   // reads as a bug in the page, which is precisely how it was reported.
   const net = bridge?.network ?? null
+  const waitingToJoin = netReq?.state === 'pending' || netReq?.state === 'sent' 
 
   return (
     <>
@@ -153,29 +156,67 @@ export default function StatusPanel() {
         <div style={{ marginBottom: 20 }}>
           <h2>Networks</h2>
           <div className="status-row">
-            {net.interfaces.map((i: ServerInterface) => (
-              <div key={i.name} className={`status-card ${i.ip ? 'ok' : ''}`}>
-                <div className="status-label">
-                  {i.kind === 'wifi' ? 'WiFi' : i.kind === 'wired' ? 'Wired' : 'Network'}
-                  {i.name !== 'default' && <span className="muted"> · {i.name}</span>}
-                </div>
-                <div className="status-value">{i.ip ?? 'No address'}</div>
-                {i.kind === 'wifi' && (
-                  <div className="muted small">
-                    {i.ssid ? `${i.ssid}${i.signal != null ? ` · ${i.signal}%` : ''}` : 'Not joined'}
+            {net.interfaces.map((i: ServerInterface) => {
+              // The way onto a network belongs in the card for the radio that
+              // has none — not under the section, where it read as being about
+              // the server as a whole. A radio that is already on a network
+              // shows the network instead: moving a working server to a
+              // different one is a bench job, not a console one.
+              const offerJoin =
+                i.kind === 'wifi' && !i.ip && isAdmin && !!orgId && bridgeOnline
+              return (
+                <div key={i.name} className={`status-card ${i.ip ? 'ok' : ''}`}>
+                  <div className="status-label">
+                    {i.kind === 'wifi' ? 'WiFi' : i.kind === 'wired' ? 'Wired' : 'Network'}
+                    {i.name !== 'default' && <span className="muted"> · {i.name}</span>}
                   </div>
-                )}
-                {!i.ip && <div className="muted small">{whyNoAddress(i)}</div>}
-              </div>
-            ))}
+                  <div className="status-value">{i.ip ?? 'No address'}</div>
+                  {i.kind === 'wifi' && i.ip && (
+                    <div className="muted small">
+                      {i.ssid ? `${i.ssid}${i.signal != null ? ` · ${i.signal}%` : ''}` : 'Joined'}
+                    </div>
+                  )}
+                  {!i.ip && <div className="muted small">{whyNoAddress(i, net.wifi_radio)}</div>}
+                  {offerJoin && waitingToJoin && (
+                    <div className="muted small" style={{ marginTop: 8 }}>
+                      Joining {netReq?.ssid}. It has up to a couple of minutes, and stays
+                      on its current network if the new one cannot reach us.
+                    </div>
+                  )}
+                  {offerJoin && !waitingToJoin && (
+                    <>
+                      {netReq?.state === 'failed' && netReq.error && (
+                        <div className="muted small" style={{ marginTop: 8 }}>
+                          {netReq.error}
+                        </div>
+                      )}
+                      {!joining && (
+                        <button
+                          className="secondary"
+                          style={{ marginTop: 10 }}
+                          onClick={() => setJoining(true)}
+                        >
+                          Join a wireless network
+                        </button>
+                      )}
+                    </>
+                  )}
+                </div>
+              )
+            })}
           </div>
           {/* Only worth saying when it is actionable: a server with the radio
               off cannot be put on a printer's WiFi without a visit. */}
-          {net.wifi_radio === 'disabled' && (
-            <p className="muted small">
-              The WiFi radio on this print server is switched off, so it can only
-              reach printers on its wired network.
-            </p>
+          {joining && orgId && (
+            <JoinNetwork
+              orgId={orgId}
+              interfaces={net.interfaces}
+              onDone={() => {
+                setJoining(false)
+                void loadNetReq()
+              }}
+              onCancel={() => setJoining(false)}
+            />
           )}
           {!bridgeOnline && (
             <p className="muted small">
@@ -183,17 +224,6 @@ export default function StatusPanel() {
               {lastSeen ? ` at ${new Date(lastSeen).toLocaleTimeString()}` : ''}. The print
               server is not answering now, so these may be out of date.
             </p>
-          )}
-          {/* Only while it is listening. A change queued for a server that is
-              not there would be applied whenever it returns, with nobody
-              standing at it — which is the one situation this must not create. */}
-          {isAdmin && orgId && bridgeOnline && net.wifi_radio !== 'disabled' && (
-            <JoinNetwork
-              orgId={orgId}
-              request={netReq}
-              interfaces={net.interfaces}
-              onChanged={loadNetReq}
-            />
           )}
         </div>
       )}

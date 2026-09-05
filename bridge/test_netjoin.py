@@ -62,6 +62,23 @@ check("the passphrase never reaches the command line",
 check("and is fed on stdin instead",
       any(s and "hunter2" in s for _, s in ran))
 
+print("— the radio is brought up before anything is attempted —")
+ran.clear()
+SCRIPTED = {JOIN: Done(0, "successfully activated")}
+netjoin.join("New-WiFi", "x", lambda: True)
+cmds = [a for a, _ in ran]
+check("unblocks rfkill", ("rfkill", "unblock", "wifi") in cmds, str(cmds))
+check("turns the radio on", ("nmcli", "radio", "wifi", "on") in cmds, str(cmds))
+check("and does so before connecting",
+      cmds.index(("nmcli", "radio", "wifi", "on")) < cmds.index(JOIN), str(cmds))
+
+print("— a blocked radio does not get reported as a wrong network name —")
+ran.clear()
+SCRIPTED = {JOIN: Done(1, "", "Error: No network with SSID 'New-WiFi' found.")}
+ok, err = netjoin.join("New-WiFi", "x", lambda: True)
+check("says the name may be wrong", "name may be wrong" in (err or ""), str(err))
+check("and offers the radio as the other reading", "radio may be blocked" in (err or ""), str(err))
+
 print("— a wrong passphrase: nmcli refuses —")
 ran.clear()
 SCRIPTED = {JOIN: Done(1, "", "Error: Connection activation failed: Secrets were required")}

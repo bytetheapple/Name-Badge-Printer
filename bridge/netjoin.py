@@ -78,6 +78,14 @@ def join(ssid: str, passphrase: str, prove, log=lambda m: None) -> tuple[bool, s
     previous = active_wifi_profile()
     log(f"joining {ssid}" + (f" (currently on {previous})" if previous else ""))
 
+    # Bring the radio up first. A server that has only ever been wired has it
+    # soft-blocked, and nmcli then reports the missing radio as "No network
+    # with SSID 'x' found" -- which reads as a typo in the network name and
+    # sends whoever is holding the passphrase after the wrong thing. Best
+    # effort: if these are absent or refused, the join below says so properly.
+    _run(["rfkill", "unblock", "wifi"], timeout=10.0)
+    _run(["nmcli", "radio", "wifi", "on"], timeout=10.0)
+
     done = _run(
         ["nmcli", "--ask", "device", "wifi", "connect", ssid],
         timeout=JOIN_TIMEOUT,
@@ -85,6 +93,14 @@ def join(ssid: str, passphrase: str, prove, log=lambda m: None) -> tuple[bool, s
     )
     if done.returncode != 0:
         reason = _summarise(done)
+        # The one message worth translating. It is what a blocked radio says,
+        # and it is indistinguishable from a mistyped name -- which cost an
+        # afternoon at a site with the passphrase in hand the whole time.
+        if "no network with ssid" in reason.lower():
+            reason += (
+                " The name may be wrong, or this server's radio may be blocked "
+                "because no WiFi country is set on it."
+            )
         log(f"nmcli refused: {reason}")
         # Nothing was activated, so there is nothing to undo -- but the radio
         # may have been left disconnected from what it was on.
