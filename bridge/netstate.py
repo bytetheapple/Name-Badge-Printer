@@ -11,6 +11,7 @@ status card, and a card that cannot be drawn must not stop a heartbeat.
 """
 from __future__ import annotations
 
+import os
 import socket
 import subprocess
 import time
@@ -34,11 +35,28 @@ def _have(cmd: str) -> bool:
     return bool(_run(["which", cmd]).strip())
 
 
+def _ipv4(value: str) -> str | None:
+    """`value` if it is a dotted IPv4 address, else None.
+
+    nmcli writes an absent field as `--` in some versions and as empty in
+    others, and a card reading "--" where an address goes is worse than one
+    reading "No address": it looks like a value.
+    """
+    addr = value.strip().split("/")[0]
+    parts = addr.split(".")
+    if len(parts) != 4:
+        return None
+    for part in parts:
+        if not part.isdigit() or not 0 <= int(part) <= 255:
+            return None
+    return addr
+
+
 def _nmcli_addresses(device: str) -> str | None:
     """The first IPv4 address on a device, without its prefix."""
     for line in _run(["nmcli", "-t", "-f", "IP4.ADDRESS", "device", "show", device]).splitlines():
         _, _, value = line.partition(":")
-        addr = value.strip().split("/")[0]
+        addr = _ipv4(value)
         if addr:
             return addr
     return None
@@ -84,6 +102,59 @@ def _via_nmcli() -> dict | None:
     return {"interfaces": interfaces, "wifi_radio": radio}
 
 
+def _kind_of(device: str) -> str:
+    """Wireless or wired, from the kernel rather than from the name.
+
+    By name is wrong: Raspberry Pi OS calls the wired port eth0 on one image
+    and end0 on another, and a card that mislabels the two is worse than no
+    card, since telling them apart is the entire point.
+    """
+    return "wifi" if os.path.isdir(f"/sys/class/net/{device}/wireless") else "wired"
+
+
+def _via_ip() -> dict | None:
+    """Interfaces from `ip` and sysfs, for a Linux host with no NetworkManager.
+
+    Raspberry Pi OS only moved to NetworkManager in Bookworm, so a server
+    built from an older image has no nmcli at all — and reporting one nameless
+    "default" interface for it would hide exactly the wired/wireless
+    distinction this exists to show.
+    """
+    if not os.path.isdir("/sys/class/net"):
+        return None
+    try:
+        devices = sorted(d for d in os.listdir("/sys/class/net") if d != "lo")
+    except OSError:
+        return None
+    if not devices:
+        return None
+
+    addresses: dict[str, str] = {}
+    for line in _run(["ip", "-o", "-4", "addr", "show"]).splitlines():
+        parts = line.split()
+        if len(parts) >= 4 and parts[2] == "inet":
+            addr = _ipv4(parts[3])
+            if addr:
+                addresses.setdefault(parts[1], addr)
+
+    interfaces = []
+    for device in devices:
+        kind = _kind_of(device)
+        ip = addresses.get(device)
+        entry = {
+            "name": device,
+            "kind": kind,
+            "state": "connected" if ip else "no address",
+            "ip": ip,
+        }
+        if kind == "wifi" and ip:
+            # iwgetid is not always installed; no SSID is better than a wrong one.
+            ssid = _run(["iwgetid", device, "-r"]).strip()
+            entry["ssid"] = ssid or None
+        interfaces.append(entry)
+    return {"interfaces": interfaces, "wifi_radio": None}
+
+
 def _fallback() -> dict:
     """One interface, no names. Enough for a Mac running a demo bridge.
 
@@ -114,7 +185,9 @@ def describe(max_age: float = _TTL) -> dict:
     if _cache and now - _cache[0] < max_age:
         return _cache[1]
     try:
-        state = (_via_nmcli() if _have("nmcli") else None) or _fallback()
+        state = ((_via_nmcli() if _have("nmcli") else None)
+                 or _via_ip()
+                 or _fallback())
     except Exception:
         state = {"interfaces": [], "wifi_radio": None}
     _cache = (now, state)

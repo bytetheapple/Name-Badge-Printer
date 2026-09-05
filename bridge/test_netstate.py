@@ -86,6 +86,41 @@ first = len(calls)
 netstate.describe()
 check("a second look costs nothing", len(calls) == first, f"{len(calls)} vs {first}")
 
+print("— nmcli that reports an absent address as -- —")
+CANNED[("nmcli", "-t", "-f", "DEVICE,TYPE,STATE", "device", "status")] = "eth0:ethernet:connected\n"
+CANNED[("nmcli", "-t", "-f", "IP4.ADDRESS", "device", "show", "eth0")] = "IP4.ADDRESS:--\n"
+netstate._run = lambda args, timeout=4.0: CANNED.get(tuple(args), "")
+state = netstate.describe(max_age=0)
+# "--" is not an address, and a card showing it looks like a value rather than
+# an absence -- which is how somebody concludes the wired port is configured.
+check("does not pass '--' off as an address", state["interfaces"][0]["ip"] is None,
+      str(state["interfaces"][0]))
+CANNED[("nmcli", "-t", "-f", "IP4.ADDRESS", "device", "show", "eth0")] = \
+    "IP4.ADDRESS[1]:192.168.3.113/24\n"
+
+print("— a Pi with no NetworkManager still names its wired port —")
+# Raspberry Pi OS before Bookworm has no nmcli. Falling all the way back to a
+# single nameless "default" card would hide the wired/wireless split that this
+# whole card exists to show.
+IP_OUT = ("1: eth0    inet 192.168.3.113/24 brd 192.168.3.255 scope global dynamic eth0\\"
+          "       valid_lft 6000sec preferred_lft 6000sec\n")
+netstate._run = lambda args, timeout=4.0: IP_OUT if args[:2] == ["ip", "-o"] else ""
+netstate._kind_of = lambda d: "wired" if d.startswith("e") else "wifi"
+_listdir, _isdir = netstate.os.listdir, netstate.os.path.isdir
+try:
+    netstate.os.listdir = lambda p: ["lo", "eth0", "wlan0"]
+    netstate.os.path.isdir = lambda p: p == "/sys/class/net"
+    state = netstate.describe(max_age=0)
+    names = {i["name"]: i for i in state["interfaces"]}
+    check("finds both devices without nmcli", set(names) == {"eth0", "wlan0"}, str(names))
+    check("reads the wired address", names["eth0"]["ip"] == "192.168.3.113", str(names["eth0"]))
+    check("calls it wired", names["eth0"]["kind"] == "wired", str(names["eth0"]))
+    check("and shows the radio as having no address",
+          names["wlan0"]["ip"] is None, str(names["wlan0"]))
+finally:
+    netstate.os.listdir, netstate.os.path.isdir = _listdir, _isdir
+
+
 print()
 if FAILURES:
     print(f"RESULT: {len(FAILURES)} failure(s): {', '.join(FAILURES)}")
