@@ -10,6 +10,12 @@
 //           operator gets a link while they are still looking at the page
 //           instead of after somebody signs in.
 //
+//   preflight  answer "could I make one of these?" without making anything.
+//           Asked before an integration that needs a spreadsheet is created,
+//           because such an integration without one is not half configured,
+//           it is useless -- and the admin console cannot answer this itself:
+//           it treats an operator reaching into a customer as an owner, while
+//           this function asks the database for real membership.
 //   drive   make sure the photographs destination exists at all. It carries no
 //           settings — it is the row per-printer routing and delivery records
 //           attach to — so it is created here rather than asked for.
@@ -104,6 +110,25 @@ Deno.serve(async (req) => {
       error: "Connecting a Google account is an owner's job. Ask an owner of this " +
         "organization to do it, and photographs can be switched on afterwards.",
     }, 403);
+  }
+
+  // Reached only once the owner check above has passed, so the remaining
+  // question is whether there is an account to create anything in.
+  if (what === "preflight") {
+    try {
+      const auth = await googleAuthFor(orgId, {}, null, "");
+      if (auth.kind !== "oauth") {
+        return json({
+          ok: false,
+          needs_connect: true,
+          error: "This needs a connected Google account.",
+        });
+      }
+      return json({ ok: true });
+    } catch (e) {
+      const msg = e instanceof GoogleAuthError ? e.message : String(e);
+      return json({ ok: false, needs_connect: true, error: msg });
+    }
   }
 
   if (what === "drive") {

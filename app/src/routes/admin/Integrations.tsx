@@ -467,7 +467,10 @@ export default function Integrations({
       await load()
       return
     }
-    if (res.needs_connect) {
+    // An owner with no account connected gets taken to connect one. Anyone
+    // else — an operator, an admin who is not the owner — gets told whose job
+    // it is, because there is no button that changes that.
+    if (res.needs_connect && !res.needs_owner) {
       const begin = await invokeFn('google-oauth-begin', {
         org_id: orgId,
         return_to: '/admin/integrations',
@@ -486,6 +489,9 @@ export default function Integrations({
     )
   }
 
+  /** Kinds that are useless without a spreadsheet, so are never made without one. */
+  const NEEDS_SHEET: IntegrationKind[] = ['google_sheet', 'event']
+
   async function create() {
     if (!orgId || !addKind) return
     const spec = specOf(addKind)
@@ -493,6 +499,39 @@ export default function Integrations({
     setBusy('add')
     setNotice(null)
     setError(null)
+
+    // Ask first, make second. An event with no attendee list is not a
+    // half-configured event, it is a useless one — there is nowhere to put the
+    // pre-registered guests, which is the whole point of it. And this console
+    // cannot answer the question itself: it treats an operator reaching into a
+    // customer as an owner, so it will happily offer a button for something
+    // the server will refuse. Creating the row first left exactly that behind:
+    // an event that could not be finished and, for an operator, could not be
+    // fixed either.
+    if (NEEDS_SHEET.includes(addKind)) {
+      const pre = await invokeFn('google-provision', { org_id: orgId, what: 'preflight' })
+      if (!pre.ok) {
+        setBusy(null)
+        if (pre.needs_connect) {
+          // An owner can fix this in one step, so offer the step rather than
+          // the explanation. Nothing has been created, so coming back means
+          // adding it again — with an account waiting this time.
+          const begin = await invokeFn('google-oauth-begin', {
+            org_id: orgId,
+            return_to: '/admin/integrations',
+          })
+          if (begin.ok && typeof begin.url === 'string') {
+            window.location.assign(begin.url as string)
+            return
+          }
+        }
+        setError(
+          (pre.error as string) ??
+            'This could not be created. It needs a connected Google account.',
+        )
+        return
+      }
+    }
     // Switched off on creation: an integration with no configuration yet would
     // otherwise start failing against every sign-in the moment it is added.
     const { data: made, error } = await supabase
@@ -527,19 +566,11 @@ export default function Integrations({
       })
       if (res.ok) {
         await supabase.from('integrations').update({ enabled: true }).eq('id', made.id)
-      } else if (res.needs_connect) {
-        // No Google account yet. Ask for one; the destination is waiting here
-        // when they come back.
-        const begin = await invokeFn('google-oauth-begin', {
-          org_id: orgId,
-          return_to: '/admin/integrations',
-        })
-        if (begin.ok && typeof begin.url === 'string') {
-          window.location.assign(begin.url as string)
-          return
-        }
-        setError(begin.error ?? 'Could not start the Google connection.')
       } else {
+        // The preflight above already established that this could be made, so
+        // reaching here means it failed for some other reason — the account
+        // was revoked in the last second, or Google refused. Rare, and not
+        // something a redirect fixes.
         setError(
           res.error ??
             (addKind === 'event'
@@ -935,7 +966,11 @@ export default function Integrations({
                       {busy === row.id ? 'Creating…' : 'Create the attendee list'}
                     </button>
                     <span className="muted small" style={{ marginLeft: 10 }}>
-                      This event has no list yet. It needs a connected Google account.
+                      This event has no attendee list, so there is nowhere to put its
+                      pre-registered guests and everyone would register as on-site.
+                      Creating one is an owner&apos;s job — an operator reaching in
+                      cannot connect a customer&apos;s Google account. Delete the event
+                      and add it again if that is easier.
                     </span>
                   </div>
                 )}
