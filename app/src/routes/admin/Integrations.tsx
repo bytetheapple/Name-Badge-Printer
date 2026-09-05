@@ -832,6 +832,7 @@ export default function Integrations({
                 <EventPrinters
                   orgId={orgId}
                   integrationId={row.id}
+                  eventName={row.name}
                   config={config}
                   onConfig={(key, value) => setField(row.id, key, value)}
                 />

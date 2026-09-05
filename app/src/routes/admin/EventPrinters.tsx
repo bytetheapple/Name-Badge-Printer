@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import { newSecret } from '../../lib/secrets'
-import { eventUrl } from '../../lib/publicUrl'
+import EventQr from './EventQr'
 import type { EventPrinterRow, Printer } from '../../lib/types'
 
 /**
@@ -21,11 +21,16 @@ import type { EventPrinterRow, Printer } from '../../lib/types'
 export default function EventPrinters({
   orgId,
   integrationId,
+  eventName,
   config,
   onConfig,
 }: {
   orgId: string
   integrationId: string
+  /** What the organizer called this event. It heads the printed sign, so it
+   *  is passed in rather than re-read: the name on paper should be the name
+   *  showing on screen when the button was pressed. */
+  eventName: string
   config: Record<string, unknown>
   onConfig: (key: string, value: unknown) => void
 }) {
@@ -128,20 +133,12 @@ export default function EventPrinters({
               <strong>{printer?.name ?? 'Printer no longer set up'}</strong>
               {printer?.location && <span className="muted"> · {printer.location}</span>}
             </div>
-            <div className="muted small" style={{ wordBreak: 'break-all' }}>
-              {eventUrl(row.token)}
-            </div>
+            <EventQr
+              token={row.token}
+              eventName={eventName}
+              printerName={printer?.name ?? 'Printer'}
+            />
             <div className="modal-actions">
-              <a
-                className="button secondary btn-sm"
-                href={`/admin/config?event_qr=${row.id}`}
-                onClick={(e) => {
-                  e.preventDefault()
-                  window.open(eventUrl(row.token), '_blank', 'noopener')
-                }}
-              >
-                Open the form
-              </a>
               <button className="secondary btn-sm" disabled={busy} onClick={() => void rotate(row)}>
                 New code
               </button>
