@@ -179,10 +179,6 @@ const EVENT_SPECS: Spec[] = [
     kind: 'event',
     title: 'Event',
     savesItself: true,
-    blurb:
-      'A registration desk for one event. Everyone who prints a badge is matched ' +
-      'against your pre-registration list and checked off; anyone not on it is added ' +
-      'to an On-site registration tab and their badge is marked ON-SITE.',
     opens: {
       urlKey: 'spreadsheet_url',
       fromId: { key: 'spreadsheet_id', prefix: 'https://docs.google.com/spreadsheets/d/' },

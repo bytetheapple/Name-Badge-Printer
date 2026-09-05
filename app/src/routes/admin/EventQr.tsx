@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, type ReactNode } from 'react'
 import { eventUrl } from '../../lib/publicUrl'
 
 const slugify = (s: string) =>
@@ -21,10 +21,15 @@ export default function EventQr({
   token,
   eventName,
   printerName,
+  actions,
 }: {
   token: string
   eventName: string
   printerName: string
+  /** Anything else this code can be done to. Rendered beside the image with
+   *  Print, because they all act on the same thing and a row of buttons
+   *  somewhere below it reads as acting on the printer instead. */
+  actions?: ReactNode
 }) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const url = eventUrl(token)
@@ -104,9 +109,12 @@ export default function EventQr({
         <div className="muted small" style={{ wordBreak: 'break-all', marginBottom: 8 }}>
           {url}
         </div>
-        <button type="button" className="secondary btn-sm" onClick={() => void printSign()}>
-          Print this code
-        </button>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          <button type="button" className="secondary btn-sm" onClick={() => void printSign()}>
+            Print this code
+          </button>
+          {actions}
+        </div>
       </div>
     </div>
   )

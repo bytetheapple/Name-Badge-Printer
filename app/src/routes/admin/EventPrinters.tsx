@@ -119,11 +119,28 @@ export default function EventPrinters({
 
   return (
     <div style={{ marginTop: 12 }}>
-      <h4>Registration codes</h4>
-      <p className="muted small">
-        One code per printer. Print each one and put it where that printer&apos;s queue
-        forms.
-      </p>
+      <h4>Printers</h4>
+
+      {/* Above the list rather than after it: adding the first printer is the
+          whole job on a new event, and a control that only appears once there
+          is something to add it to is a control nobody finds. Left aligned
+          because modal-actions pushes to the right, which reads as finishing
+          something rather than starting it. */}
+      {spare.length > 0 && (
+        <div style={{ display: 'flex', gap: 8, marginBottom: 14 }}>
+          <select value={addId} onChange={(e) => setAddId(e.target.value)}>
+            <option value="">Choose a printer…</option>
+            {spare.map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.name}
+              </option>
+            ))}
+          </select>
+          <button disabled={!addId || busy} onClick={() => void addPrinter(addId)}>
+            Add printer
+          </button>
+        </div>
+      )}
 
       {rows.map((row) => {
         const printer = printers.find((p) => p.id === row.printer_id)
@@ -137,19 +154,25 @@ export default function EventPrinters({
               token={row.token}
               eventName={eventName}
               printerName={printer?.name ?? 'Printer'}
+              actions={
+                <>
+                  <button
+                    className="secondary btn-sm"
+                    disabled={busy}
+                    onClick={() => void rotate(row)}
+                  >
+                    New code
+                  </button>
+                  <button
+                    className="secondary btn-sm"
+                    disabled={busy}
+                    onClick={() => void removePrinter(row)}
+                  >
+                    Remove
+                  </button>
+                </>
+              }
             />
-            <div className="modal-actions">
-              <button className="secondary btn-sm" disabled={busy} onClick={() => void rotate(row)}>
-                New code
-              </button>
-              <button
-                className="secondary btn-sm"
-                disabled={busy}
-                onClick={() => void removePrinter(row)}
-              >
-                Remove
-              </button>
-            </div>
           </div>
         )
       })}
@@ -158,22 +181,6 @@ export default function EventPrinters({
         <p className="muted small">
           No printers yet. Add one to get a code people can scan.
         </p>
-      )}
-
-      {spare.length > 0 && (
-        <div className="modal-actions">
-          <select value={addId} onChange={(e) => setAddId(e.target.value)}>
-            <option value="">Add a printer…</option>
-            {spare.map((p) => (
-              <option key={p.id} value={p.id}>
-                {p.name}
-              </option>
-            ))}
-          </select>
-          <button disabled={!addId || busy} onClick={() => void addPrinter(addId)}>
-            Add
-          </button>
-        </div>
       )}
 
       <h4 style={{ marginTop: 16 }}>On-site registrations</h4>
