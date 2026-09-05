@@ -1,8 +1,15 @@
 import { useCallback, useEffect, useState } from 'react'
 import { supabase } from '../../lib/supabase'
+import JoinNetwork from './JoinNetwork'
 import { useOrg } from '../../lib/org'
 import { lastSeenLabel } from '../../lib/secrets'
-import type { Printer, PrinterStatusRow, PrintJob, ServerInterface } from '../../lib/types'
+import type {
+  Printer,
+  PrinterStatusRow,
+  PrintJob,
+  ServerInterface,
+  ServerNetworkRequest,
+} from '../../lib/types'
 
 // The bridge heartbeats every ~15s; treat it as online if seen within 45s.
 const BRIDGE_FRESH_MS = 45000
@@ -25,13 +32,14 @@ function whyNoAddress(i: ServerInterface): string {
 }
 
 export default function StatusPanel() {
-  const { orgId } = useOrg()
+  const { orgId, isAdmin } = useOrg()
   const [bridge, setBridge] = useState<PrinterStatusRow | null>(null)
   const [jobs, setJobs] = useState<PrintJob[]>([])
   //: Readable by staff since the role change, which is the point of putting it
   //: here: "is the printer working" is the question a greeter actually has,
   //: and the Printers tab that used to answer it is an admin's.
   const [printers, setPrinters] = useState<Printer[]>([])
+  const [netReq, setNetReq] = useState<ServerNetworkRequest | null>(null)
   const [, setTick] = useState(0)
 
   const loadBridge = useCallback(async () => {
@@ -52,6 +60,19 @@ export default function StatusPanel() {
       .order('name')
     setPrinters((data ?? []) as Printer[])
   }, [orgId])
+  // Only the most recent: this is "did the change I just made land", not a
+  // history, and an old failure sitting under a working server reads as a
+  // current fault.
+  const loadNetReq = useCallback(async () => {
+    if (!orgId || !isAdmin) return
+    const { data } = await supabase
+      .from('server_network_requests')
+      .select('*')
+      .eq('org_id', orgId)
+      .order('created_at', { ascending: false })
+      .limit(1)
+    setNetReq(((data ?? [])[0] as ServerNetworkRequest) ?? null)
+  }, [orgId, isAdmin])
   const loadJobs = useCallback(async () => {
     if (!orgId) return
     const { data } = await supabase
@@ -67,6 +88,7 @@ export default function StatusPanel() {
     void loadBridge()
     void loadPrinters()
     void loadJobs()
+    void loadNetReq()
     const channel = supabase
       .channel('status-panel')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'printer_status' }, () =>
@@ -76,13 +98,18 @@ export default function StatusPanel() {
         loadPrinters(),
       )
       .on('postgres_changes', { event: '*', schema: 'public', table: 'print_jobs' }, () => loadJobs())
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'server_network_requests' },
+        () => loadNetReq(),
+      )
       .subscribe()
     const timer = window.setInterval(() => setTick((n) => n + 1), 5000)
     return () => {
       void supabase.removeChannel(channel)
       window.clearInterval(timer)
     }
-  }, [loadBridge, loadPrinters, loadJobs])
+  }, [loadBridge, loadPrinters, loadJobs, loadNetReq])
 
   const lastSeen = bridge?.bridge_last_seen ? new Date(bridge.bridge_last_seen).getTime() : null
   const bridgeOnline = lastSeen !== null && Date.now() - lastSeen < BRIDGE_FRESH_MS
@@ -140,6 +167,14 @@ export default function StatusPanel() {
               The WiFi radio on this print server is switched off, so it can only
               reach printers on its wired network.
             </p>
+          )}
+          {isAdmin && orgId && net.wifi_radio !== 'disabled' && (
+            <JoinNetwork
+              orgId={orgId}
+              request={netReq}
+              interfaces={net.interfaces}
+              onChanged={loadNetReq}
+            />
           )}
         </div>
       )}

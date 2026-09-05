@@ -47,6 +47,10 @@ class Poll:
     #: One step of a provisioning session for the bridge to run, already claimed
     #: by the server: {session_id, task, …context, …the secrets that step needs}.
     provision: dict | None = None
+    #: A wireless network this server has been asked to join, already claimed
+    #: for us: {id, ssid, passphrase}. The passphrase is present for exactly
+    #: as long as it takes to apply, and is never written anywhere.
+    network_request: dict | None = None
     #: This poll carried a replacement credential, which has been stored. Worth
     #: a log line and nothing more — the value itself is never logged.
     rotated: bool = False
@@ -95,7 +99,7 @@ class BridgeApiClient:
             raise RuntimeError(body.get("error", f"{fn} failed"))
         return body
 
-    def poll(self, printer_reports=None, provision_result=None):
+    def poll(self, printer_reports=None, provision_result=None, network_result=None):
         body = self._post(
             "bridge-poll",
             {
@@ -117,6 +121,8 @@ class BridgeApiClient:
                 **({"rotation_error": self._rotation_error} if self._rotation_error else {}),
                 # Present only on the poll after a provisioning step finished.
                 **({"provision_result": provision_result} if provision_result else {}),
+                # Present only on the poll after a network change was tried.
+                **({"network_result": network_result} if network_result else {}),
             },
         )
         replacement = body.get("bridge_token")
@@ -140,6 +146,7 @@ class BridgeApiClient:
             printers=body.get("printers") or [],
             job=body.get("job"),
             provision=body.get("provision"),
+            network_request=body.get("network_request"),
             suspended=bool(body.get("suspended")),
             # Whether the credential actually changed, not whether one was
             # offered — a device that could not store it has not rotated, and

@@ -10,10 +10,16 @@
 //     network?:    { interfaces: [{name, kind, state, ip, ssid?, signal?}],
 //                    wifi_radio },   // which networks this server is on
 //     provision_result?: { session_id, task, ok, next_state, data, log, error },
+//     network_result?: { id, ok, error, log },   // a wireless change was tried
 //     rotation_error?: "…" }   // could not store the replacement credential
 // Response:
 //   { ok, suspended?: true, config: {...}, printers: [...], job: {...} | null,
-//     provision: {...} | null, bridge_token?: "nbk_…" }
+//     provision: {...} | null, network_request: {...} | null,
+//     bridge_token?: "nbk_…" }
+//
+// `network_request` is {id, ssid, passphrase} — a wireless network an admin
+// asked this server to join. The passphrase is read out of Vault here and
+// destroyed as it is handed over: it exists in the response and nowhere else.
 //
 // `bridge_token`, when present, is a replacement credential the device must
 // store and use from its next poll. Credentials renew themselves because a
@@ -38,6 +44,7 @@ import {
 import { applyResult, claimStep } from "../_shared/provisioning.ts";
 import { noteFailure, noteUsed, rotate, rotationDue, sweep, tokenRow } from "../_shared/rotation.ts";
 import { orgIsActive } from "../_shared/org.ts";
+import { rpc } from "../_shared/rpc.ts";
 
 const nowIso = () => new Date().toISOString();
 
@@ -169,6 +176,7 @@ Deno.serve(async (req) => {
       printers: [],
       job: null,
       provision: null,
+      network_request: null,
     });
   }
 
@@ -199,6 +207,31 @@ Deno.serve(async (req) => {
     await applyResult(bridge.org_id, body.provision_result as Record<string, unknown>, now);
   }
 
+  // ---- a wireless change the bridge has tried -------------------------------
+  if (body.network_result && typeof body.network_result === "object") {
+    const r = body.network_result as Record<string, unknown>;
+    const id = String(r.id ?? "");
+    if (id) {
+      // org_id in the filter is what stops one bridge closing another
+      // tenant's request, the same guard the printer report uses.
+      await fetch(
+        `${REST}/server_network_requests?id=eq.${id}&org_id=eq.${bridge.org_id}`,
+        {
+          method: "PATCH",
+          headers: restHeaders,
+          body: JSON.stringify({
+            state: r.ok ? "applied" : "failed",
+            error: r.ok ? null : String(r.error ?? "That change did not finish.").slice(0, 1000),
+            updated_at: now,
+          }),
+        },
+      );
+      // Spent either way. A passphrase that failed is no less the customer's,
+      // and a retry collects it again from the person who knows it.
+      await rpc("clear_server_network_secret", { p_id: id });
+    }
+  }
+
   // ---- what the bridge needs to render -------------------------------------
   const cfgRes = await fetch(
     `${REST}/printer_config?org_id=eq.${bridge.org_id}&select=label_media,dpi,badge_template`,
@@ -225,6 +258,52 @@ Deno.serve(async (req) => {
     { headers: restHeaders },
   );
   const printers = printersRes.ok ? await printersRes.json() : [];
+
+  // ---- a wireless network this server has been asked to join ---------------
+  // Handed over before jobs are claimed: the bridge blocks while it applies
+  // one, and claiming a job it will not get to for two minutes is worse than
+  // leaving it queued.
+  //
+  // `sent` rather than deleting on handover, so a bridge that dies mid-change
+  // does not silently lose the request — but a `sent` older than the lease is
+  // offered again, because the alternative is an operator watching a spinner
+  // for ever after a power cut.
+  let networkRequest: Record<string, unknown> | null = null;
+  const NETWORK_LEASE_MS = 5 * 60 * 1000;
+  const pendingRes = await fetch(
+    `${REST}/server_network_requests?org_id=eq.${bridge.org_id}` +
+      `&state=in.(pending,sent)&order=created_at.asc&limit=1&select=id,ssid,state,sent_at`,
+    { headers: restHeaders },
+  );
+  const pending = pendingRes.ok ? await pendingRes.json() : [];
+  if (pending.length) {
+    const req = pending[0];
+    const sentAt = req.sent_at ? Date.parse(String(req.sent_at)) : 0;
+    const stale = req.state === "sent" && Date.now() - sentAt > NETWORK_LEASE_MS;
+    if (req.state === "pending" || stale) {
+      // state=in.(...) in the filter is the atomic guard, the same one the job
+      // claim uses: if another poll took it first, zero rows match.
+      const claim = await fetch(
+        `${REST}/server_network_requests?id=eq.${req.id}&org_id=eq.${bridge.org_id}` +
+          `&state=in.(pending,sent)`,
+        {
+          method: "PATCH",
+          headers: { ...restHeaders, Prefer: "return=representation" },
+          body: JSON.stringify({ state: "sent", sent_at: now, updated_at: now }),
+        },
+      );
+      if (claim.ok && (await claim.json()).length) {
+        // Read out of Vault and handed over in this response only. An empty
+        // passphrase is a real answer: an open network has none.
+        const passphrase = await rpc("take_server_network_secret", { p_id: req.id });
+        networkRequest = {
+          id: req.id,
+          ssid: req.ssid,
+          passphrase: typeof passphrase === "string" ? passphrase : "",
+        };
+      }
+    }
+  }
 
   // ---- claim the next job --------------------------------------------------
   const allowed = printers.map((p: { id: string }) => p.id);
@@ -285,5 +364,13 @@ Deno.serve(async (req) => {
   // that closed the previous one.
   const provision = await claimStep(bridge.org_id, now);
 
-  return json({ ok: true, config, printers, job, provision, bridge_token: bridgeToken });
+  return json({
+    ok: true,
+    config,
+    printers,
+    job,
+    provision,
+    network_request: networkRequest,
+    bridge_token: bridgeToken,
+  });
 });

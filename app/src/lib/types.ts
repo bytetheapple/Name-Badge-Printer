@@ -335,6 +335,19 @@ export interface PrinterStatusRow {
   updated_at: string
 }
 
+/** An admin asking the print server to join a wireless network. The
+ *  passphrase never appears here: it goes to Vault and is destroyed as the
+ *  bridge collects it. */
+export interface ServerNetworkRequest {
+  id: string
+  org_id: string
+  ssid: string
+  state: 'pending' | 'sent' | 'applied' | 'failed'
+  error: string | null
+  created_at: string
+  updated_at: string
+}
+
 export interface PrintJob {
   id: string
   org_id: string

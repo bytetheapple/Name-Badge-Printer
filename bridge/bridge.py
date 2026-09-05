@@ -21,6 +21,7 @@ import badge
 import client as client_module
 import config
 import discover
+import netjoin
 import provision_task
 import printer
 from badge import render_badge, render_test_badge
@@ -239,6 +240,55 @@ def _why_unreachable(ip, port):
     return reason
 
 
+def _reaches_service() -> bool:
+    """Can this machine still talk to us?
+
+    Any HTTP answer counts, including a 401: what is being proved is the path,
+    not the credential. It is a real proof rather than a hopeful one because
+    the request is TLS-verified — a captive portal cannot present a valid
+    certificate for our host, so a network that intercepts everything fails
+    here instead of passing.
+    """
+    try:
+        requests.get(f"{config.SUPABASE_URL}/functions/v1/bridge-poll", timeout=6)
+        return True
+    except requests.RequestException:
+        return False
+
+
+def handle_network_request(request: dict) -> dict:
+    """Join a wireless network, and say what happened.
+
+    Blocks the loop for up to a couple of minutes in the worst case. That is
+    the right trade: a server being moved between networks is a server nobody
+    is printing from, and the alternative — applying this in the background —
+    means a rollback racing a job.
+    """
+    request_id = request.get("id")
+    ssid = str(request.get("ssid") or "")
+    log = []
+
+    def say(message):
+        log.append(str(message))
+        _log(f"  network: {message}")
+
+    _log(f"asked to join '{ssid}'")
+    try:
+        ok, error = netjoin.join(
+            ssid,
+            str(request.get("passphrase") or ""),
+            _reaches_service,
+            say,
+        )
+    except Exception as e:  # noqa: BLE001 - never let this kill the loop
+        _log(f"network change failed: {e}", err=True)
+        traceback.print_exc()
+        ok, error = False, f"The print server could not apply that change: {e}"
+
+    _log(f"network change {'succeeded' if ok else 'failed'}")
+    return {"id": request_id, "ok": ok, "error": error, "log": log}
+
+
 def probe_printers(printers: list) -> list:
     """Ask each printer how it is, for the next poll to report upstream.
 
@@ -362,6 +412,7 @@ def main():
     last_probe = 0.0
     printers = []
     provision_result = None
+    network_result = None
     suspended_logged = False
 
     while True:
@@ -374,11 +425,12 @@ def main():
                 reports = probe_printers(printers)
                 last_probe = now
 
-            result = client.poll(reports, provision_result)
+            result = client.poll(reports, provision_result, network_result)
             if provision_result is not None:
                 # Delivered. Only now may an update restart us safely.
                 _mark_provisioning(False)
             provision_result = None
+            network_result = None
             cfg, printers = result.config, result.printers
 
             if result.suspended:
@@ -409,6 +461,14 @@ def main():
                 # before anyone may retry it. That happened: an update
                 # restarted the bridge one second after a configure finished,
                 # and the whole step was lost with it.
+                continue
+
+            if result.network_request:
+                # Before jobs, and reported on the very next poll for the same
+                # reason a provisioning step is: the result exists only in this
+                # variable until then, and the server is holding the request
+                # open until it hears.
+                network_result = handle_network_request(result.network_request)
                 continue
 
             if result.job:

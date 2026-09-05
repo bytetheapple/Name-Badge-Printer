@@ -10,6 +10,7 @@
 // arriving from a bridge is only ever used as a filter alongside that org, so
 // a compromised device cannot reach another tenant's setup.
 import { REST, restHeaders } from "./bridge-auth.ts";
+import { rpc } from "./rpc.ts";
 
 /** States where the bridge acts. Anything else is waiting on a person. */
 export const BRIDGE_TASKS = ["discover", "configure", "wifi", "rediscover"] as const;
@@ -41,22 +42,6 @@ const SESSION_COLUMNS =
   "wireless_mac,wireless_ip,printer_id,task_started_at,log,visible_networks,kind";
 
 type Session = Record<string, unknown>;
-
-async function rpc(fn: string, args: Record<string, unknown>) {
-  const res = await fetch(`${REST}/rpc/${fn}`, {
-    method: "POST",
-    headers: restHeaders,
-    body: JSON.stringify(args),
-  });
-  if (!res.ok) return null;
-  const text = await res.text();
-  if (!text) return null;
-  try {
-    return JSON.parse(text);
-  } catch {
-    return text;
-  }
-}
 
 /**
  * Hand the bridge its next step, if there is one.
