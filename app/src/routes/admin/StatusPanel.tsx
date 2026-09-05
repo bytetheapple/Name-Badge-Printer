@@ -117,6 +117,12 @@ export default function StatusPanel() {
                 {p.last_checked ? `Checked ${lastSeenLabel(p.last_checked, null)}` : 'Never checked'}
               </div>
               {p.error_state && <div className="muted small">{p.error_state}</div>}
+              {/* Only while it is actually unreachable: on a printer that has
+                  come back this is history, and a card that still explains a
+                  fixed fault is how people learn to stop reading the card. */}
+              {p.reachable === false && p.unreachable_reason && (
+                <div className="muted small">{p.unreachable_reason}</div>
+              )}
             </div>
           )
         })}

@@ -253,6 +253,10 @@ export interface Printer {
   media_type: string | null
   media_width: string | null
   error_state: string | null
+  /** Why the bridge could not reach this printer, in words an operator can
+   *  act on. Null while it is reachable. "Unreachable" alone sent somebody
+   *  hunting a printer fault that was really two networks with no route. */
+  unreachable_reason: string | null
   last_checked: string | null
   header_image_url: string | null
   created_at: string

@@ -331,3 +331,100 @@ def main() -> int:
 if __name__ == "__main__":
     import sys
     sys.exit(main())
+
+
+def route_source(ip: str, port: int = 9) -> str | None:
+    """The address this machine would send *from* to reach `ip`, or None when
+    the routing table has no path to it at all.
+
+    Sends no packet: connecting a UDP socket only consults the routing table.
+    On a host with two interfaces this is the one question that says which of
+    them a printer is reached through, and "no route" is a different fault
+    from "no reply" — worth telling apart before advising anyone.
+    """
+    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    try:
+        s.connect((ip, port))
+        return s.getsockname()[0]
+    except OSError:
+        return None
+    finally:
+        s.close()
+
+
+def answers_ping(ip: str, timeout: float = 3.0) -> bool | None:
+    """True, False, or None when ping could not be run to find out.
+
+    ICMP is answered by the printer's network stack, so this separates "the
+    packets do not arrive" from "they arrive and nothing is listening on the
+    print port" — which at Temple Beth El were the two candidate explanations
+    and took a morning to tell apart by hand.
+    """
+    try:
+        done = subprocess.run(
+            ["ping", "-c", "1", ip],
+            capture_output=True,
+            timeout=timeout,
+        )
+    except subprocess.TimeoutExpired:
+        return False
+    except OSError:
+        return None  # no ping binary; say nothing rather than guess
+    return done.returncode == 0
+
+
+def _net24(ip: str) -> str:
+    return ip.rsplit(".", 1)[0]
+
+
+def diagnose(ip: str | None, port: int = PRINT_PORT, ping: bool = True) -> str | None:
+    """Why an address does not answer, in terms an operator can act on.
+
+    The rule this follows is the one the refusal advice already follows: state
+    what was observed, then the likely causes, and never assert a cause that
+    is not in evidence. "Could not find the printer" is true and useless — the
+    print server knows its own address and whether a route exists, and saying
+    so turns a morning of guessing into one sentence.
+    """
+    if not ip:
+        return "No address is set for this printer."
+
+    src = route_source(ip)
+    if src is None:
+        return (
+            f"This print server has no network route to {ip} at all. It is not "
+            "a printer fault: the server cannot send a packet in that "
+            "direction. Put the print server on the same network as the printer."
+        )
+
+    same_net = _net24(src) == _net24(ip)
+    replies = answers_ping(ip) if ping else None
+
+    if replies is True:
+        return (
+            f"{ip} is reachable from this print server ({src}) and answers "
+            f"ping, but nothing accepts print jobs on port {port}. The printer "
+            "is on the network and not yet serving: check that it is powered "
+            "on, that its screen is on the ready display rather than a menu or "
+            "a startup prompt, and that it has finished applying any settings "
+            "changed on its panel."
+        )
+
+    if not same_net:
+        return (
+            f"This print server is on {src} and {ip} is on a different network "
+            f"({_net24(src)}.x and {_net24(ip)}.x)."
+            + (" It does not answer ping." if replies is False else "")
+            + " Reaching it depends on the site routing between those two "
+            "networks, and many do not — a wired drop and the WiFi are "
+            "frequently separate. Put the print server on the printer's "
+            "network, or the printer on this one."
+        )
+
+    return (
+        f"This print server is on {src}, the same network as {ip}"
+        + (", but gets no reply to ping" if replies is False else "")
+        + ". The printer is powered off, is at a different address than the "
+        "one set here, or the network stops devices reaching each other — "
+        "client isolation, which guest WiFi usually has switched on."
+    )

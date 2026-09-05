@@ -214,6 +214,31 @@ def _relocate(p: dict) -> str | None:
     return None
 
 
+#: Diagnoses are cached because the heartbeat is every 15 seconds and the
+#: answer changes on the timescale of somebody moving a cable. Without this a
+#: printer that is switched off overnight is pinged four times a minute.
+_DIAGNOSIS_TTL = 300.0
+_diagnoses: dict = {}
+
+
+def _why_unreachable(ip, port):
+    """One sentence an operator can act on, or None if we cannot say."""
+    key = (ip, port)
+    hit = _diagnoses.get(key)
+    now = time.monotonic()
+    if hit and now - hit[0] < _DIAGNOSIS_TTL:
+        return hit[1]
+    try:
+        reason = discover.diagnose(ip, port)
+    except Exception as e:  # a diagnosis must never break the heartbeat
+        _log(f"could not diagnose {ip}: {e}", err=True)
+        reason = None
+    _diagnoses[key] = (now, reason)
+    if reason:
+        _log(f"{ip or 'no address'} unreachable: {reason}")
+    return reason
+
+
 def probe_printers(printers: list) -> list:
     """Ask each printer how it is, for the next poll to report upstream.
 
@@ -243,6 +268,7 @@ def probe_printers(printers: list) -> list:
             "media_type": status.get("media_type"),
             "media_width": status.get("media_width"),
             "error_state": status.get("error_state"),
+            "unreachable_reason": None if status.get("reachable") else _why_unreachable(ip, port),
         }
         if ip and ip != p.get("printer_ip"):
             report["printer_ip"] = ip

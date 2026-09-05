@@ -6,7 +6,7 @@
 //
 // Request  (POST, header `x-bridge-key`):
 //   { printers?:   [{ id, reachable, media_type, media_width, error_state,
-//                     printer_ip?, mac?, wired_mac? }],
+//                     unreachable_reason, printer_ip?, mac?, wired_mac? }],
 //     provision_result?: { session_id, task, ok, next_state, data, log, error },
 //     rotation_error?: "…" }   // could not store the replacement credential
 // Response:
@@ -119,6 +119,14 @@ Deno.serve(async (req) => {
         media_type: row.media_type ?? null,
         media_width: row.media_width ?? null,
         error_state: row.error_state ?? null,
+        // Why, not just whether. Defaulted to null like the fields above
+        // rather than spread in conditionally: this must clear the moment a
+        // printer answers, or a card keeps explaining a fault that is over.
+        // Truncated because it reaches a UI, and the bridge composes it.
+        unreachable_reason:
+          typeof row.unreachable_reason === "string" && row.unreachable_reason
+            ? row.unreachable_reason.slice(0, 500)
+            : null,
         last_checked: now,
         // Only when the bridge actually says so. These are spread in rather
         // than defaulted to null like the fields above, because a null here

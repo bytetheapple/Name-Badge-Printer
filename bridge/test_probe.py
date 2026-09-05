@@ -24,7 +24,7 @@ WIRED = "40:5b:d8:25:57:56"
 
 # The printer answers on one address, under the mDNS name built from whichever
 # interface it is using.
-world = {"reachable": set(), "dns": {}, "arp": {}}
+world = {"reachable": set(), "dns": {}, "arp": {}, "diagnosis": None}
 
 
 def fake_status(ip, port=9100):
@@ -39,7 +39,12 @@ def fake_mac_of(ip):
     return world["arp"].get(ip)
 
 
+def fake_diagnose(ip, port=9100, ping=True):
+    return world["diagnosis"]
+
+
 printer.query_status = fake_status
+discover.diagnose = fake_diagnose
 discover.resolve_all = fake_resolve
 discover.mac_of = fake_mac_of
 bridge._log = lambda *a, **k: None
@@ -92,7 +97,30 @@ world.update(reachable=set(), dns={}, arp={})
 r = bridge.probe_printers([dict(P)])[0]
 check("reports unreachable", r["reachable"] is False)
 check("nothing else is claimed", set(r) == {"id", "reachable", "media_type",
-                                            "media_width", "error_state"}, str(r))
+                                            "media_width", "error_state",
+                                            "unreachable_reason"}, str(r))
+
+print("— an unreachable printer says why, and a reachable one does not —")
+world.update(reachable=set(), dns={}, arp={}, diagnosis="on a different network")
+bridge._diagnoses.clear()
+r = bridge.probe_printers([dict(P)])[0]
+check("an offline printer carries the diagnosis", r["unreachable_reason"] == "on a different network", str(r))
+world.update(reachable={"192.168.1.50"})
+bridge._diagnoses.clear()
+r = bridge.probe_printers([dict(P)])[0]
+# Reported every tick rather than only when set: a stale explanation left on a
+# printer that has since come back is worse than none at all.
+check("and a printer that answers clears it", r["unreachable_reason"] is None, str(r))
+
+print("— a diagnosis that blows up never takes the heartbeat with it —")
+def explode(ip, port=9100, ping=True):
+    raise OSError("no")
+discover.diagnose = explode
+world.update(reachable=set())
+bridge._diagnoses.clear()
+r = bridge.probe_printers([dict(P)])[0]
+check("the report still arrives", r["reachable"] is False and r["unreachable_reason"] is None, str(r))
+discover.diagnose = fake_diagnose
 
 print()
 if FAILURES:
