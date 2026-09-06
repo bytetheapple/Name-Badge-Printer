@@ -132,7 +132,7 @@ export default function EventForm() {
 
   if (stage === 'loading') {
     return (
-      <main className="page public-form">
+      <main className="page">
         <p className="muted">Loading…</p>
       </main>
     )
@@ -140,7 +140,7 @@ export default function EventForm() {
 
   if (stage === 'closed') {
     return (
-      <main className="page public-form">
+      <main className="page">
         <h1>Registration is not open</h1>
         <p className="muted">
           This code is not accepting registrations. Please see someone at the desk.
@@ -151,7 +151,7 @@ export default function EventForm() {
 
   if (stage === 'printing' || stage === 'done') {
     return (
-      <main className="page public-form">
+      <main className="page">
         {/* "You are registered" is true of somebody who was on the list and
             premature for somebody who was not: a walk-in still has to see the
             desk, sometimes to pay, and a page telling them they are done sends
@@ -174,7 +174,7 @@ export default function EventForm() {
   }
 
   return (
-    <main className="page public-form">
+    <main className="page">
       {/* Two lines always, rather than one that sometimes wraps. Inline, a
           long event name breaks wherever it runs out of room and leaves
           "Registration" sharing a line with the tail of the name — "Party

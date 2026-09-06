@@ -1337,49 +1337,48 @@ a.pill:hover {
    reviewers, so they get a plain readable column rather than the admin's
    denser layout.
    --------------------------------------------------------------------------- */
-.page {
+/* Scoped to .legal, not to .page.
+ *
+ * This block used to redefine `.page` itself, which is also the class on every
+ * short centred page in the product — the sign-in form, the event
+ * registration form, the login, and the "loading" and "no organization"
+ * states. Being later in the file, it won: those pages have all been wearing
+ * a policy document's width, padding and left alignment instead of the
+ * centred 560px column written for them fifty lines up.
+ *
+ * The two legal pages already carried `page legal`, so naming that class is
+ * the whole fix and touches no markup. */
+.legal {
   max-width: 68ch;
-  margin: 0 auto;
   padding: 48px 24px 64px;
   line-height: 1.6;
-  /* The kiosk centres its text, which suits a form seen from arm's length and
-     is miserable for two pages of policy. */
+  /* A form read at arm's length is centred, which is miserable for two pages
+     of policy. */
   text-align: left;
 }
-.page h1,
+.legal h1,
 .page-head {
   text-align: left;
 }
-
-/* The two public forms, which share `.page` with the policy pages and lose to
-   them: `.page` is defined twice in this stylesheet, once above for a form
-   read at arm's length and once here for two pages of prose, and the later
-   one wins. The heading is the part where that shows — a title over a centred
-   form, ranged left.
-   Marked on the element rather than fixed by reordering the two blocks, which
-   would silently restyle Terms and Privacy as well. */
-.public-form h1 {
-  text-align: center;
-}
-.page h1 {
+.legal h1 {
   margin: 0 0 8px;
 }
-.page h2 {
+.legal h2 {
   margin: 32px 0 10px;
   font-size: 1.15rem;
   color: var(--text-h);
 }
-.page p,
-.page ul {
+.legal p,
+.legal ul {
   margin: 0 0 14px;
 }
-.page ul {
+.legal ul {
   padding-left: 22px;
 }
-.page li {
+.legal li {
   margin-bottom: 6px;
 }
-.page code {
+.legal code {
   font-size: 0.9em;
 }
 .page-head .lede {

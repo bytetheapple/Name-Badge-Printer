@@ -190,7 +190,7 @@ export default function PublicForm() {
   // Step 1 — what the QR code lands on.
   if (stage === 'choose') {
     return (
-      <main className="page public-form">
+      <main className="page">
         <h1>{orgName ? `Welcome to ${orgName}` : 'Welcome'}</h1>
         <p className="big">Are you a member or a visitor?</p>
         <div className="choice">
@@ -219,7 +219,7 @@ export default function PublicForm() {
 
   if (stage === 'printing' || stage === 'submitting') {
     return (
-      <main className="page public-form">
+      <main className="page">
         <h1>{orgName ?? 'Guest Badges'}</h1>
         <div className="spinner" />
         <p className="big">{printCount > 1 ? `Printing ${printCount} badges…` : 'Printing your badge…'}</p>
@@ -232,7 +232,7 @@ export default function PublicForm() {
 
   if (stage === 'done') {
     return (
-      <main className="page public-form">
+      <main className="page">
         <h1>{orgName ?? 'Guest Badges'}</h1>
         <p className="status-icon">✓</p>
         <p className="big">{printCount > 1 ? `${printCount} badges are printing!` : 'Your badge is printing!'}</p>
@@ -246,7 +246,7 @@ export default function PublicForm() {
 
   if (stage === 'error') {
     return (
-      <main className="page public-form">
+      <main className="page">
         <h1>{orgName ?? 'Guest Badges'}</h1>
         <p className="status-icon">⚠️</p>
         <p className="big">{message ?? 'Something went wrong.'}</p>
@@ -258,7 +258,7 @@ export default function PublicForm() {
   // Step 2 — details form.
   const badgeCount = 1 + people.filter((p) => p.first.trim() && p.last.trim()).length
   return (
-    <main className="page public-form">
+    <main className="page">
       {/* The congregation's own name, not the one this was first built for.
           Falls back to a bare welcome rather than guessing. */}
       <h1>{orgName ? `Welcome to ${orgName}` : 'Welcome'}</h1>
