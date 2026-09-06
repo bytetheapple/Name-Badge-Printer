@@ -214,8 +214,8 @@ export default function EventPrinters({
             ))}
           </select>
           <span className="muted small">
-            Everyone not on the pre-registration list prints here, whichever code they
-            scanned. It may be one of the printers above or a different one.
+            On-site registrations print on this printer regardless of which QR code is
+            scanned
           </span>
         </label>
       )}
