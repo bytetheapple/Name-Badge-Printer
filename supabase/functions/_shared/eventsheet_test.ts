@@ -8,7 +8,7 @@
 // asks them for money they have already given. A false match checks off
 // somebody else and lets a stranger through as pre-registered.
 import { assertEquals } from "jsr:@std/assert@1";
-import { emailKey, findAttendee, nameKey, phoneKey } from "./eventsheet.ts";
+import { countAttendees, emailKey, findAttendee, nameKey, phoneKey } from "./eventsheet.ts";
 
 Deno.test("a phone number matches however it was typed", () => {
   // A sheet is typed by a person and the form formats as you type. Comparing
@@ -169,5 +169,99 @@ Deno.test("a short sheet row does not throw", async () => {
     assertEquals(hit?.already, false);
   } finally {
     restore();
+  }
+});
+
+
+/** Record every Sheets call, and answer the dashboard range from `cells`. */
+function dashboard(cells: string[][] | null) {
+  const calls: string[] = [];
+  const original = globalThis.fetch;
+  globalThis.fetch = ((input: string | URL | Request, init?: RequestInit) => {
+    const url = String(input);
+    calls.push(`${init?.method ?? "GET"} ${url.includes("batchUpdate") ? "batchUpdate" : url.split("/").pop()}`);
+    if (url.includes("Dashboard") && !url.includes("batchUpdate")) {
+      if (cells === null) {
+        return Promise.resolve(
+          new Response(JSON.stringify({ error: { message: "Unable to parse range" } }), { status: 400 }),
+        );
+      }
+      return Promise.resolve(new Response(JSON.stringify({ values: cells }), { status: 200 }));
+    }
+    if (url.includes("fields=sheets.properties.title")) {
+      return Promise.resolve(new Response(JSON.stringify({ sheets: [] }), { status: 200 }));
+    }
+    return Promise.resolve(new Response("{}", { status: 200 }));
+  }) as typeof fetch;
+  return { calls, restore: () => { globalThis.fetch = original; } };
+}
+
+Deno.test("the counts come from three cells, not from the guest list", async () => {
+  // The whole point of the dashboard living in the spreadsheet: a large event
+  // should not put its entire list on the wire every time somebody looks.
+  const { calls, restore } = dashboard([["42"], ["17"], ["5"]]);
+  try {
+    const counts = await countAttendees("t", "s");
+    assertEquals(counts, { registered: 42, signed_in: 17, onsite: 5 });
+    assertEquals(calls.length, 1);
+    assertEquals(calls[0].includes("Pre-registered"), false);
+  } finally {
+    restore();
+  }
+});
+
+Deno.test("a sheet with no dashboard gets one, and is read again", async () => {
+  // Spreadsheets made before the dashboard existed, and any a customer has
+  // deleted the tab from. Neither should need somebody to be told about it.
+  let served: string[][] | null = null;
+  const original = globalThis.fetch;
+  const calls: string[] = [];
+  globalThis.fetch = ((input: string | URL | Request, init?: RequestInit) => {
+    const url = String(input);
+    const method = init?.method ?? "GET";
+    calls.push(method);
+    if (url.includes("fields=sheets.properties.title")) {
+      return Promise.resolve(new Response(JSON.stringify({ sheets: [] }), { status: 200 }));
+    }
+    if (url.includes("batchUpdate")) {
+      served = [["3"], ["1"], ["2"]]; // the tab now exists and has resolved
+      return Promise.resolve(new Response("{}", { status: 200 }));
+    }
+    if (served === null) {
+      return Promise.resolve(
+        new Response(JSON.stringify({ error: { message: "Unable to parse range" } }), { status: 400 }),
+      );
+    }
+    return Promise.resolve(new Response(JSON.stringify({ values: served }), { status: 200 }));
+  }) as typeof fetch;
+  try {
+    assertEquals(await countAttendees("t", "s"), { registered: 3, signed_in: 1, onsite: 2 });
+  } finally {
+    globalThis.fetch = original;
+  }
+});
+
+Deno.test("a dashboard cell somebody typed over is repaired, not believed", async () => {
+  // The tab is in the customer's own file. A word where a number belongs must
+  // not be read as a count, and must not be an error either.
+  let served: string[][] = [["Registered"], [""], ["5"]];
+  const original = globalThis.fetch;
+  globalThis.fetch = ((input: string | URL | Request, init?: RequestInit) => {
+    const url = String(input);
+    if (url.includes("fields=sheets.properties.title")) {
+      return Promise.resolve(
+        new Response(JSON.stringify({ sheets: [{ properties: { title: "Dashboard" } }] }), { status: 200 }),
+      );
+    }
+    if (url.includes("batchUpdate")) {
+      served = [["9"], ["4"], ["1"]]; // formulas written back
+      return Promise.resolve(new Response("{}", { status: 200 }));
+    }
+    return Promise.resolve(new Response(JSON.stringify({ values: served }), { status: 200 }));
+  }) as typeof fetch;
+  try {
+    assertEquals(await countAttendees("t", "s"), { registered: 9, signed_in: 4, onsite: 1 });
+  } finally {
+    globalThis.fetch = original;
   }
 });

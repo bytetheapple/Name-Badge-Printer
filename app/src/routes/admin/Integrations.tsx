@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import EventPrinters from './EventPrinters'
+import EventStats from './EventStats'
 import { invokeFn } from '../../lib/functions'
 import { useOrg } from '../../lib/org'
 import type { Integration, IntegrationKind } from '../../lib/types'
@@ -892,6 +893,13 @@ export default function Integrations({
                   )
                 )}
               </div>
+            )}
+
+            {/* On the banner, not behind Configure. During an event this is
+                the question — how many are here — and it should not need a
+                click to answer. */}
+            {spec.kind === 'event' && !idle && Boolean(config.spreadsheet_id) && (
+              <EventStats integrationId={row.id} />
             )}
 
             {/* Everything below the banner, for a destination that has

@@ -467,3 +467,7 @@ verify_jwt = false
 
 [functions.event-register]
 verify_jwt = false
+
+# A console view, so a signed-in person rather than a printed code.
+[functions.event-stats]
+verify_jwt = true

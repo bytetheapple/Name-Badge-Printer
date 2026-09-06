@@ -14,6 +14,7 @@ import { REST, restHeaders } from "./integration.ts";
 
 const SHEETS = "https://sheets.googleapis.com/v4/spreadsheets";
 
+export const DASHBOARD_TAB = "Dashboard";
 export const PREREG_TAB = "Pre-registered";
 export const ONSITE_TAB = "On-site registration";
 export const HEADERS = ["First name", "Last name", "Cell phone", "Email"];
@@ -21,6 +22,35 @@ const PREREG_HEADERS = [...HEADERS, "Checked in"];
 const ONSITE_HEADERS = [...HEADERS, "Registered"];
 /** Column the check-in time goes in; fifth, so column E. */
 const CHECKED_COL = "E";
+/** Where the dashboard keeps its three numbers. */
+const COUNTS_RANGE = `${DASHBOARD_TAB}!B1:B3`;
+
+/**
+ * A row of the list counts as a guest when any of its four fields has
+ * something in it. Written as a formula so the spreadsheet does the counting:
+ * pulling every row back here to count them costs the whole list on the wire
+ * each time somebody glances at the console, and it grows with the event.
+ */
+function rowsWithAnything(tab: string): string {
+  const col = (c: string) => `'${tab}'!${c}2:${c}`;
+  return `=SUMPRODUCT(--(LEN(TRIM(${col("A")}&${col("B")}&${col("C")}&${col("D")}))>0))`;
+}
+
+/**
+ * The dashboard, as labels and formulas.
+ *
+ * On its own tab, first, so it is the sheet somebody lands on. That is half
+ * the point of putting it here rather than only in the console: the organizer
+ * spends the event in this spreadsheet, and the numbers should be where they
+ * already are.
+ */
+function dashboardRows(): string[][] {
+  return [
+    ["Registered", rowsWithAnything(PREREG_TAB)],
+    ["Signed in", `=COUNTA('${PREREG_TAB}'!${CHECKED_COL}2:${CHECKED_COL})`],
+    ["On-site", rowsWithAnything(ONSITE_TAB)],
+  ];
+}
 
 /**
  * What the event's spreadsheet is called.
@@ -107,6 +137,7 @@ export async function createEventSpreadsheet(
     body: JSON.stringify({
       properties: { title },
       sheets: [
+        { properties: { title: DASHBOARD_TAB } },
         { properties: { title: PREREG_TAB } },
         { properties: { title: ONSITE_TAB } },
       ],
@@ -123,8 +154,11 @@ export async function createEventSpreadsheet(
   await sheetsFetch(token, `/${id}/values:batchUpdate`, {
     method: "POST",
     body: JSON.stringify({
-      valueInputOption: "RAW",
+      // USER_ENTERED, not RAW: the dashboard's cells are formulas, and RAW
+      // would store them as the text of a formula.
+      valueInputOption: "USER_ENTERED",
       data: [
+        { range: `${DASHBOARD_TAB}!A1`, values: dashboardRows() },
         { range: `${PREREG_TAB}!A1`, values: [PREREG_HEADERS] },
         { range: `${ONSITE_TAB}!A1`, values: [ONSITE_HEADERS] },
       ],
@@ -260,4 +294,96 @@ export async function renameEventSpreadsheet(
     }),
   });
   return title;
+}
+
+export interface EventCounts {
+  /** Rows on the pre-registration list. */
+  registered: number;
+  /** How many of those have arrived and had their badge printed. */
+  signed_in: number;
+  /** People who were not on the list and registered at the desk. */
+  onsite: number;
+}
+
+/**
+ * Put the dashboard tab back, or in for the first time.
+ *
+ * Needed for two reasons. Spreadsheets made before the dashboard existed have
+ * no such tab, and somebody can delete or clear it — it lives in the
+ * customer's file, and everything in there is theirs to edit.
+ */
+export async function ensureDashboard(token: string, spreadsheetId: string): Promise<void> {
+  const meta = await sheetsFetch(
+    token,
+    `/${spreadsheetId}?fields=sheets.properties.title`,
+  ) as { sheets?: Array<{ properties?: { title?: string } }> };
+  const has = (meta?.sheets ?? []).some((s) => s?.properties?.title === DASHBOARD_TAB);
+
+  if (!has) {
+    await sheetsFetch(token, `/${spreadsheetId}:batchUpdate`, {
+      method: "POST",
+      body: JSON.stringify({
+        requests: [
+          { addSheet: { properties: { title: DASHBOARD_TAB, index: 0 } } },
+        ],
+      }),
+    });
+  }
+  await sheetsFetch(token, `/${spreadsheetId}/values:batchUpdate`, {
+    method: "POST",
+    body: JSON.stringify({
+      valueInputOption: "USER_ENTERED",
+      data: [{ range: `${DASHBOARD_TAB}!A1`, values: dashboardRows() }],
+    }),
+  });
+}
+
+function parseCounts(values: string[][] | undefined): EventCounts | null {
+  const n = (i: number) => {
+    const raw = String(values?.[i]?.[0] ?? "").trim();
+    // A formula that has not resolved, or a cell somebody typed a word into.
+    if (raw === "" || !/^\d+$/.test(raw)) return null;
+    return Number(raw);
+  };
+  const registered = n(0);
+  const signed = n(1);
+  const onsite = n(2);
+  if (registered === null || signed === null || onsite === null) return null;
+  return { registered, signed_in: signed, onsite };
+}
+
+/**
+ * The three numbers a desk wants during an event.
+ *
+ * Read from the dashboard's cells rather than counted here. The spreadsheet
+ * holds the formulas, so this fetches three values instead of the whole guest
+ * list — which for a large event is the difference between three cells and
+ * ten thousand, every time somebody glances at the console.
+ *
+ * When the tab is missing or its cells do not look like numbers, it is put
+ * back and read once more. That covers a sheet made before the dashboard
+ * existed and one a customer has edited, and both resolve themselves without
+ * anybody being told to do anything.
+ */
+export async function countAttendees(
+  token: string,
+  spreadsheetId: string,
+): Promise<EventCounts> {
+  const range = encodeURIComponent(COUNTS_RANGE);
+  let first: EventCounts | null = null;
+  try {
+    const body = await sheetsFetch(token, `/${spreadsheetId}/values/${range}`) as {
+      values?: string[][];
+    };
+    first = parseCounts(body?.values);
+  } catch {
+    first = null; // no such tab
+  }
+  if (first) return first;
+
+  await ensureDashboard(token, spreadsheetId);
+  const body = await sheetsFetch(token, `/${spreadsheetId}/values/${range}`) as {
+    values?: string[][];
+  };
+  return parseCounts(body?.values) ?? { registered: 0, signed_in: 0, onsite: 0 };
 }
