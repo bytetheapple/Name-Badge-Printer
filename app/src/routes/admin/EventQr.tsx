@@ -55,6 +55,15 @@ export default function EventQr({
     }
   }, [url])
 
+  function downloadPng() {
+    const canvas = canvasRef.current
+    if (!canvas) return
+    const link = document.createElement('a')
+    link.download = `event-code-${slugify(eventName)}-${slugify(printerName)}.png`
+    link.href = canvas.toDataURL('image/png')
+    link.click()
+  }
+
   async function printSign() {
     const canvas = canvasRef.current
     if (!canvas) return
@@ -114,6 +123,12 @@ export default function EventQr({
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
           <button type="button" className="secondary btn-sm" onClick={() => void printSign()}>
             Print this code
+          </button>
+          {/* The image on its own, for a sign somebody is laying out
+              themselves. The printed page is one design; a room with its own
+              signage wants the code and nothing else. */}
+          <button type="button" className="secondary btn-sm" onClick={downloadPng}>
+            Download PNG
           </button>
           {actions}
         </div>

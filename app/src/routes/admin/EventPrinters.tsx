@@ -140,8 +140,18 @@ export default function EventPrinters({
           <div key={row.id} className="field-group" style={{ marginBottom: 10 }}>
             <div>
               <strong>{printer?.name ?? 'Printer no longer set up'}</strong>
-              {printer?.location && <span className="muted"> · {printer.location}</span>}
             </div>
+            {/* Location and address on their own line, as the Printers tab
+                shows them. Which physical machine a code prints at is the
+                thing being decided here, and a name alone does not settle it
+                once a customer has two called Lobby. */}
+            {printer && (
+              <div className="muted small">
+                {[printer.location, printer.printer_ip ?? 'no address set']
+                  .filter(Boolean)
+                  .join(' · ')}
+              </div>
+            )}
             <EventQr
               token={row.token}
               eventName={eventName}
