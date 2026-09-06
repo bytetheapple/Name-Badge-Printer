@@ -175,7 +175,13 @@ export default function EventPrinters({
           something else. What is stored is still onsite_same_printer, because
           that is what the registration function reads — the question flipped,
           not the data. */}
-      <label className="check" style={{ marginTop: 16 }}>
+      {/* Its own block, with room above it. Where a walk-in's badge comes out
+          is a different question from which printers the event uses, and with
+          the heading gone the space is what says so — set on the group rather
+          than on its first line, so the parts of the question stay together
+          while the question itself stands apart. */}
+      <div style={{ marginTop: 32 }}>
+      <label className="check">
         <input
           type="checkbox"
           checked={!sameprinter}
@@ -212,6 +218,7 @@ export default function EventPrinters({
           scanned.
         </p>
       )}
+      </div>
 
       {error && <p className="error small">{error}</p>}
     </div>
