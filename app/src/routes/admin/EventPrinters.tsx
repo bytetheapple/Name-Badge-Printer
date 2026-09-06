@@ -224,8 +224,8 @@ export default function EventPrinters({
           out at the wrong end of the room. */}
       {!sameprinter && !onsitePrinterId && (
         <p className="muted small">
-          Until a printer is chosen here, on-site badges print at whichever code was
-          scanned.
+          Until a printer is chosen here, on-site badges print according to whichever
+          code was scanned.
         </p>
       )}
       </div>
