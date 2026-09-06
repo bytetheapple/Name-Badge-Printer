@@ -211,6 +211,7 @@ export default function StatusPanel() {
             <JoinNetwork
               orgId={orgId}
               interfaces={net.interfaces}
+              networks={net.networks ?? []}
               onDone={() => {
                 setJoining(false)
                 void loadNetReq()

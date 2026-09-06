@@ -331,8 +331,21 @@ export interface ServerInterface {
   signal?: number | null
 }
 
+/** A wireless network the print server can see. */
+export interface VisibleNetwork {
+  ssid: string
+  /** 0-100, as NetworkManager reports it. */
+  signal: number
+  /** Whether joining it needs a passphrase. */
+  secure: boolean
+}
+
 export interface ServerNetwork {
   interfaces: ServerInterface[]
+  /** What the radio can see, strongest first, one row per name. Absent from a
+   *  server too old to report it, and empty when the radio is off — the form
+   *  falls back to typing a name in both cases. */
+  networks?: VisibleNetwork[]
   /** nmcli's word for the radio: 'enabled', 'disabled', or null where we
    *  could not ask (a Mac running a demo bridge). */
   wifi_radio?: string | null

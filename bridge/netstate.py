@@ -22,6 +22,12 @@ import time
 _TTL = 60.0
 _cache: tuple[float, dict] | None = None
 
+#: A scan changes on the timescale of somebody carrying a laptop across a
+#: building, and asking for one costs more than reading an address does. Kept
+#: much longer than the interface state it travels with.
+_SCAN_TTL = 300.0
+_scan_cache: tuple[float, list] | None = None
+
 
 def _run(args: list[str], timeout: float = 4.0) -> str:
     try:
@@ -72,6 +78,48 @@ def _nmcli_ssid() -> tuple[str | None, int | None]:
     return None, None
 
 
+def visible_networks(max_age: float = _SCAN_TTL) -> list:
+    """Wireless networks this machine can see, strongest first.
+
+    So an operator picks a network instead of spelling one. Getting that name
+    wrong is indistinguishable, in nmcli's own words, from the radio being
+    switched off -- "No network with SSID 'x' found" -- which has already cost
+    an afternoon on site with the right passphrase in hand.
+
+    `--rescan auto` rather than `yes`: NetworkManager scans on its own
+    schedule, and forcing one every few minutes on a machine that is printing
+    badges buys freshness nobody needs.
+    """
+    global _scan_cache
+    now = time.monotonic()
+    if _scan_cache and now - _scan_cache[0] < max_age:
+        return _scan_cache[1]
+
+    seen: dict[str, dict] = {}
+    for line in _run(
+        ["nmcli", "-t", "-f", "SSID,SIGNAL,SECURITY", "device", "wifi", "list", "--rescan", "auto"],
+        timeout=20.0,
+    ).splitlines():
+        # An SSID may contain a colon, which nmcli escapes as "\:". Split from
+        # the right instead: the last two fields never contain one.
+        parts = line.rsplit(":", 2)
+        if len(parts) != 3:
+            continue
+        ssid = parts[0].replace("\\:", ":").strip()
+        if not ssid:
+            continue  # a hidden network has no name to offer
+        signal = int(parts[1]) if parts[1].strip().isdigit() else 0
+        entry = {"ssid": ssid, "signal": signal, "secure": bool(parts[2].strip())}
+        # One row per name. A building has the same network on many access
+        # points, and a list with Tbe-Staff in it nine times is a worse list.
+        if ssid not in seen or signal > seen[ssid]["signal"]:
+            seen[ssid] = entry
+
+    found = sorted(seen.values(), key=lambda e: -e["signal"])
+    _scan_cache = (now, found)
+    return found
+
+
 def _via_nmcli() -> dict | None:
     status = _run(["nmcli", "-t", "-f", "DEVICE,TYPE,STATE", "device", "status"])
     if not status:
@@ -99,7 +147,13 @@ def _via_nmcli() -> dict | None:
             entry["signal"] = signal
         interfaces.append(entry)
 
-    return {"interfaces": interfaces, "wifi_radio": radio}
+    return {
+        "interfaces": interfaces,
+        "wifi_radio": radio,
+        # Only worth asking when there is a radio to ask with. A scan on a
+        # blocked one returns nothing, slowly.
+        "networks": visible_networks() if radio == "enabled" else [],
+    }
 
 
 def _kind_of(device: str) -> str:

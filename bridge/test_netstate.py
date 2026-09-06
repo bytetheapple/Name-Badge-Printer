@@ -121,6 +121,47 @@ finally:
     netstate.os.listdir, netstate.os.path.isdir = _listdir, _isdir
 
 
+print("— the networks it can see, for a list instead of a spelling test —")
+# Real output from the site: the same network on many access points, a hidden
+# one with no name, and an open guest network.
+netstate._scan_cache = None
+CANNED[("nmcli", "radio", "wifi")] = "enabled\n"
+CANNED[("nmcli", "-t", "-f", "DEVICE,TYPE,STATE", "device", "status")] = (
+    "eth0:ethernet:connected\nwlan0:wifi:connected\n")
+CANNED[("nmcli", "-t", "-f", "SSID,SIGNAL,SECURITY", "device", "wifi", "list", "--rescan", "auto")] = (
+    "Tbe-Staff:100:WPA2\n"
+    "Tbe-Guest:72:\n"
+    "Tbe-Staff:82:WPA2\n"
+    ":64:WPA2\n"
+    "Tbe-Staff:60:WPA2\n"
+)
+netstate._run = lambda args, timeout=4.0: CANNED.get(tuple(args), "")
+state = netstate.describe(max_age=0)
+names = [n["ssid"] for n in state["networks"]]
+check("one row per name", names == ["Tbe-Staff", "Tbe-Guest"], str(names))
+check("strongest first", state["networks"][0]["signal"] == 100, str(state["networks"]))
+check("and the strongest of the duplicates is the one kept",
+      state["networks"][0]["ssid"] == "Tbe-Staff")
+check("a hidden network offers nothing to pick", "" not in names, str(names))
+check("says which ones need a passphrase",
+      state["networks"][0]["secure"] is True and state["networks"][1]["secure"] is False,
+      str(state["networks"]))
+
+print("— a radio that is off is not scanned —")
+netstate._scan_cache = None
+CANNED[("nmcli", "radio", "wifi")] = "disabled\n"
+asked = []
+_canned_run = netstate._run
+netstate._run = lambda args, timeout=4.0: (asked.append(args), _canned_run(args, timeout))[1]
+state = netstate.describe(max_age=0)
+check("nothing to offer", state["networks"] == [], str(state["networks"]))
+# A scan on a blocked radio returns nothing after a wait. Not asking is the
+# point, not the empty answer.
+check("and the scan was not attempted",
+      not any("list" in a for a in asked), str(asked))
+netstate._run = _canned_run
+
+
 print()
 if FAILURES:
     print(f"RESULT: {len(FAILURES)} failure(s): {', '.join(FAILURES)}")
