@@ -115,6 +115,15 @@ export default function EventQr({
     <div style={{ display: 'flex', gap: 14, alignItems: 'flex-start', marginTop: 8 }}>
       <canvas ref={canvasRef} style={{ width: 160, height: 160 }} />
       <div>
+        {/* What to do with it. "the Main Printer printer" is what naming the
+            machine plainly would produce here, and a customer who called one
+            "Front Desk Printer" should not be read back their own word twice —
+            so the trailing noun is dropped when the name already carries it. */}
+        <div className="muted small" style={{ marginBottom: 8 }}>
+          Display this code next to {printerName}
+          {/\bprinters?$/i.test(printerName.trim()) ? '' : ' printer'}
+        </div>
+
         {/* The address is deliberately not shown. It was here to be copied and
             nothing offered to copy it; meanwhile a token that opens a
             registration desk sat in plain text on a screen people share while
