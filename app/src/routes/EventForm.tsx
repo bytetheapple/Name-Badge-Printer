@@ -125,7 +125,7 @@ export default function EventForm() {
 
   if (stage === 'loading') {
     return (
-      <main className="kiosk">
+      <main className="page">
         <p className="muted">Loading…</p>
       </main>
     )
@@ -133,7 +133,7 @@ export default function EventForm() {
 
   if (stage === 'closed') {
     return (
-      <main className="kiosk">
+      <main className="page">
         <h1>Registration is not open</h1>
         <p className="muted">
           This code is not accepting registrations. Please see someone at the desk.
@@ -144,7 +144,7 @@ export default function EventForm() {
 
   if (stage === 'printing' || stage === 'done') {
     return (
-      <main className="kiosk">
+      <main className="page">
         <h1>{stage === 'done' ? 'You are registered' : 'Printing your badge…'}</h1>
         <p className="muted">
           {stage === 'done'
@@ -157,14 +157,14 @@ export default function EventForm() {
   }
 
   return (
-    <main className="kiosk">
+    <main className="page">
       <h1>
         <strong>{eventName}</strong> Registration
       </h1>
       {orgName && <p className="muted">{orgName}</p>}
 
-      <form onSubmit={submit}>
-        <label className="field">
+      <form onSubmit={submit} className="form">
+        <label>
           First name
           <input
             value={firstName}
@@ -173,7 +173,7 @@ export default function EventForm() {
             required
           />
         </label>
-        <label className="field">
+        <label>
           Last name
           <input
             value={lastName}
@@ -182,7 +182,7 @@ export default function EventForm() {
             required
           />
         </label>
-        <label className="field">
+        <label>
           Cell phone
           <input
             value={phone}
@@ -193,7 +193,7 @@ export default function EventForm() {
             required
           />
         </label>
-        <label className="field">
+        <label>
           Email
           <input
             value={email}
@@ -208,16 +208,16 @@ export default function EventForm() {
         {/* The same question the lobby form asks, named after the
             organization for the same reason: "learn more about us" is a worse
             question than one with the name in it. */}
-        <label className="check">
+        <label className="checkline">
           <input
             type="checkbox"
             checked={wantsFollowup}
             onChange={(e) => setWantsFollowup(e.target.checked)}
           />
-          Interested in learning more{orgName ? ` about ${orgName}` : ''}?
+          <span>Interested in learning more{orgName ? ` about ${orgName}` : ''}?</span>
         </label>
 
-        {message && <p className="error">{message}</p>}
+        {message && <p className="big">{message}</p>}
         <button type="submit" disabled={stage === 'submitting'}>
           {stage === 'submitting' ? 'Registering…' : 'Print my badge'}
         </button>

@@ -145,6 +145,28 @@ a:hover {
   border-color: var(--accent);
 }
 
+/* The follow-up question inside a public form.
+ *
+ * `.form label` stacks a caption above its input, which is right for every
+ * field and wrong for this one — it put the tick box on its own line above
+ * the sentence it belongs to, on a form where the two together are one
+ * question. `.checkline` says row, but `.form label` outranks it on
+ * specificity, so it has to be said here.
+ *
+ * The extra room above is because this is not another field. It is a
+ * different kind of ask, and at the same 14px as the inputs it read as the
+ * last of them. */
+.form .checkline {
+  flex-direction: row;
+  align-items: flex-start;
+  margin-top: 10px;
+}
+
+/* Likewise: submitting is not the next field down. */
+.form button[type='submit'] {
+  margin-top: 10px;
+}
+
 /* Safari/Chrome paint autofillable fields (family-name, tel, email, …) with a
    yellow background via :-webkit-autofill, which ignores the normal background
    and looks wrong in dark mode. Repaint them with the theme's own colors. */
