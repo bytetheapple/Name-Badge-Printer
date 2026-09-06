@@ -1350,6 +1350,17 @@ a.pill:hover {
 .page-head {
   text-align: left;
 }
+
+/* The two public forms, which share `.page` with the policy pages and lose to
+   them: `.page` is defined twice in this stylesheet, once above for a form
+   read at arm's length and once here for two pages of prose, and the later
+   one wins. The heading is the part where that shows — a title over a centred
+   form, ranged left.
+   Marked on the element rather than fixed by reordering the two blocks, which
+   would silently restyle Terms and Privacy as well. */
+.public-form h1 {
+  text-align: center;
+}
 .page h1 {
   margin: 0 0 8px;
 }
