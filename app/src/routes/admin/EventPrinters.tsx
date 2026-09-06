@@ -138,8 +138,18 @@ export default function EventPrinters({
         const printer = printers.find((p) => p.id === row.printer_id)
         return (
           <div key={row.id} style={{ marginBottom: 22 }}>
-            <div>
+            {/* Remove sits with the printer's name, not with the code. Beside
+                Print and Download it read as a third thing to do to the QR
+                image, when what it does is take the printer out of the event. */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
               <strong>{printer?.name ?? 'Printer no longer set up'}</strong>
+              <button
+                className="secondary btn-sm"
+                disabled={busy}
+                onClick={() => void removePrinter(row)}
+              >
+                Remove
+              </button>
             </div>
             {/* Location and address on their own line, as the Printers tab
                 shows them. Which physical machine a code prints at is the
@@ -156,15 +166,6 @@ export default function EventPrinters({
               token={row.token}
               eventName={eventName}
               printerName={printer?.name ?? 'Printer'}
-              actions={
-                <button
-                  className="secondary btn-sm"
-                  disabled={busy}
-                  onClick={() => void removePrinter(row)}
-                >
-                  Remove
-                </button>
-              }
             />
           </div>
         )
