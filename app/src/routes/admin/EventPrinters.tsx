@@ -112,17 +112,24 @@ export default function EventPrinters({
           because modal-actions pushes to the right, which reads as finishing
           something rather than starting it. */}
       {spare.length > 0 && (
-        <div style={{ display: 'flex', gap: 8, marginBottom: 14 }}>
-          <select value={addId} onChange={(e) => setAddId(e.target.value)}>
-            <option value="">Choose a printer…</option>
-            {spare.map((p) => (
-              <option key={p.id} value={p.id}>
-                {p.name}
-              </option>
-            ))}
-          </select>
-          <button disabled={!addId || busy} onClick={() => void addPrinter(addId)}>
-            Add printer
+        <div style={{ marginBottom: 16 }}>
+          <label className="field" style={{ maxWidth: 320 }}>
+            Add a printer
+            <select value={addId} onChange={(e) => setAddId(e.target.value)}>
+              <option value="">Choose a printer…</option>
+              {spare.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.name}
+                </option>
+              ))}
+            </select>
+          </label>
+          <button
+            style={{ marginTop: 8 }}
+            disabled={!addId || busy}
+            onClick={() => void addPrinter(addId)}
+          >
+            Add
           </button>
         </div>
       )}
@@ -159,13 +166,16 @@ export default function EventPrinters({
         </p>
       )}
 
-      <h4 style={{ marginTop: 16 }}>On-site registrations</h4>
-      {/* Asked the way round somebody thinks about it: the default is that
+      {/* No heading. "On-site registrations" sat closer to the code above it
+          than to the question below, so it read as a caption for the wrong
+          thing — and the question names its own subject anyway.
+
+          Asked the way round somebody thinks about it: the default is that
           walk-ins print where they scanned, and ticking this is choosing to do
           something else. What is stored is still onsite_same_printer, because
           that is what the registration function reads — the question flipped,
           not the data. */}
-      <label className="check">
+      <label className="check" style={{ marginTop: 16 }}>
         <input
           type="checkbox"
           checked={!sameprinter}
