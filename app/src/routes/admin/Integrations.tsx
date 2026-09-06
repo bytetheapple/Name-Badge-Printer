@@ -63,6 +63,10 @@ type Spec = {
   opens?: {
     urlKey: string
     label: string
+    /** Shown beside the link in place of the file's name. For a destination,
+     *  the name answers "which file am I about to open"; for an event it is
+     *  noise, and what is worth a line there is what to do with the thing. */
+    note?: string
     fromId?: { key: string; prefix: string }
     /** Turn what is stored into something a browser can show. A Google Form's
      *  stored address is the endpoint its answers are posted to, which is not
@@ -191,7 +195,8 @@ const EVENT_SPECS: Spec[] = [
     opens: {
       urlKey: 'spreadsheet_url',
       fromId: { key: 'spreadsheet_id', prefix: 'https://docs.google.com/spreadsheets/d/' },
-      label: 'Open the list',
+      label: 'Registered Guests',
+      note: 'Pre-populate this Spreadsheet',
     },
     fields: [],
   },
@@ -875,10 +880,16 @@ export default function Integrations({
                 <a href={openHref(spec.opens, config)!} target="_blank" rel="noreferrer noopener">
                   {spec.opens.label}
                 </a>
-                {typeof config.spreadsheet_title === 'string' && (
+                {spec.opens.note ? (
                   <span className="muted small" style={{ marginLeft: 8 }}>
-                    {config.spreadsheet_title}
+                    {spec.opens.note}
                   </span>
+                ) : (
+                  typeof config.spreadsheet_title === 'string' && (
+                    <span className="muted small" style={{ marginLeft: 8 }}>
+                      {config.spreadsheet_title}
+                    </span>
+                  )
                 )}
               </div>
             )}

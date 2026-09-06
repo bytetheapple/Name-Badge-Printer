@@ -160,13 +160,18 @@ export default function EventPrinters({
       )}
 
       <h4 style={{ marginTop: 16 }}>On-site registrations</h4>
+      {/* Asked the way round somebody thinks about it: the default is that
+          walk-ins print where they scanned, and ticking this is choosing to do
+          something else. What is stored is still onsite_same_printer, because
+          that is what the registration function reads — the question flipped,
+          not the data. */}
       <label className="check">
         <input
           type="checkbox"
-          checked={sameprinter}
-          onChange={(e) => onConfig('onsite_same_printer', e.target.checked)}
+          checked={!sameprinter}
+          onChange={(e) => onConfig('onsite_same_printer', !e.target.checked)}
         />
-        On-site registrations go to the same printer?
+        Use a different printer for onsite registrations?
       </label>
       {!sameprinter && (
         <label className="field" style={{ maxWidth: 320 }}>
