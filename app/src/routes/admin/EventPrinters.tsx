@@ -137,7 +137,7 @@ export default function EventPrinters({
       {rows.map((row) => {
         const printer = printers.find((p) => p.id === row.printer_id)
         return (
-          <div key={row.id} className="field-group" style={{ marginBottom: 10 }}>
+          <div key={row.id} style={{ marginBottom: 22 }}>
             <div>
               <strong>{printer?.name ?? 'Printer no longer set up'}</strong>
             </div>
@@ -190,7 +190,7 @@ export default function EventPrinters({
           the heading gone the space is what says so — set on the group rather
           than on its first line, so the parts of the question stay together
           while the question itself stands apart. */}
-      <div style={{ marginTop: 32 }}>
+      <div style={{ marginTop: 48 }}>
       <label className="check">
         <input
           type="checkbox"
