@@ -158,8 +158,15 @@ export default function EventForm() {
 
   return (
     <main className="page">
+      {/* Two lines always, rather than one that sometimes wraps. Inline, a
+          long event name breaks wherever it runs out of room and leaves
+          "Registration" sharing a line with the tail of the name — "Party
+          Registration", reading as though that were the event. The name gets
+          however many lines it needs and the word that says what this page is
+          gets its own. */}
       <h1>
-        <strong>{eventName}</strong> Registration
+        {eventName}
+        <span style={{ display: 'block', fontWeight: 400 }}>Registration</span>
       </h1>
       {orgName && <p className="muted">{orgName}</p>}
 
