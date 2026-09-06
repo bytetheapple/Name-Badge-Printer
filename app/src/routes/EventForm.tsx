@@ -15,8 +15,10 @@ import { getEventConfig, getJobStatus, registerForEvent } from '../lib/api'
  * the person standing here should be asked for both. Whichever the list has is
  * then the one that matches.
  *
- * Nothing on this page says whether somebody was on the list. That is the
- * desk's business rather than the guest's: the badge carries the mark, and an
+ * Nothing on this page tells somebody whether they were on the list. The
+ * acknowledgement is worded differently for a walk-in — "you are registered"
+ * would send somebody who still has to pay away from the desk — but neither
+ * wording names their status. The badge carries the mark, and an
  * administrator decides what happens next.
  */
 
@@ -43,6 +45,10 @@ export default function EventForm() {
   const [phone, setPhone] = useState('')
   const [email, setEmail] = useState('')
   const [wantsFollowup, setWantsFollowup] = useState(false)
+  //: Whether they turned out not to be on the pre-registration list. Used for
+  //: one word of the acknowledgement and nothing else — see the note above
+  //: about what this page does not tell people.
+  const [onsite, setOnsite] = useState(false)
   const [message, setMessage] = useState<string | null>(null)
   const pollRef = useRef<number | null>(null)
 
@@ -91,6 +97,7 @@ export default function EventForm() {
       if (result.sheet_error) {
         setMessage('Your badge is printing. Please mention at the desk that the list did not update.')
       }
+      setOnsite(result.onsite)
       setStage('printing')
       watchJob(result.job_ids[0])
     } catch (err) {
@@ -145,7 +152,17 @@ export default function EventForm() {
   if (stage === 'printing' || stage === 'done') {
     return (
       <main className="page">
-        <h1>{stage === 'done' ? 'You are registered' : 'Printing your badge…'}</h1>
+        {/* "You are registered" is true of somebody who was on the list and
+            premature for somebody who was not: a walk-in still has to see the
+            desk, sometimes to pay, and a page telling them they are done sends
+            them away before that. It says what is actually happening instead. */}
+        <h1>
+          {stage !== 'done'
+            ? 'Printing your badge…'
+            : onsite
+              ? 'Your badge is printing.'
+              : 'You are registered'}
+        </h1>
         <p className="muted">
           {stage === 'done'
             ? 'Please collect your badge from the desk.'
