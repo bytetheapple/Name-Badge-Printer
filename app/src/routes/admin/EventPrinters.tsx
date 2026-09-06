@@ -104,7 +104,7 @@ export default function EventPrinters({
 
   return (
     <div style={{ marginTop: 12 }}>
-      <h4>Printers</h4>
+      <h4>Event Printers</h4>
 
       {/* Above the list rather than after it: adding the first printer is the
           whole job on a new event, and a control that only appears once there
