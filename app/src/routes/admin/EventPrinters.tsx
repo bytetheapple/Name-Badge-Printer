@@ -200,8 +200,10 @@ export default function EventPrinters({
         Use a different printer for onsite registrations?
       </label>
       {!sameprinter && (
-        <label className="field" style={{ maxWidth: 320 }}>
-          Printer for on-site registrations
+        {/* No caption. The tick box directly above it asked the question this
+            answers, and repeating it names the same thing twice in two lines.
+            Still a label so the select keeps the field spacing. */}
+        <label className="field" style={{ maxWidth: 320, marginTop: 8 }}>
           <select
             value={onsitePrinterId}
             onChange={(e) => onConfig('onsite_printer_id', e.target.value)}
