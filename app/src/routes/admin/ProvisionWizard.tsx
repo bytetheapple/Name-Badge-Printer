@@ -1,7 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import { useOrg } from '../../lib/org'
-import type { ProvisioningCandidate, ProvisioningSession } from '../../lib/types'
+import type {
+  ProvisioningCandidate,
+  ProvisioningSession,
+  ServerNetwork,
+} from '../../lib/types'
 
 const COLUMNS =
   'id, org_id, kind, state, printer_name, location, ssid, candidates, wired_ip, model, ' +
@@ -911,9 +915,46 @@ function WifiConfirm({
   advance: (state: string, extra?: Record<string, unknown>) => Promise<void>
 }) {
   const seen = (session.visible_networks ?? []).filter(Boolean)
+  const { orgId } = useOrg()
+
+  // The network the print server itself is on. In the ordinary installation
+  // the printer is going onto the same one, and the server has already been
+  // put there minutes ago — so the answer is usually known and worth offering
+  // rather than making somebody read it off a list twice.
+  //
+  // Only ever a suggestion. A printer may belong on a different network from
+  // the server, and this pre-selects a radio button that can be moved.
+  const [serverSsid, setServerSsid] = useState<string | null>(null)
+  useEffect(() => {
+    if (!orgId) return
+    void supabase
+      .from('printer_status')
+      .select('network')
+      .eq('org_id', orgId)
+      .maybeSingle()
+      .then(({ data }) => {
+        const net = (data?.network ?? null) as ServerNetwork | null
+        const wifi = net?.interfaces?.find((i) => i.kind === 'wifi' && i.ip && i.ssid)
+        setServerSsid(wifi?.ssid ?? null)
+      })
+  }, [orgId])
+
+  const shared = serverSsid && seen.includes(serverSsid) ? serverSsid : null
+
   const [choice, setChoice] = useState(session.ssid ?? '')
   const [manual, setManual] = useState(seen.length === 0)
   const [typed, setTyped] = useState(session.ssid ?? '')
+
+  // Chosen for them once, when nothing has been chosen yet. Not on every
+  // render: an operator who deliberately picked another network must not have
+  // it taken back off them.
+  const [suggested, setSuggested] = useState(false)
+  useEffect(() => {
+    if (suggested || !shared || choice || session.ssid) return
+    setChoice(shared)
+    setManual(false)
+    setSuggested(true)
+  }, [shared, choice, session.ssid, suggested])
   const [passphrase, setPassphrase] = useState('')
   const [passphrase2, setPassphrase2] = useState('')
   const [saving, setSaving] = useState(false)
@@ -961,6 +1002,7 @@ function WifiConfirm({
           <>
             <p className="muted small" style={{ marginTop: 0 }}>
               Networks the printer itself can see from where it is now.
+              {shared && ' Your print server is on one of them, chosen below.'}
             </p>
             <ul className="network-list">
               {seen.map((network) => (
@@ -976,6 +1018,9 @@ function WifiConfirm({
                       }}
                     />
                     {network}
+                    {network === shared && (
+                      <span className="muted small"> · your print server is on this</span>
+                    )}
                   </label>
                 </li>
               ))}

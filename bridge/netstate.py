@@ -26,6 +26,11 @@ _cache: tuple[float, dict] | None = None
 #: building, and asking for one costs more than reading an address does. Kept
 #: much longer than the interface state it travels with.
 _SCAN_TTL = 300.0
+#: While the radio is on and joined to nothing, somebody is almost certainly
+#: standing at the console waiting to pick a network. Five minutes is the right
+#: interval for a server that is working and the wrong one for a server being
+#: set up, and which of those is happening is answerable without being told.
+_SCAN_SETUP_TTL = 45.0
 _scan_cache: tuple[float, list] | None = None
 
 
@@ -147,12 +152,17 @@ def _via_nmcli() -> dict | None:
             entry["signal"] = signal
         interfaces.append(entry)
 
+    joined = any(i["kind"] == "wifi" and i["ip"] for i in interfaces)
     return {
         "interfaces": interfaces,
         "wifi_radio": radio,
         # Only worth asking when there is a radio to ask with. A scan on a
         # blocked one returns nothing, slowly.
-        "networks": visible_networks() if radio == "enabled" else [],
+        "networks": (
+            visible_networks(_SCAN_TTL if joined else _SCAN_SETUP_TTL)
+            if radio == "enabled"
+            else []
+        ),
     }
 
 

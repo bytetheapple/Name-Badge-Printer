@@ -162,6 +162,30 @@ check("and the scan was not attempted",
 netstate._run = _canned_run
 
 
+print("— a server not yet on WiFi refreshes its scan sooner —")
+# The setup moment: somebody is at the console waiting to pick a network, and
+# five minutes is a long time to stand there.
+netstate._scan_cache = None
+CANNED[("nmcli", "radio", "wifi")] = "enabled\n"
+asked_ttl = []
+_real_visible = netstate.visible_networks
+netstate.visible_networks = lambda max_age=netstate._SCAN_TTL: (asked_ttl.append(max_age), [])[1]
+try:
+    CANNED[("nmcli", "-t", "-f", "DEVICE,TYPE,STATE", "device", "status")] = (
+        "eth0:ethernet:connected\nwlan0:wifi:disconnected\n")
+    netstate.describe(max_age=0)
+    check("waits less while unjoined", asked_ttl[-1] == netstate._SCAN_SETUP_TTL, str(asked_ttl))
+
+    CANNED[("nmcli", "-t", "-f", "DEVICE,TYPE,STATE", "device", "status")] = (
+        "eth0:ethernet:connected\nwlan0:wifi:connected\n")
+    CANNED[("nmcli", "-t", "-f", "IP4.ADDRESS", "device", "show", "wlan0")] = (
+        "IP4.ADDRESS[1]:192.168.0.87/24\n")
+    netstate.describe(max_age=0)
+    check("and settles once it is on a network", asked_ttl[-1] == netstate._SCAN_TTL, str(asked_ttl))
+finally:
+    netstate.visible_networks = _real_visible
+
+
 print()
 if FAILURES:
     print(f"RESULT: {len(FAILURES)} failure(s): {', '.join(FAILURES)}")
