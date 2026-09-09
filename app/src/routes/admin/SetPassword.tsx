@@ -79,10 +79,19 @@ export default function SetPassword() {
       failed = failed ?? error.message
     }
     setBusy(false)
+    // GoTrue answers a missing account with the same words it uses for a spent
+    // code, on purpose: a page that distinguished them would be a way to find
+    // out who has an account. Only the server's own log says which, so the
+    // message has to name every cause rather than the one it was told.
+    //
+    // The address is listed first because it is the one nobody suspects. A
+    // customer typing the shared mailbox the email arrived in, while the
+    // account is registered to something else, reads as "expired" for ever.
     setError(
-      `${failed ?? 'That code was not accepted.'} Codes work once and time out, ` +
-        'so a code that has been tried already, or has been sitting for a while, ' +
-        'needs replacing.',
+      `${failed ?? 'That code was not accepted.'} Check that this is the exact ` +
+        'address the email was sent to — a code belongs to one address. ' +
+        'Otherwise the code has been used already or has timed out, and a new ' +
+        'one will work.',
     )
   }
 
