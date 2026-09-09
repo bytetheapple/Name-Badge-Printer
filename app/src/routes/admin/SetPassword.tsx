@@ -3,9 +3,18 @@ import { useNavigate } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
 
 /**
- * Landing page for invitation / password-recovery email links.
- * supabase-js parses the token from the URL hash on load and establishes a
- * session; the user then sets a password and is signed in.
+ * Where somebody sets a password: after an invitation, or after a reset.
+ *
+ * Two ways in. A link in an email still works — supabase-js takes the token
+ * out of the URL hash and establishes a session. And a six-digit code typed
+ * in, which is the way that survives real mail systems: a link is a URL, and
+ * every scanner, preview generator and messaging app fetches URLs. These
+ * tokens work exactly once, so anything that fetches one spends it, and the
+ * person clicking gets told it expired. Worse, fetching an invite link
+ * completes the sign-in, so an account can look used by someone who never
+ * saw this page.
+ *
+ * A code is not a URL. Nothing in any pipe can spend it in transit.
  */
 export default function SetPassword() {
   const [ready, setReady] = useState(false)
@@ -15,6 +24,9 @@ export default function SetPassword() {
   const [password, setPassword] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
+  //: The typed-code way in, for when the link was eaten before it arrived.
+  const [email, setEmail] = useState('')
+  const [code, setCode] = useState('')
   const navigate = useNavigate()
 
   useEffect(() => {
@@ -43,6 +55,30 @@ export default function SetPassword() {
     return () => sub.subscription.unsubscribe()
   }, [])
 
+  async function useCode(e: FormEvent) {
+    e.preventDefault()
+    setBusy(true)
+    setError(null)
+    // The same six digits are sent for an invitation and for a reset, and
+    // nothing in the code says which it was. Recovery first because it is the
+    // commoner errand; a wrong type is refused without spending the code.
+    const address = email.trim().toLowerCase()
+    const digits = code.replace(/\D/g, '')
+    let failed: string | null = null
+    for (const type of ['recovery', 'invite'] as const) {
+      const { error } = await supabase.auth.verifyOtp({ email: address, token: digits, type })
+      if (!error) {
+        setBusy(false)
+        setLinkError(null)
+        setReady(true)
+        return
+      }
+      failed = error.message
+    }
+    setBusy(false)
+    setError(failed ?? 'That code was not accepted.')
+  }
+
   async function onSubmit(e: FormEvent) {
     e.preventDefault()
     setBusy(true)
@@ -56,27 +92,50 @@ export default function SetPassword() {
     navigate('/admin', { replace: true })
   }
 
-  if (linkError) {
-    return (
-      <main className="page">
-        <h1>That link did not work</h1>
-        <div className="error">{linkError}</div>
-        <p className="muted">
-          Some mail apps open links in the background to check them, which uses the link up
-          before you get to it. Asking for a fresh one and opening it straight away usually
-          works.
-        </p>
-        <a href="/admin/login">Go to sign in</a>
-      </main>
-    )
-  }
-
+  // One screen for both "no session yet" and "the link did not work": in each
+  // case the way forward is the same, and it is the code rather than another
+  // link. The old page said "waiting for a valid invite session", which is a
+  // description of our problem rather than an instruction for theirs.
   if (!ready) {
     return (
       <main className="page">
         <h1>Set your password</h1>
+        {linkError && <div className="error">{linkError}</div>}
         <p className="muted">
-          Open this page from the link in your invitation email. Waiting for a valid invite session…
+          {linkError
+            ? 'Use the six-digit code in the same email instead. Links can be opened by ' +
+              'mail systems before you get to them, which uses them up; a code cannot be.'
+            : 'Enter the six-digit code from your invitation or password-reset email.'}
+        </p>
+        <form onSubmit={useCode} className="form">
+          <label>
+            Email
+            <input
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              required
+              autoComplete="email"
+            />
+          </label>
+          <label>
+            Six-digit code
+            <input
+              value={code}
+              onChange={(e) => setCode(e.target.value)}
+              required
+              inputMode="numeric"
+              autoComplete="one-time-code"
+              placeholder="123456"
+            />
+          </label>
+          {error && <p className="error">{error}</p>}
+          <button type="submit" disabled={busy}>
+            {busy ? 'Checking…' : 'Continue'}
+          </button>
+        </form>
+        <p className="muted small">
+          No code? <a href="/admin/login">Go to sign in</a> and choose Forgot password.
         </p>
       </main>
     )

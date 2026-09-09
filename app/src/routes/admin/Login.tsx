@@ -83,8 +83,9 @@ export default function Login() {
         {error && <p className="error">{error}</p>}
         {sent && (
           <p className="muted small">
-            If that address has an account, a link to set a new password is on its way.
-            It works once, and it may land in junk.
+            If that address has an account, an email with a six-digit code is on its way.{' '}
+            <a href="/admin/set-password">Enter the code</a> to set a new password. It may
+            land in junk.
           </p>
         )}
         <button type="submit" disabled={busy}>
