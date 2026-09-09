@@ -119,6 +119,15 @@ function mayManage(actor: Role | null): boolean {
   return actor === "owner";
 }
 
+/** One auth user, or null. Used to tell a pending invitation from a live account. */
+async function authUser(userId: string): Promise<Record<string, unknown> | null> {
+  const res = await fetch(`${SUPABASE_URL}/auth/v1/admin/users/${userId}`, {
+    headers: { apikey: SERVICE_ROLE, Authorization: `Bearer ${SERVICE_ROLE}` },
+  });
+  if (!res.ok) return null;
+  return await res.json();
+}
+
 /** Look up an auth user by email; null when they have no account yet. */
 async function findUserByEmail(email: string): Promise<string | null> {
   const res = await fetch(
@@ -162,6 +171,75 @@ Deno.serve(async (req) => {
   }
 
   const action = String(body.action ?? "invite");
+
+  // ------------------------------------------------------------------ link
+  // A sign-up link, handed to the owner instead of posted.
+  //
+  // Invitation emails land in junk, and a junk folder is where link scanners
+  // live: Safe Links and its equivalents follow every URL to check it, and one
+  // of these works exactly once, so the token is spent before the person
+  // clicks and they are told it expired. This produces a fresh one on demand,
+  // to send by whatever means actually reaches them.
+  //
+  // Only for an account that has never signed in. Generating one for a live
+  // account would be a way to sign in as a colleague, which is not a thing an
+  // owner should be able to do quietly; somebody with a password resets it
+  // themselves.
+  if (action === "link") {
+    const userId = String(body.user_id ?? "").trim();
+    if (!UUID_RE.test(userId)) return json({ ok: false, error: "Invalid user" }, 400);
+    if (!(await roleInOrg(userId, orgId))) {
+      return json({ ok: false, error: "That person is not a member" }, 404);
+    }
+
+    const user = await authUser(userId);
+    if (!user) return json({ ok: false, error: "That account no longer exists." }, 404);
+    if (user.last_sign_in_at) {
+      return json({
+        ok: false,
+        error: "That account has signed in before, so it has a password. " +
+          "Ask them to use \u201cForgot password\u201d on the sign-in page.",
+      }, 409);
+    }
+
+    const email = String(user.email ?? "");
+    if (!email) return json({ ok: false, error: "That account has no email address." }, 400);
+
+    // generate_link makes the link and returns it without sending anything,
+    // which is the whole point. `invite` is the right type for an account that
+    // has never been used; it lands on the same page the emailed link does.
+    const gen = new URL(`${SUPABASE_URL}/auth/v1/admin/generate_link`);
+    const res = await fetch(gen.toString(), {
+      method: "POST",
+      headers: {
+        apikey: SERVICE_ROLE,
+        Authorization: `Bearer ${SERVICE_ROLE}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        type: "invite",
+        email,
+        ...(SITE_URL ? { redirect_to: SITE_URL } : {}),
+      }),
+    });
+    if (!res.ok) {
+      const text = await res.text();
+      console.error(`generate_link failed for ${email}: ${res.status} ${text.slice(0, 300)}`);
+      return json({
+        ok: false,
+        error: `Could not make a link (HTTP ${res.status}).`,
+        detail: text.slice(0, 300),
+      }, 502);
+    }
+    const made = await res.json();
+    const link = String(made?.action_link ?? made?.properties?.action_link ?? "");
+    if (!link) return json({ ok: false, error: "No link came back." }, 502);
+
+    // Not logged. The link is a way in until it is used, and a function log is
+    // a place people paste into support tickets.
+    console.log(`made a sign-up link for ${email}`);
+    return json({ ok: true, link, email });
+  }
 
   // ---------------------------------------------------------------- remove
   if (action === "remove" || action === "set_role") {

@@ -71,6 +71,29 @@ export default function Members() {
     return true
   }
 
+  //: A sign-up link for somebody whose invitation never arrived, shown once
+  //: and copyable. Kept in state rather than opened: the owner is going to
+  //: send it by some other means, which means they need to hold it.
+  const [handover, setHandover] = useState<{ email: string; link: string } | null>(null)
+
+  async function makeLink(m: OrgMember) {
+    setNotice(null)
+    setError(null)
+    setHandover(null)
+    setBusy(m.user_id)
+    const data = await invokeFn('invite-member', {
+      org_id: orgId,
+      action: 'link',
+      user_id: m.user_id,
+    })
+    setBusy(null)
+    if (!data.ok) {
+      setError((data.error as string) ?? 'Could not make a link.')
+      return
+    }
+    setHandover({ email: String(data.email ?? m.email), link: String(data.link) })
+  }
+
   async function invite(e: FormEvent) {
     e.preventDefault()
     if (!orgId) return
@@ -129,6 +152,36 @@ export default function Members() {
       <p className="muted">Who can sign in to {org?.organization.name}.</p>
       {notice && <div className="notice">{notice}</div>}
       {error && <div className="error">{error}</div>}
+
+      {/* Shown until it is dismissed, not for a few seconds: whoever asked for
+          it is about to paste it into something else, and a message that
+          clears itself would take the link with it. */}
+      {handover && (
+        <div className="notice">
+          <p style={{ margin: '0 0 8px' }}>
+            A sign-up link for <strong>{handover.email}</strong>. It works once and is not
+            sent anywhere — pass it on however reaches them.
+          </p>
+          <input
+            readOnly
+            value={handover.link}
+            onFocus={(e) => e.currentTarget.select()}
+            style={{ width: '100%', fontFamily: 'var(--mono)', fontSize: 12 }}
+          />
+          <div className="modal-actions" style={{ marginTop: 8 }}>
+            <button
+              type="button"
+              className="secondary btn-sm"
+              onClick={() => void navigator.clipboard?.writeText(handover.link)}
+            >
+              Copy
+            </button>
+            <button type="button" className="secondary btn-sm" onClick={() => setHandover(null)}>
+              Done
+            </button>
+          </div>
+        </div>
+      )}
 
       <section className="card">
         <h2>Invite someone</h2>
@@ -203,13 +256,28 @@ export default function Members() {
                         last one leaves when the operations team closes the
                         account. The database refuses it either way. */}
                     {mayManage(m) && m.user_id !== session?.user.id && (
-                      <button
-                        className="secondary btn-sm danger"
-                        disabled={busy === m.user_id}
-                        onClick={() => void remove(m)}
-                      >
-                        Delete
-                      </button>
+                      <>
+                        {/* For an invitation that never arrived. The function
+                            refuses for an account that has signed in before,
+                            and says why — so this is offered on every row
+                            rather than guessing from data this list does not
+                            have. */}
+                        <button
+                          className="secondary btn-sm"
+                          disabled={busy === m.user_id}
+                          onClick={() => void makeLink(m)}
+                          style={{ marginRight: 8 }}
+                        >
+                          Sign-up link
+                        </button>
+                        <button
+                          className="secondary btn-sm danger"
+                          disabled={busy === m.user_id}
+                          onClick={() => void remove(m)}
+                        >
+                          Delete
+                        </button>
+                      </>
                     )}
                   </td>
                 </tr>
