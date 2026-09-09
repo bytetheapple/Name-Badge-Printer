@@ -194,13 +194,19 @@ Deno.serve(async (req) => {
 
     const user = await authUser(userId);
     if (!user) return json({ ok: false, error: "That account no longer exists." }, 404);
-    if (user.last_sign_in_at) {
-      return json({
-        ok: false,
-        error: "That account has signed in before, so it has a password. " +
-          "Ask them to use \u201cForgot password\u201d on the sign-in page.",
-      }, 409);
-    }
+
+    // There used to be a refusal here for an account with last_sign_in_at set,
+    // on the reasoning that such an account has a password and its owner can
+    // reset it themselves. That reasoning was wrong, and wrong in the exact
+    // case this feature exists for: a GET on the /verify URL in an invitation
+    // does not merely spend the token, it completes the sign-in, so a mail
+    // scanner that follows the link stamps last_sign_in_at on somebody who has
+    // never reached the page. The guard then refused the one person who most
+    // needed a link.
+    //
+    // Nothing in the admin API says whether a password was ever set, so the
+    // check is not fixable, only removable. What remains is: an owner, acting
+    // on a member of their own organization, told plainly what the link does.
 
     const email = String(user.email ?? "");
     if (!email) return json({ ok: false, error: "That account has no email address." }, 400);
@@ -217,7 +223,11 @@ Deno.serve(async (req) => {
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        type: "invite",
+        // `invite` is for an address with no confirmed account behind it and
+        // is refused for one that has been confirmed -- which a scanner
+        // following the link is enough to do. `recovery` is the same errand
+        // for an account that exists: land on the page and set a password.
+        type: user.email_confirmed_at || user.confirmed_at ? "recovery" : "invite",
         email,
         ...(SITE_URL ? { redirect_to: SITE_URL } : {}),
       }),

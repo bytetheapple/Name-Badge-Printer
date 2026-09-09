@@ -77,6 +77,19 @@ export default function Members() {
   const [handover, setHandover] = useState<{ email: string; link: string } | null>(null)
 
   async function makeLink(m: OrgMember) {
+    // Said before it is made, because the link is a way in. The server checks
+    // that the caller is an owner of this organization and that the subject is
+    // a member of it; what it cannot check is whether handing somebody a way
+    // into a colleague's account was intended, so this asks.
+    if (
+      !window.confirm(
+        `Make a sign-up link for ${m.email}?\n\n` +
+          'It signs in as them once and lets them set a password. Send it to them ' +
+          'directly — anyone holding it can use it.',
+      )
+    ) {
+      return
+    }
     setNotice(null)
     setError(null)
     setHandover(null)
