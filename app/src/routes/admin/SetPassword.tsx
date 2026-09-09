@@ -25,7 +25,16 @@ export default function SetPassword() {
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   //: The typed-code way in, for when the link was eaten before it arrived.
-  const [email, setEmail] = useState('')
+  // Prefilled from the link in the email when it carries one. A code belongs
+  // to one address, and asking somebody to retype the address the message was
+  // just delivered to is asking for the failure it caused: a customer dropped
+  // one letter of their own domain and got "expired" three times, because
+  // GoTrue will not say "no such account" to a browser.
+  //
+  // Not a secret: it is their own address, in their own mailbox.
+  const [email, setEmail] = useState(
+    () => new URLSearchParams(window.location.search).get('email')?.trim() ?? '',
+  )
   const [code, setCode] = useState('')
   const [resent, setResent] = useState(false)
   const navigate = useNavigate()
