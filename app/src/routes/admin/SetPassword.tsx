@@ -27,6 +27,7 @@ export default function SetPassword() {
   //: The typed-code way in, for when the link was eaten before it arrived.
   const [email, setEmail] = useState('')
   const [code, setCode] = useState('')
+  const [resent, setResent] = useState(false)
   const navigate = useNavigate()
 
   useEffect(() => {
@@ -59,9 +60,8 @@ export default function SetPassword() {
     e.preventDefault()
     setBusy(true)
     setError(null)
-    // The same six digits are sent for an invitation and for a reset, and
-    // nothing in the code says which it was. Recovery first because it is the
-    // commoner errand; a wrong type is refused without spending the code.
+    // The same code is sent for an invitation and for a reset, and nothing in
+    // it says which it was. Recovery first because it is the commoner errand.
     const address = email.trim().toLowerCase()
     const digits = code.replace(/\D/g, '')
     let failed: string | null = null
@@ -73,10 +73,39 @@ export default function SetPassword() {
         setReady(true)
         return
       }
-      failed = error.message
+      // The first failure, not the last. Recovery is the likelier type, so its
+      // reason is the useful one; overwriting it with the invite attempt's
+      // meant every failure read as whatever the second try happened to say.
+      failed = failed ?? error.message
     }
     setBusy(false)
-    setError(failed ?? 'That code was not accepted.')
+    setError(
+      `${failed ?? 'That code was not accepted.'} Codes work once and time out, ` +
+        'so a code that has been tried already, or has been sitting for a while, ' +
+        'needs replacing.',
+    )
+  }
+
+  /** A fresh code, without going back to the sign-in page to ask for one. */
+  async function resend() {
+    const address = email.trim().toLowerCase()
+    if (!address) {
+      setError('Enter your email address first.')
+      return
+    }
+    setBusy(true)
+    setError(null)
+    setResent(false)
+    const { error } = await supabase.auth.resetPasswordForEmail(address, {
+      redirectTo: `${window.location.origin}/admin/set-password`,
+    })
+    setBusy(false)
+    if (error) {
+      setError(error.message)
+      return
+    }
+    setCode('')
+    setResent(true)
   }
 
   async function onSubmit(e: FormEvent) {
@@ -103,9 +132,9 @@ export default function SetPassword() {
         {linkError && <div className="error">{linkError}</div>}
         <p className="muted">
           {linkError
-            ? 'Use the six-digit code in the same email instead. Links can be opened by ' +
-              'mail systems before you get to them, which uses them up; a code cannot be.'
-            : 'Enter the six-digit code from your invitation or password-reset email.'}
+            ? 'Use the code in the same email instead. Links can be opened by mail ' +
+              'systems before you get to them, which uses them up; a code cannot be.'
+            : 'Enter the code from your invitation or password-reset email.'}
         </p>
         <form onSubmit={useCode} className="form">
           <label>
@@ -119,14 +148,13 @@ export default function SetPassword() {
             />
           </label>
           <label>
-            Six-digit code
+            Code from the email
             <input
               value={code}
               onChange={(e) => setCode(e.target.value)}
               required
               inputMode="numeric"
               autoComplete="one-time-code"
-              placeholder="123456"
             />
           </label>
           {error && <p className="error">{error}</p>}
@@ -134,8 +162,16 @@ export default function SetPassword() {
             {busy ? 'Checking…' : 'Continue'}
           </button>
         </form>
+        {resent && (
+          <p className="muted small">
+            A new code is on its way to that address. Use the newest one — sending a code
+            replaces any earlier one.
+          </p>
+        )}
         <p className="muted small">
-          No code? <a href="/admin/login">Go to sign in</a> and choose Forgot password.
+          <button type="button" className="linkish" disabled={busy} onClick={() => void resend()}>
+            Send me a new code
+          </button>
         </p>
       </main>
     )
