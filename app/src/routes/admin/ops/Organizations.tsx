@@ -10,6 +10,7 @@ const BRIDGE_FRESH_MS = 45000
 /** The fields the detail panel edits, in one place so Save writes exactly them. */
 type Draft = {
   name: string
+  slug: string
   internal_name: string
   address: string
   notes: string
@@ -20,6 +21,7 @@ type Draft = {
 function draftOf(o: PlatformOrg): Draft {
   return {
     name: o.name,
+    slug: o.slug,
     internal_name: o.internal_name ?? '',
     address: o.address ?? '',
     notes: o.notes ?? '',
@@ -151,6 +153,14 @@ export default function Organizations() {
       setError('An organization needs a name.')
       return
     }
+    // The slug is what somebody types to confirm a deletion, so it has to be
+    // typeable: lower case, digits and dashes, nothing that needs a shift key
+    // or looks like something else.
+    const slug = draft.slug.trim().toLowerCase()
+    if (!/^[a-z0-9]+(-[a-z0-9]+)*$/.test(slug)) {
+      setError('The slug can only contain lower-case letters, digits and single dashes.')
+      return
+    }
     setBusy(selected.org_id)
     setNotice(null)
     setError(null)
@@ -158,6 +168,7 @@ export default function Organizations() {
       .from('organizations')
       .update({
         name: draft.name.trim(),
+        slug,
         internal_name: draft.internal_name.trim() || null,
         address: draft.address.trim() || null,
         notes: draft.notes.trim() || null,
@@ -167,7 +178,13 @@ export default function Organizations() {
       .eq('id', selected.org_id)
     setBusy(null)
     if (error) {
-      setError(error.message)
+      // The one error worth translating: the slug is unique across every
+      // customer, and Postgres's wording for that names a constraint.
+      setError(
+        error.message.includes('organizations_slug_key')
+          ? `Another organization already uses the slug "${slug}".`
+          : error.message,
+      )
       return
     }
     setNotice(`Saved ${draft.name.trim()}.`)
@@ -352,6 +369,18 @@ export default function Organizations() {
               />
               <span className="muted small">
                 As their guests see it: on badges, the sign-in form and the lobby sign.
+              </span>
+            </label>
+            <label className="field">
+              Slug
+              <input
+                value={draft.slug}
+                onChange={(e) => setDraft({ ...draft, slug: e.target.value })}
+                autoComplete="off"
+              />
+              <span className="muted small">
+                An identifier, and what you type to confirm deleting this organization. Nothing
+                links to it, so it can change.
               </span>
             </label>
             <label className="field">
