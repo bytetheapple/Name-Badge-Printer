@@ -1064,34 +1064,66 @@ a.pill:hover {
 /* Where you are, and how much is left. Deliberately coarse: the four steps the
    print server runs sit under the operator step that leads to them, because a
    marker that advanced on its own would be noise to someone holding a cable. */
+/* The walkthrough's progress: numbered steps joined by a line.
+
+   These used to be pills, and the current one was filled with the same blue
+   as a primary button -- so a customer took the rail for a row of buttons and
+   the real button below it for a caption. A numbered circle with a connector
+   is a shape nothing clickable on this site has, which is the point. */
 .provision-progress {
   display: flex;
   flex-wrap: wrap;
-  gap: 6px;
+  align-items: center;
   list-style: none;
   margin: 0 0 20px;
   padding: 0;
   font-size: 12px;
   color: var(--muted);
+  counter-reset: step;
 }
 .provision-progress li {
-  padding: 3px 10px;
-  border: 1px solid var(--border);
-  border-radius: 999px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
 }
-.provision-progress li.past {
+.provision-progress li::before {
+  counter-increment: step;
+  content: counter(step);
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  border: 1px solid var(--border);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  flex: 0 0 auto;
+}
+/* The connector, on every step but the last. */
+.provision-progress li:not(:last-child)::after {
+  content: '';
+  width: 16px;
+  height: 1px;
+  background: var(--border);
+  margin: 0 8px;
+}
+.provision-progress li.past::before {
+  content: '\2713';
   color: var(--ok-text);
   background: var(--ok-bg);
   border-color: var(--ok-border);
 }
 .provision-progress li.now {
+  color: var(--text-h);
+  font-weight: 500;
+}
+.provision-progress li.now::before {
   /* Not white: --accent is a pale blue in dark mode, where white on it is
      barely legible. The page background reads as white in light mode and as
      near-black in dark, which is the contrast this needs in both. */
   color: var(--bg);
   background: var(--accent);
   border-color: var(--accent);
-  font-weight: 500;
 }
 
 .provision-step h3 {

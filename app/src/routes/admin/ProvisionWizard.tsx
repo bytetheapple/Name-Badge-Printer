@@ -574,8 +574,12 @@ function Step({
               the print server.
             </p>
           )}
+          {/* Plain "Next", with the condition in prose above it. A button whose
+              label is a statement -- "The cable is in and the printer is on"
+              -- reads as a status line, and a customer took it for one. */}
+          <p>When the cable is in and the printer is on, click Next.</p>
           <button onClick={() => void advance('discover')} disabled={busy}>
-            The cable is in and the printer is on
+            Next
           </button>
           <Manual busy={busy} advance={advance} />
         </div>
@@ -706,8 +710,9 @@ function Step({
             That icon is the only reliable signal here: the printer's own web pages report the
             settings as fine whether or not the radio ever joins the network.
           </p>
+          <p>When the WiFi icon is solid, click Next.</p>
           <button onClick={() => void advance('rediscover')} disabled={busy}>
-            The WiFi icon is solid
+            Next
           </button>
           <ManualWireless session={session} busy={busy} advance={advance} />
         </div>
