@@ -276,6 +276,18 @@ check("a visitor badge is unchanged by the new argument",
       list(_visitor.getdata()) == list(_v_corner.getdata()))
 
 
+print("— a label id typed by hand still names the right roll —")
+# The value comes from a SQL editor. A multiplication sign for the x, or a
+# capital, or a space, used to fall through to a 62 mm continuous job with a
+# warning nobody read -- and on a die-cut roll that cuts past the edge.
+_die = badge_mod._label_render_size("60x86", 90)
+for _typed in ["60\u00d786", " 60X86 ", "60x86"]:
+    check(f"{_typed!r} is the die-cut roll", badge_mod._label_render_size(_typed, 90) == _die,
+          str(badge_mod._label_render_size(_typed, 90)))
+check("and normalises to the identifier brother_ql knows",
+      badge_mod.normalize_label("60\u00d786") == "60x86")
+
+
 print()
 if FAILURES:
     print(f"RESULT: {len(FAILURES)} failure(s): {', '.join(FAILURES)}")

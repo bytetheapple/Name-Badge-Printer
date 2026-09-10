@@ -109,7 +109,9 @@ def badge_template_for(target: dict, cfg: dict, header_path: str | None = None) 
 def handle_job(client, job: dict, cfg: dict, printers: list):
     job_id = job["id"]
     try:
-        label = cfg.get("label_media", "62")
+        # Normalised once and used for both rendering and printing, so the two
+        # cannot disagree about which roll this is.
+        label = badge.normalize_label(cfg.get("label_media", "62"))
 
         target = next((p for p in printers if p["id"] == job.get("printer_id")), None)
         if not target or not target.get("printer_ip"):
@@ -161,7 +163,7 @@ def handle_job(client, job: dict, cfg: dict, printers: list):
             image,
             target["printer_ip"],
             target.get("port", 9100),
-            cfg.get("label_media", "62"),
+            label,
             rotation=int(template.get("print_rotation", 90)),
         )
         client.complete(job_id, True)

@@ -54,6 +54,18 @@ _LABELS = {label.identifier: label for label in ALL_LABELS}
 _WARNED_LABELS: set = set()
 
 
+def normalize_label(label) -> str:
+    """The brother_ql identifier for what a person typed.
+
+    The identifier is "60x86" with a letter x. A multiplication sign, stray
+    spaces or capitals all mean the same roll, and until this existed each of
+    them fell through to a 62 mm continuous job with a warning nobody read --
+    which on a die-cut roll cuts past the edge and feeds a blank label. The
+    value is typed by hand into a SQL editor, so this is the shape it arrives in.
+    """
+    return str(label or "").strip().lower().replace("\u00d7", "x")
+
+
 def _label_render_size(label: str, length_mm: float) -> tuple[int, int]:
     """(width, height) in dots for the readable *landscape* badge image.
 
@@ -98,6 +110,7 @@ def _label_render_size(label: str, length_mm: float) -> tuple[int, int]:
             )
         return round(length_mm * MM), 696
 
+    label = normalize_label(label)
     spec = _LABELS.get(label)
     if spec is None:
         # Falling back silently means badges render at a size nobody chose and
