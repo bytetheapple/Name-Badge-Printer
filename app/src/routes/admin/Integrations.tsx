@@ -92,8 +92,8 @@ type Spec = {
 //
 // Split by who owns the setup rather than by vendor. The two form syncs are
 // bespoke work — someone has to read a congregation's own form and copy its
-// field ids across — so they live behind the custom-integrations grant. Drive
-// is part of the product: any org that wants selfies needs it.
+// field ids across — so they live behind the custom-integrations grant. The
+// Google Sheet and Drive are part of the product and offered to everyone.
 const CUSTOM_SPECS: Spec[] = [
   {
     kind: 'google_form',
@@ -153,17 +153,6 @@ const CUSTOM_SPECS: Spec[] = [
       },
     ],
   },
-  {
-    kind: 'google_sheet',
-    title: 'Google Sheet',
-    opens: {
-      urlKey: 'spreadsheet_url',
-      fromId: { key: 'spreadsheet_id', prefix: 'https://docs.google.com/spreadsheets/d/' },
-      label: 'Open the sheet',
-    },
-    autoNamed: true,
-    fields: [],
-  },
 ]
 
 // Note: there is deliberately no card for 'google_oauth' or 'google_drive'.
@@ -177,6 +166,21 @@ const CUSTOM_SPECS: Spec[] = [
 // on the Google connection, so it is created when photographs are switched on
 // in Settings rather than added by hand here.
 const PLATFORM_SPECS: Spec[] = [
+  // Self-service end to end: the sheet is made by the product, in the
+  // customer's own Drive, and nothing about it is bespoke. It sat in
+  // CUSTOM_SPECS for a while, which left an organization without that grant
+  // -- and without Events -- looking at an empty dropdown.
+  {
+    kind: 'google_sheet',
+    title: 'Google Sheet',
+    opens: {
+      urlKey: 'spreadsheet_url',
+      fromId: { key: 'spreadsheet_id', prefix: 'https://docs.google.com/spreadsheets/d/' },
+      label: 'Open the sheet',
+    },
+    autoNamed: true,
+    fields: [],
+  },
 ]
 
 // Events are charged for and switched on per customer from Operations, so this
@@ -391,6 +395,23 @@ export default function Integrations({
     if (q.get('connected') !== 'google') return
     window.history.replaceState({}, '', window.location.pathname)
     void finishPending()
+
+    // The destination somebody was adding when they were sent to connect the
+    // account. Removed before it is used, so a failure does not retry it on
+    // every later visit to this page.
+    const pending = ((): { kind?: string; name?: string } | null => {
+      try {
+        const raw = sessionStorage.getItem(PENDING_ADD)
+        sessionStorage.removeItem(PENDING_ADD)
+        return raw ? JSON.parse(raw) : null
+      } catch {
+        return null
+      }
+    })()
+    if (pending?.kind && specOf(pending.kind as IntegrationKind)) {
+      void create(pending.kind as IntegrationKind, pending.name ?? '')
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [finishPending])
 
   function patch(id: string, changes: Partial<Integration>) {
@@ -539,10 +560,16 @@ export default function Integrations({
   /** Kinds that are useless without a spreadsheet, so are never made without one. */
   const NEEDS_SHEET: IntegrationKind[] = ['google_sheet', 'event']
 
-  async function create() {
-    if (!orgId || !addKind) return
-    const spec = specOf(addKind)
-    const name = addName.trim() || spec?.title || addKind
+  //: What was being added when the Google round trip interrupted it. Kept in
+  //: sessionStorage rather than the return URL: the callback's redirect guard
+  //: forbids a query string on purpose, and this survives the trip in the
+  //: same tab without touching that.
+  const PENDING_ADD = 'nbk.pendingAdd'
+
+  async function create(kind: IntegrationKind = addKind as IntegrationKind, typed = addName) {
+    if (!orgId || !kind) return
+    const spec = specOf(kind)
+    const name = typed.trim() || spec?.title || kind
     setBusy('add')
     setNotice(null)
     setError(null)
@@ -555,20 +582,27 @@ export default function Integrations({
     // the server will refuse. Creating the row first left exactly that behind:
     // an event that could not be finished and, for an operator, could not be
     // fixed either.
-    if (NEEDS_SHEET.includes(addKind)) {
+    if (NEEDS_SHEET.includes(kind)) {
       const pre = await invokeFn('google-provision', {
         org_id: orgId,
         what: 'preflight',
         // Named so a refusal can say what was refused. A preflight is the one
         // call that does not otherwise reveal what it is for.
-        for: addKind === 'event' ? 'event' : 'sheet',
+        for: kind === 'event' ? 'event' : 'sheet',
       })
       if (!pre.ok) {
         setBusy(null)
         if (pre.needs_connect) {
           // An owner can fix this in one step, so offer the step rather than
-          // the explanation. Nothing has been created, so coming back means
-          // adding it again — with an account waiting this time.
+          // the explanation. What they were adding is remembered, and made for
+          // them when they come back — choosing a destination, connecting the
+          // account it needs, and landing on its settings should be one
+          // motion, the way switching photographs on is.
+          try {
+            sessionStorage.setItem(PENDING_ADD, JSON.stringify({ kind: kind, name: typed }))
+          } catch {
+            // Storage blocked: they come back to the form and add it again.
+          }
           const begin = await invokeFn('google-oauth-begin', {
             org_id: orgId,
             return_to: '/admin/integrations',
@@ -589,14 +623,14 @@ export default function Integrations({
       .from('integrations')
       .insert({
         org_id: orgId,
-        kind: addKind,
+        kind: kind,
         name,
         // Switched off on creation: an integration with no configuration yet
         // would otherwise start failing against every sign-in the moment it is
         // added. An event is the exception — it delivers nothing anywhere, its
         // codes do not exist until printers are added, and it has no switch to
         // be turned on with afterwards.
-        enabled: specOf(addKind)?.notADestination === true,
+        enabled: specOf(kind)?.notADestination === true,
         default_enabled: true,
         config: {},
       })
@@ -621,10 +655,10 @@ export default function Integrations({
     // list has to exist *before* anyone uses it, because the pre-registered
     // guests go into it beforehand. Making it lazily was a mistake copied
     // from the sheet destination.
-    if ((addKind === 'google_sheet' || addKind === 'event') && made?.id) {
+    if ((kind === 'google_sheet' || kind === 'event') && made?.id) {
       const res = await invokeFn('google-provision', {
         org_id: orgId,
-        what: addKind === 'event' ? 'event' : 'sheet',
+        what: kind === 'event' ? 'event' : 'sheet',
         integration_id: made.id,
       })
       if (res.ok) {
@@ -636,7 +670,7 @@ export default function Integrations({
         // something a redirect fixes.
         setError(
           res.error ??
-            (addKind === 'event'
+            (kind === 'event'
               ? 'The event was added, but its attendee list could not be created.'
               : 'The destination was added, but its sheet could not be created.'),
         )
@@ -647,7 +681,7 @@ export default function Integrations({
     // Open, if there is anything to fill in. A destination arrives switched
     // off and unconfigured, so landing collapsed would hide the one thing
     // that has to happen next behind a button nobody has been told about.
-    if (made?.id && specOf(addKind) && hasEditableText(specOf(addKind)!)) {
+    if (made?.id && specOf(kind) && hasEditableText(specOf(kind)!)) {
       setOpen((p) => ({ ...p, [made.id as string]: true }))
     }
     setAddKind('')
