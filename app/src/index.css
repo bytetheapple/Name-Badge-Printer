@@ -2426,3 +2426,15 @@ button.danger:disabled {
   margin: 0;
   white-space: pre-line;
 }
+
+/* The exact text a destructive dialog wants typed back. On its own line and
+   larger than the prose around it, so it is read as a thing to copy rather
+   than as a word in a sentence. */
+.confirm-word {
+  display: block;
+  margin-top: 6px;
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--text-h);
+  user-select: all;
+}

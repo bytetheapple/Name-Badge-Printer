@@ -499,8 +499,13 @@ export default function Organizations() {
             <label className="field">
               {/* One flex item, or the column layout stacks the three
                   pieces of this sentence onto separate lines. */}
+              {/* The word to type, unmissable. Inline in a sentence at body
+                  size it read as part of the explanation rather than as the
+                  thing the field wants, and the field is the only control on
+                  this dialog that does anything. */}
               <span>
-                Type <code>{doomed.internal_name || doomed.name}</code> to confirm
+                Type this to confirm:
+                <strong className="confirm-word">{doomed.internal_name || doomed.name}</strong>
               </span>
               <input
                 value={typedName}
