@@ -99,13 +99,6 @@ export default function OrgLogo() {
   return (
     <section className="card">
       <h2>Name mark</h2>
-      {/* The second sentence used to say the Printers tab hides the option
-          until this is uploaded. It no longer does -- the option is always
-          there and asks for the file -- so the sentence would now be wrong. */}
-      <p className="muted small">
-        Your organization's logo, printed at the top of a badge on every printer that chooses
-        it. {HEADER_IMAGE_GUIDANCE}
-      </p>
 
       {msg && <div className="notice">{msg}</div>}
       {error && <div className="error">{error}</div>}
@@ -136,10 +129,13 @@ export default function OrgLogo() {
               Remove
             </button>
           )}
+          {/* One note, under the button, and the same words the Printers tab
+              uses for the same file. There were two here -- one above the
+              preview, one below the button -- saying the same thing with
+              different numbers. */}
           <p className="muted small">
-            PNG or JPEG, 2 MB maximum. It is printed about 2.4 inches wide in black and white, so
-            a wide mark with strong contrast reproduces best — fine detail and pale colours do
-            not survive a thermal printer.
+            Your organization's logo, printed at the top of a badge on every printer that
+            chooses it. {HEADER_IMAGE_GUIDANCE}
           </p>
         </div>
       </div>
