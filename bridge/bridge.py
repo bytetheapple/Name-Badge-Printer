@@ -165,7 +165,15 @@ def handle_job(client, job: dict, cfg: dict, printers: list):
             rotation=int(template.get("print_rotation", 90)),
         )
         client.complete(job_id, True)
-        _log(f"printed job {job_id} on '{target.get('name')}' (type={job.get('type')})")
+        # The label the job was rasterised for, because a badge printed for the
+        # wrong stock looks like a printer fault and is a configuration one: a
+        # 62 mm continuous job on a die-cut roll cuts past the edge and feeds a
+        # blank label behind every badge. The journal should answer "what did
+        # it think was loaded" without anyone querying the database.
+        _log(
+            f"printed job {job_id} on '{target.get('name')}' "
+            f"(type={job.get('type')}, label={label})"
+        )
     except Exception as e:  # noqa: BLE001 - report every failure back to the server
         client.complete(job_id, False, e)
         _log(f"FAILED job {job_id}: {e}", err=True)
