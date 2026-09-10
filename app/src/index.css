@@ -652,6 +652,51 @@ a.pill:hover {
   width: auto;
 }
 
+/* Radios drawn by the stylesheet rather than by the OS.
+
+   With native controls, macOS paints every control in a window that is not
+   frontmost in grey -- and the selected radio's ring faded to the point that
+   it read as a stray dot. An operator comparing the console against a printer
+   across the room has the browser visible but not focused most of the time,
+   so "which option is on" has to survive that. The accent colour here does
+   not change with window focus. */
+.check input[type='radio'] {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  border-radius: 50%;
+  border: 1.5px solid var(--muted);
+  background: var(--bg);
+  display: inline-grid;
+  place-content: center;
+  flex: 0 0 auto;
+  cursor: pointer;
+}
+.check input[type='radio']::before {
+  content: '';
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--accent);
+  transform: scale(0);
+}
+.check input[type='radio']:checked {
+  border-color: var(--accent);
+}
+.check input[type='radio']:checked::before {
+  transform: scale(1);
+}
+.check input[type='radio']:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+.check input[type='radio']:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
 .selfie-frame {
   width: 100%;
   max-width: 320px;

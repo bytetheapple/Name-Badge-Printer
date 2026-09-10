@@ -1,16 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { supabase } from '../../lib/supabase'
+import { HEADER_IMAGE_GUIDANCE, headerImageProblem, uploadHeaderImage } from '../../lib/headerImage'
 import { useOrg } from '../../lib/org'
 
-const LOGO_BUCKET = 'badge-headers'
-const MAX_LOGO_BYTES = 2_000_000
-
-/** Content-addressed, so re-uploading the same image reuses the object and the
- *  bridge's cache, while a changed image always gets a fresh URL. */
-async function hashBytes(buf: ArrayBuffer): Promise<string> {
-  const digest = await crypto.subtle.digest('SHA-256', buf)
-  return [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, '0')).join('')
-}
 
 /**
  * The organization's name mark, printed at the top of a badge.
@@ -53,24 +45,14 @@ export default function OrgLogo() {
   async function upload(file: File) {
     setMsg(null)
     setError(null)
-    if (!file.type.startsWith('image/')) {
-      setError('That file is not an image.')
-      return
-    }
-    if (file.size > MAX_LOGO_BYTES) {
-      setError('That image is too large (2 MB maximum).')
+    const problem = headerImageProblem(file)
+    if (problem) {
+      setError(problem)
       return
     }
     setBusy(true)
     try {
-      const buf = await file.arrayBuffer()
-      const ext = file.type === 'image/png' ? 'png' : 'jpg'
-      const path = `${await hashBytes(buf)}.${ext}`
-      const up = await supabase.storage
-        .from(LOGO_BUCKET)
-        .upload(path, buf, { contentType: file.type, upsert: true })
-      if (up.error) throw up.error
-      const url = supabase.storage.from(LOGO_BUCKET).getPublicUrl(path).data.publicUrl
+      const url = await uploadHeaderImage(file)
       const { error } = await supabase
         .from('app_settings')
         .update({ logo_url: url })
@@ -117,9 +99,12 @@ export default function OrgLogo() {
   return (
     <section className="card">
       <h2>Name mark</h2>
+      {/* The second sentence used to say the Printers tab hides the option
+          until this is uploaded. It no longer does -- the option is always
+          there and asks for the file -- so the sentence would now be wrong. */}
       <p className="muted small">
-        Your organization's logo, printed at the top of a badge. Until one is uploaded, the
-        Printers tab offers only text or a per-printer graphic.
+        Your organization's logo, printed at the top of a badge on every printer that chooses
+        it. {HEADER_IMAGE_GUIDANCE}
       </p>
 
       {msg && <div className="notice">{msg}</div>}

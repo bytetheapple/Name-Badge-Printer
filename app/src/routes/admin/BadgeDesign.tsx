@@ -1,17 +1,9 @@
 import { useEffect, useRef, useState } from 'react'
 import { supabase } from '../../lib/supabase'
+import { HEADER_IMAGE_GUIDANCE, headerImageProblem, uploadHeaderImage } from '../../lib/headerImage'
 import { useOrg } from '../../lib/org'
 import type { Printer } from '../../lib/types'
 
-const HEADER_BUCKET = 'badge-headers'
-const MAX_HEADER_BYTES = 2_000_000
-
-/** Content-addressed name, so re-uploading the same image reuses the object
- *  and the bridge's cache, and a changed image always gets a fresh URL. */
-async function hashBytes(buf: ArrayBuffer): Promise<string> {
-  const digest = await crypto.subtle.digest('SHA-256', buf)
-  return [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, '0')).join('')
-}
 
 /**
  * What this printer's badges say, with a preview.
@@ -32,12 +24,16 @@ export default function BadgeDesign({
   const [subtitle, setSubtitle] = useState(printer.badge_subtitle ?? '')
   const [mode, setMode] = useState<'text' | 'logo' | 'image'>(printer.badge_header_mode ?? 'text')
   const [headerUrl, setHeaderUrl] = useState(printer.header_image_url ?? '')
-  //: The organization's own mark. Null means there is nothing to offer, so the
-  //: logo option is not shown at all rather than shown and broken.
+  //: The organization's own mark. Null means none is uploaded yet; the option
+  //: is still offered, and choosing it asks for the file.
   const [orgLogo, setOrgLogo] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   const [msg, setMsg] = useState<string | null>(null)
   const fileRef = useRef<HTMLInputElement>(null)
+  //: For the name mark. Choosing that option with none uploaded opens this,
+  //: exactly as choosing the printer graphic with none uploaded opens the
+  //: other — the two options behave the same way, which they did not before.
+  const logoRef = useRef<HTMLInputElement>(null)
   const { orgId } = useOrg()
 
   // The organization's mark, for the preview and to decide whether the logo
@@ -61,6 +57,41 @@ export default function BadgeDesign({
     setHeaderUrl(printer.header_image_url ?? '')
     setMsg(null)
   }, [printer])
+
+  /**
+   * Upload the organization's name mark from here, then use it.
+   *
+   * The same thing Settings does, reachable from the place somebody is
+   * actually deciding about it. It belongs to the organization, so every
+   * printer that chooses the name mark prints this one.
+   */
+  async function pickLogo(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    if (logoRef.current) logoRef.current.value = ''
+    if (!file || !orgId) return
+    setMsg(null)
+    const problem = headerImageProblem(file)
+    if (problem) {
+      setMsg(problem)
+      return
+    }
+    setBusy(true)
+    try {
+      const url = await uploadHeaderImage(file)
+      const { error } = await supabase
+        .from('app_settings')
+        .update({ logo_url: url })
+        .eq('org_id', orgId)
+      if (error) throw error
+      setOrgLogo(url)
+      setBusy(false)
+      await chooseMode('logo')
+      setMsg('Name mark uploaded and in use on this printer.')
+    } catch (err) {
+      setBusy(false)
+      setMsg(`Upload failed: ${(err as Error).message}`)
+    }
+  }
 
   /** Switch which of the three headers this printer prints. */
   async function chooseMode(next: 'text' | 'logo' | 'image') {
@@ -97,24 +128,14 @@ export default function BadgeDesign({
     if (fileRef.current) fileRef.current.value = '' // let the same file be re-picked
     if (!file) return
     setMsg(null)
-    if (!/^image\/(png|jpeg)$/.test(file.type)) {
-      setMsg('Please choose a PNG or JPEG image.')
-      return
-    }
-    if (file.size > MAX_HEADER_BYTES) {
-      setMsg('That image is too large (2 MB maximum).')
+    const problem = headerImageProblem(file)
+    if (problem) {
+      setMsg(problem)
       return
     }
     setBusy(true)
     try {
-      const buf = await file.arrayBuffer()
-      const ext = file.type === 'image/png' ? 'png' : 'jpg'
-      const path = `${await hashBytes(buf)}.${ext}`
-      const up = await supabase.storage
-        .from(HEADER_BUCKET)
-        .upload(path, buf, { contentType: file.type, upsert: true })
-      if (up.error) throw up.error
-      const url = supabase.storage.from(HEADER_BUCKET).getPublicUrl(path).data.publicUrl
+      const url = await uploadHeaderImage(file)
       const { error } = await supabase
         .from('printers')
         .update({ header_image_url: url })
@@ -179,30 +200,40 @@ export default function BadgeDesign({
           />
         </div>
 
-        {/* Offered only when the organization has uploaded a mark. Showing it
-            otherwise would print nothing, or — before this was per-org — print
-            another congregation's logo. */}
-        {orgLogo ? (
-          <div className="field-row">
-            <span className="field-label" />
-            <label className="check">
-              <input
-                type="radio"
-                checked={mode === 'logo'}
-                onChange={() => void chooseMode('logo')}
-                disabled={busy}
-              />
-              Organization name mark
-            </label>
-          </div>
-        ) : (
-          <div className="field-row">
-            <span className="field-label" />
-            <span className="muted small">
-              To use your organization's name mark here, upload one under Settings.
-            </span>
-          </div>
-        )}
+        {/* Always offered. It used to vanish when no mark was uploaded and a
+            note took its place — which read as a caption for the option below
+            it, not as a choice that was missing. Choosing it with no mark asks
+            for the file, the way the printer graphic does. */}
+        <div className="field-row">
+          <span className="field-label" />
+          <label className="check">
+            <input
+              type="radio"
+              checked={mode === 'logo'}
+              onChange={() => (orgLogo ? void chooseMode('logo') : logoRef.current?.click())}
+              disabled={busy}
+            />
+            Organization name mark
+          </label>
+          {orgLogo ? (
+            <span className="muted small">Shared by every printer that chooses it.</span>
+          ) : (
+            <button
+              className="secondary btn-sm"
+              onClick={() => logoRef.current?.click()}
+              disabled={busy}
+            >
+              Upload
+            </button>
+          )}
+          <input
+            ref={logoRef}
+            type="file"
+            accept="image/png,image/jpeg"
+            style={{ display: 'none' }}
+            onChange={(e) => void pickLogo(e)}
+          />
+        </div>
 
         <div className="field-row">
           <span className="field-label" />
@@ -213,7 +244,7 @@ export default function BadgeDesign({
               onChange={() => (headerUrl ? void chooseMode('image') : fileRef.current?.click())}
               disabled={busy}
             />
-            Your own graphic
+            Special image for this printer only
           </label>
           <button
             className="secondary btn-sm"
@@ -229,6 +260,14 @@ export default function BadgeDesign({
             hidden
             onChange={pickGraphic}
           />
+        </div>
+        {/* What the file should be. Applies to both images above -- they are
+            the same bytes in the same bucket printed the same way -- and it is
+            here rather than in an error message because the error arrives
+            after somebody has already made the wrong file. */}
+        <div className="field-row">
+          <span className="field-label" />
+          <span className="muted small">{HEADER_IMAGE_GUIDANCE}</span>
         </div>
 
         <div className="field-row">
