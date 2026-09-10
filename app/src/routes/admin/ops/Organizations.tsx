@@ -7,6 +7,31 @@ import type { PlatformOrg } from '../../../lib/types'
 
 const BRIDGE_FRESH_MS = 45000
 
+/** The fields the detail panel edits, in one place so Save writes exactly them. */
+type Draft = {
+  name: string
+  internal_name: string
+  address: string
+  notes: string
+  custom_integrations: boolean
+  events_enabled: boolean
+}
+
+function draftOf(o: PlatformOrg): Draft {
+  return {
+    name: o.name,
+    internal_name: o.internal_name ?? '',
+    address: o.address ?? '',
+    notes: o.notes ?? '',
+    custom_integrations: o.custom_integrations,
+    events_enabled: o.events_enabled,
+  }
+}
+
+function sameDraft(a: Draft, b: Draft): boolean {
+  return (Object.keys(a) as (keyof Draft)[]).every((k) => a[k] === b[k])
+}
+
 /**
  * The customer list, and what you do to a customer.
  *
@@ -30,8 +55,21 @@ export default function Organizations() {
   //: dialog cannot outlive the row it was opened for.
   const [doomed, setDoomed] = useState<PlatformOrg | null>(null)
   const [typedSlug, setTypedSlug] = useState('')
+  //: Which row the detail panel is about. The table is a summary now; every
+  //: action and every setting lives in the panel for the selected one.
+  const [selectedId, setSelectedId] = useState<string | null>(null)
+  //: The panel's editable fields, as typed. Reset whenever the selection or
+  //: the loaded row changes, so a stale draft cannot be saved over a row
+  //: somebody else moved.
+  const [draft, setDraft] = useState<Draft | null>(null)
   const { reload, switchOrg } = useOrg()
   const navigate = useNavigate()
+
+  const selected = orgs.find((o) => o.org_id === selectedId) ?? null
+
+  useEffect(() => {
+    setDraft(selected ? draftOf(selected) : null)
+  }, [selected])
 
   const load = useCallback(async () => {
     const { data, error } = await supabase.rpc('platform_overview')
@@ -94,33 +132,48 @@ export default function Organizations() {
     await load()
   }
 
-  async function setCustom(org: PlatformOrg, on: boolean) {
-    await setEntitlement(org, 'custom_integrations', on, 'Custom integrations')
-  }
-
-  async function setEvents(org: PlatformOrg, on: boolean) {
-    // Turning this off leaves the customer's event integrations alone: they
-    // stop accepting registrations and say so, and come back untouched if it
-    // is turned on again. A billing decision should not delete anything.
-    await setEntitlement(org, 'events_enabled', on, 'Events')
-  }
-
-  async function setEntitlement(
-    org: PlatformOrg,
-    column: 'custom_integrations' | 'events_enabled',
-    on: boolean,
-    label: string,
-  ) {
-    setBusy(org.org_id)
+  /**
+   * Write the panel's fields for the selected organization.
+   *
+   * One update rather than a write per control. The entitlements used to save
+   * on click from checkboxes in the table, which was fine for two booleans and
+   * wrong once there are names and an address beside them: a page where some
+   * fields save themselves and others wait for a button is a page where
+   * somebody loses an edit.
+   *
+   * Turning Events off leaves the customer's event integrations alone: they
+   * stop accepting registrations and say so, and come back untouched if it is
+   * turned on again. A billing decision should not delete anything.
+   */
+  async function save() {
+    if (!selected || !draft) return
+    if (!draft.name.trim()) {
+      setError('An organization needs a name.')
+      return
+    }
+    setBusy(selected.org_id)
     setNotice(null)
+    setError(null)
     const { error } = await supabase
       .from('organizations')
-      .update({ [column]: on })
-      .eq('id', org.org_id)
+      .update({
+        name: draft.name.trim(),
+        internal_name: draft.internal_name.trim() || null,
+        address: draft.address.trim() || null,
+        notes: draft.notes.trim() || null,
+        custom_integrations: draft.custom_integrations,
+        events_enabled: draft.events_enabled,
+      })
+      .eq('id', selected.org_id)
     setBusy(null)
-    if (error) setError(error.message)
-    else setNotice(`${label} ${on ? 'enabled' : 'disabled'} for ${org.name}.`)
+    if (error) {
+      setError(error.message)
+      return
+    }
+    setNotice(`Saved ${draft.name.trim()}.`)
     await load()
+    // The switcher shows the name, and it may just have changed.
+    await reload()
   }
 
   async function issueCredential(org: PlatformOrg) {
@@ -160,6 +213,9 @@ export default function Organizations() {
     )
     setDoomed(null)
     setTypedSlug('')
+    // The row the panel was about is gone; a panel left open on it would be
+    // editing nothing.
+    setSelectedId(null)
     await load()
     // One just disappeared — possibly the one currently selected.
     await reload()
@@ -195,6 +251,11 @@ export default function Organizations() {
         </div>
       )}
 
+      {/* A summary, and a way to pick one. Every action and every setting is
+          in the panel below for the selected row -- a table that tried to
+          carry all of it pushed its buttons off the right edge, where nobody
+          found them, and had checkboxes saving on click beside text that
+          would not have. */}
       <div className="table-wrap">
         <table className="data">
           <thead>
@@ -205,23 +266,38 @@ export default function Organizations() {
               <th>Activity</th>
               <th>Custom</th>
               <th>Events</th>
-              <th />
             </tr>
           </thead>
           <tbody>
             {orgs.map((o) => {
               const seen = o.bridge_last_seen ? new Date(o.bridge_last_seen).getTime() : null
               const online = seen !== null && Date.now() - seen < BRIDGE_FRESH_MS
+              const isSelected = o.org_id === selectedId
               return (
-                <tr key={o.org_id} style={o.status !== 'active' ? { opacity: 0.6 } : undefined}>
+                <tr
+                  key={o.org_id}
+                  onClick={() => setSelectedId(o.org_id)}
+                  className={isSelected ? 'is-selected' : undefined}
+                  style={{
+                    cursor: 'pointer',
+                    ...(o.status !== 'active' ? { opacity: 0.6 } : {}),
+                  }}
+                >
                   <td>
-                    {o.name}
+                    {/* The operator's handle first when there is one: it is
+                        what tells two customers of the same name apart, which
+                        is what this column is for. The real name is what
+                        prints, and it sits underneath. */}
+                    {o.internal_name ? (
+                      <>
+                        {o.internal_name}
+                        <div className="muted small">{o.name}</div>
+                      </>
+                    ) : (
+                      o.name
+                    )}
                     <div className="muted small">
                       <code>{o.slug}</code>
-                      {/* Built and given to nobody. This replaced the old
-                          operator_attached flag: creating an organization no
-                          longer makes you its owner, so an unhanded-over
-                          tenant is simply one with no members. */}
                       {o.members === 0 && ' · nobody invited yet'}
                     </div>
                   </td>
@@ -240,9 +316,6 @@ export default function Organizations() {
                       </>
                     )}
                   </td>
-                  {/* Three counts in one cell rather than three columns. The
-                      Entries table taught this: a wide table pushes its
-                      actions off the right edge, where nobody finds them. */}
                   <td className="small">
                     {o.printers} printer{o.printers === 1 ? '' : 's'} · {o.members} member
                     {o.members === 1 ? '' : 's'}
@@ -250,71 +323,14 @@ export default function Organizations() {
                       {o.entries_30d} sign-in{o.entries_30d === 1 ? '' : 's'} in 30 days
                     </div>
                   </td>
-                  <td>
-                    <label className="check">
-                      <input
-                        type="checkbox"
-                        checked={o.custom_integrations}
-                        disabled={busy === o.org_id}
-                        onChange={(e) => void setCustom(o, e.target.checked)}
-                      />
-                    </label>
-                  </td>
-                  <td>
-                    <label className="check">
-                      <input
-                        type="checkbox"
-                        checked={o.events_enabled}
-                        disabled={busy === o.org_id}
-                        onChange={(e) => void setEvents(o, e.target.checked)}
-                      />
-                    </label>
-                  </td>
-                  <td className="actions-cell">
-                    {/* First, because it is now the common one: setting a
-                        congregation up happens inside the organization, and
-                        an operator is no longer a member of it. */}
-                    <button
-                      className="secondary btn-sm"
-                      onClick={() => {
-                        switchOrg(o.org_id)
-                        navigate('/admin/entries')
-                      }}
-                    >
-                      Open
-                    </button>{' '}
-                    <button
-                      className="secondary btn-sm"
-                      disabled={busy === o.org_id}
-                      onClick={() => void issueCredential(o)}
-                    >
-                      Issue credential
-                    </button>{' '}
-                    <button
-                      className="secondary btn-sm"
-                      disabled={busy === o.org_id}
-                      onClick={() => void setStatus(o, o.status === 'active' ? 'suspended' : 'active')}
-                    >
-                      {o.status === 'active' ? 'Suspend' : 'Resume'}
-                    </button>{' '}
-                    <button
-                      className="secondary btn-sm danger"
-                      disabled={busy === o.org_id}
-                      onClick={() => {
-                        setDoomed(o)
-                        setTypedSlug('')
-                        setError(null)
-                      }}
-                    >
-                      Delete
-                    </button>
-                  </td>
+                  <td className="small">{o.custom_integrations ? 'Yes' : <span className="muted">—</span>}</td>
+                  <td className="small">{o.events_enabled ? 'Yes' : <span className="muted">—</span>}</td>
                 </tr>
               )
             })}
             {!orgs.length && (
               <tr>
-                <td colSpan={7} className="muted">
+                <td colSpan={6} className="muted">
                   No organizations yet.
                 </td>
               </tr>
@@ -322,6 +338,133 @@ export default function Organizations() {
           </tbody>
         </table>
       </div>
+
+      {selected && draft && (
+        <section className="card" style={{ marginTop: 20 }}>
+          <h2>{selected.internal_name || selected.name}</h2>
+
+          <div className="grid2">
+            <label className="field">
+              Name
+              <input
+                value={draft.name}
+                onChange={(e) => setDraft({ ...draft, name: e.target.value })}
+              />
+              <span className="muted small">
+                As their guests see it: on badges, the sign-in form and the lobby sign.
+              </span>
+            </label>
+            <label className="field">
+              Internal name
+              <input
+                value={draft.internal_name}
+                onChange={(e) => setDraft({ ...draft, internal_name: e.target.value })}
+                placeholder="Temple Beth El (Aptos)"
+              />
+              <span className="muted small">
+                For telling similar names apart here. The customer never sees it.
+              </span>
+            </label>
+          </div>
+
+          <label className="field">
+            Address
+            <textarea
+              rows={2}
+              value={draft.address}
+              onChange={(e) => setDraft({ ...draft, address: e.target.value })}
+            />
+          </label>
+          <label className="field">
+            Notes
+            <textarea
+              rows={3}
+              value={draft.notes}
+              onChange={(e) => setDraft({ ...draft, notes: e.target.value })}
+            />
+          </label>
+
+          <div style={{ display: 'flex', gap: 24, flexWrap: 'wrap', marginTop: 4 }}>
+            <label className="check">
+              <input
+                type="checkbox"
+                checked={draft.custom_integrations}
+                onChange={(e) => setDraft({ ...draft, custom_integrations: e.target.checked })}
+              />
+              Custom integrations
+              <span className="muted small"> — Google Form and ShulCloud, once built for them</span>
+            </label>
+            <label className="check">
+              <input
+                type="checkbox"
+                checked={draft.events_enabled}
+                onChange={(e) => setDraft({ ...draft, events_enabled: e.target.checked })}
+              />
+              Events
+            </label>
+          </div>
+
+          <div className="modal-actions" style={{ marginTop: 16 }}>
+            <button
+              onClick={() => void save()}
+              disabled={busy === selected.org_id || sameDraft(draft, draftOf(selected))}
+            >
+              {busy === selected.org_id ? 'Saving…' : 'Save'}
+            </button>
+          </div>
+
+          {/* What you do to a customer, apart from editing them. Kept apart
+              from Save because none of these are saved: each acts on its own
+              and says so. */}
+          <div
+            style={{
+              display: 'flex',
+              gap: 8,
+              flexWrap: 'wrap',
+              marginTop: 20,
+              paddingTop: 16,
+              borderTop: '1px solid var(--border)',
+            }}
+          >
+            <button
+              className="secondary btn-sm"
+              onClick={() => {
+                switchOrg(selected.org_id)
+                navigate('/admin/entries')
+              }}
+            >
+              Open
+            </button>
+            <button
+              className="secondary btn-sm"
+              disabled={busy === selected.org_id}
+              onClick={() => void issueCredential(selected)}
+            >
+              Issue credential
+            </button>
+            <button
+              className="secondary btn-sm"
+              disabled={busy === selected.org_id}
+              onClick={() =>
+                void setStatus(selected, selected.status === 'active' ? 'suspended' : 'active')
+              }
+            >
+              {selected.status === 'active' ? 'Suspend' : 'Resume'}
+            </button>
+            <button
+              className="secondary btn-sm danger"
+              disabled={busy === selected.org_id}
+              onClick={() => {
+                setDoomed(selected)
+                setTypedSlug('')
+                setError(null)
+              }}
+            >
+              Delete
+            </button>
+          </div>
+        </section>
+      )}
 
       {doomed && (
         <div className="modal-backdrop" onClick={() => setDoomed(null)}>

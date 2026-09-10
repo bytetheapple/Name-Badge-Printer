@@ -197,7 +197,14 @@ export interface PiDevice {
 export interface PlatformOrg {
   org_id: string
   slug: string
+  /** As their guests see it: badges, the sign-in form, the lobby sign. */
   name: string
+  /** The operator's handle for telling similar names apart. Never shown to
+   *  the customer. "Temple Beth El Santa Cruz" belongs here, not in `name`,
+   *  where it printed on every badge for a congregation in Aptos. */
+  internal_name: string | null
+  address: string | null
+  notes: string | null
   status: 'active' | 'suspended'
   custom_integrations: boolean
   events_enabled: boolean

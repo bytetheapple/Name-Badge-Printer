@@ -117,23 +117,42 @@ export default function PrinterQr({
     const doc = new jsPDF({ unit: 'in', format: 'letter', orientation: 'portrait' })
     const pageW = 8.5
     const boxW = 3
-    const boxH = 4.5
+    const cx = pageW / 2
+
+    // The name is measured before the box is drawn, because the box has to be
+    // tall enough for it. A name that ran off the edge was the first sign that
+    // one field was doing two jobs: the customer's real name is short, and
+    // the long one belonged to the operator. Both are fixed; this is the one
+    // that showed.
+    doc.setFont('helvetica', 'bold')
+    doc.setFontSize(20)
+    const nameLines: string[] = doc.splitTextToSize(
+      org?.organization.name ?? 'Guest Badges',
+      boxW - 0.5,
+    )
+    const extra = (nameLines.length - 1) * 0.32
+    const boxH = 4.5 + extra
     const boxX = (pageW - boxW) / 2
     const boxY = (11 - boxH) / 2
-    const cx = pageW / 2
 
     doc.setLineWidth(0.03)
     doc.rect(boxX, boxY, boxW, boxH)
 
-    doc.setFont('helvetica', 'bold')
-    doc.setFontSize(20)
     doc.text('Welcome to', cx, boxY + 0.6, { align: 'center' })
     // The congregation whose lobby this poster is going up in — printed for
     // every tenant, so it must not be the name of the first one.
-    doc.text(org?.organization.name ?? 'Guest Badges', cx, boxY + 0.95, { align: 'center' })
+    doc.text(nameLines, cx, boxY + 0.95, { align: 'center' })
+    const nameHeight = nameLines.length * 0.32
 
     const qrSize = 2.1
-    doc.addImage(canvas.toDataURL('image/png'), 'PNG', (pageW - qrSize) / 2, boxY + 1.35, qrSize, qrSize)
+    doc.addImage(
+      canvas.toDataURL('image/png'),
+      'PNG',
+      (pageW - qrSize) / 2,
+      boxY + 1.05 + nameHeight,
+      qrSize,
+      qrSize,
+    )
 
     doc.setFont('helvetica', 'normal')
     doc.setFontSize(14)

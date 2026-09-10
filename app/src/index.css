@@ -422,6 +422,10 @@ table.data th {
   font-weight: 500;
   background: var(--pending-bg);
 }
+/* The row the detail panel below is about. */
+table.data tr.is-selected td {
+  background: var(--ok-bg);
+}
 table.data tr:last-child td {
   border-bottom: none;
 }
