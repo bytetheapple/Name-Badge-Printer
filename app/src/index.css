@@ -2410,3 +2410,19 @@ button.danger:disabled {
     border-bottom-color: #274468;
   }
 }
+
+/* Who an organization is, laid out as a small table inside the delete dialog. */
+.org-identity {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 4px 14px;
+  margin: 0 0 14px;
+  font-size: 14px;
+}
+.org-identity dt {
+  color: var(--muted);
+}
+.org-identity dd {
+  margin: 0;
+  white-space: pre-line;
+}

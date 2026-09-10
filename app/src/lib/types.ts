@@ -2,7 +2,6 @@ export type Role = 'owner' | 'admin' | 'staff'
 
 export interface Organization {
   id: string
-  slug: string
   name: string
   status: 'active' | 'suspended'
   /**
@@ -196,7 +195,6 @@ export interface PiDevice {
 /** One tenant as the platform team sees it, from platform_overview(). */
 export interface PlatformOrg {
   org_id: string
-  slug: string
   /** As their guests see it: badges, the sign-in form, the lobby sign. */
   name: string
   /** The operator's handle for telling similar names apart. Never shown to

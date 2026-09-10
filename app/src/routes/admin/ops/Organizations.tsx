@@ -10,7 +10,6 @@ const BRIDGE_FRESH_MS = 45000
 /** The fields the detail panel edits, in one place so Save writes exactly them. */
 type Draft = {
   name: string
-  slug: string
   internal_name: string
   address: string
   notes: string
@@ -21,7 +20,6 @@ type Draft = {
 function draftOf(o: PlatformOrg): Draft {
   return {
     name: o.name,
-    slug: o.slug,
     internal_name: o.internal_name ?? '',
     address: o.address ?? '',
     notes: o.notes ?? '',
@@ -50,13 +48,12 @@ export default function Organizations() {
   const [notice, setNotice] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [creating, setCreating] = useState(false)
-  const [slug, setSlug] = useState('')
   const [name, setName] = useState('')
   const [secret, setSecret] = useState<{ org: string; value: string } | null>(null)
-  //: The org being deleted, and the slug typed so far. Held together so the
+  //: The org being deleted, and the name typed so far. Held together so the
   //: dialog cannot outlive the row it was opened for.
   const [doomed, setDoomed] = useState<PlatformOrg | null>(null)
-  const [typedSlug, setTypedSlug] = useState('')
+  const [typedName, setTypedName] = useState('')
   //: Which row the detail panel is about. The table is a summary now; every
   //: action and every setting lives in the panel for the selected one.
   const [selectedId, setSelectedId] = useState<string | null>(null)
@@ -85,17 +82,14 @@ export default function Organizations() {
   }, [load])
 
   async function createOrg() {
-    if (!slug.trim() || !name.trim()) {
-      setError('An organization needs both a name and a slug.')
+    if (!name.trim()) {
+      setError('An organization needs a name.')
       return
     }
     setBusy('create')
     setError(null)
     setNotice(null)
-    const { error } = await supabase.rpc('create_organization', {
-      p_slug: slug.trim(),
-      p_name: name.trim(),
-    })
+    const { error } = await supabase.rpc('create_organization', { p_name: name.trim() })
     setBusy(null)
     if (error) {
       setError(error.message)
@@ -105,7 +99,6 @@ export default function Organizations() {
       `${name.trim()} created. Open it to set up printers and integrations, then invite their ` +
         `first owner from the Members tab.`,
     )
-    setSlug('')
     setName('')
     setCreating(false)
     await load()
@@ -153,14 +146,7 @@ export default function Organizations() {
       setError('An organization needs a name.')
       return
     }
-    // The slug is what somebody types to confirm a deletion, so it has to be
-    // typeable: lower case, digits and dashes, nothing that needs a shift key
-    // or looks like something else.
-    const slug = draft.slug.trim().toLowerCase()
-    if (!/^[a-z0-9]+(-[a-z0-9]+)*$/.test(slug)) {
-      setError('The slug can only contain lower-case letters, digits and single dashes.')
-      return
-    }
+
     setBusy(selected.org_id)
     setNotice(null)
     setError(null)
@@ -168,7 +154,6 @@ export default function Organizations() {
       .from('organizations')
       .update({
         name: draft.name.trim(),
-        slug,
         internal_name: draft.internal_name.trim() || null,
         address: draft.address.trim() || null,
         notes: draft.notes.trim() || null,
@@ -178,13 +163,7 @@ export default function Organizations() {
       .eq('id', selected.org_id)
     setBusy(null)
     if (error) {
-      // The one error worth translating: the slug is unique across every
-      // customer, and Postgres's wording for that names a constraint.
-      setError(
-        error.message.includes('organizations_slug_key')
-          ? `Another organization already uses the slug "${slug}".`
-          : error.message,
-      )
+      setError(error.message)
       return
     }
     setNotice(`Saved ${draft.name.trim()}.`)
@@ -216,7 +195,7 @@ export default function Organizations() {
     setError(null)
     const { data, error } = await supabase.rpc('delete_organization', {
       p_org: doomed.org_id,
-      p_confirm_slug: typedSlug.trim(),
+      p_confirm_name: typedName.trim(),
     })
     setBusy(null)
     if (error) {
@@ -229,7 +208,7 @@ export default function Organizations() {
         `${gone.members} member(s). This cannot be undone.`,
     )
     setDoomed(null)
-    setTypedSlug('')
+    setTypedName('')
     // The row the panel was about is gone; a panel left open on it would be
     // editing nothing.
     setSelectedId(null)
@@ -313,10 +292,9 @@ export default function Organizations() {
                     ) : (
                       o.name
                     )}
-                    <div className="muted small">
-                      <code>{o.slug}</code>
-                      {o.members === 0 && ' · nobody invited yet'}
-                    </div>
+                    {o.members === 0 && (
+                      <div className="muted small">nobody invited yet</div>
+                    )}
                   </td>
                   <td>
                     <span className={`pill pill-sync-${o.status === 'active' ? 'sent' : 'failed'}`}>
@@ -369,18 +347,6 @@ export default function Organizations() {
               />
               <span className="muted small">
                 As their guests see it: on badges, the sign-in form and the lobby sign.
-              </span>
-            </label>
-            <label className="field">
-              Slug
-              <input
-                value={draft.slug}
-                onChange={(e) => setDraft({ ...draft, slug: e.target.value })}
-                autoComplete="off"
-              />
-              <span className="muted small">
-                An identifier, and what you type to confirm deleting this organization. Nothing
-                links to it, so it can change.
               </span>
             </label>
             <label className="field">
@@ -485,7 +451,7 @@ export default function Organizations() {
               disabled={busy === selected.org_id}
               onClick={() => {
                 setDoomed(selected)
-                setTypedSlug('')
+                setTypedName('')
                 setError(null)
               }}
             >
@@ -498,10 +464,27 @@ export default function Organizations() {
       {doomed && (
         <div className="modal-backdrop" onClick={() => setDoomed(null)}>
           <div className="modal" role="dialog" aria-modal="true" onClick={(e) => e.stopPropagation()}>
-            <h2>Delete {doomed.name}?</h2>
-            {/* The real numbers, before the question. A slug alone guards
-                against the wrong row; this guards against the wrong belief
-                about what is in it. */}
+            <h2>Delete {doomed.internal_name || doomed.name}?</h2>
+            {/* Who this is, in full, before anything else. Two organizations
+                can share a public name now, and a dialog that showed only the
+                name would be guarding the wrong row with the right word. */}
+            <dl className="org-identity">
+              <dt>Name</dt>
+              <dd>{doomed.name}</dd>
+              {doomed.internal_name && (
+                <>
+                  <dt>Internal name</dt>
+                  <dd>{doomed.internal_name}</dd>
+                </>
+              )}
+              <dt>Address</dt>
+              <dd>{doomed.address || <span className="muted">none recorded</span>}</dd>
+              <dt>Created</dt>
+              <dd>{new Date(doomed.created_at).toLocaleDateString()}</dd>
+            </dl>
+            {/* The real numbers, before the question. The name guards against
+                the wrong row; this guards against the wrong belief about what
+                is in it. */}
             <p className="warn">
               This permanently deletes {doomed.printers} printer
               {doomed.printers === 1 ? '' : 's'}, {doomed.entries_30d} sign-in
@@ -517,11 +500,11 @@ export default function Organizations() {
               {/* One flex item, or the column layout stacks the three
                   pieces of this sentence onto separate lines. */}
               <span>
-                Type <code>{doomed.slug}</code> to confirm
+                Type <code>{doomed.internal_name || doomed.name}</code> to confirm
               </span>
               <input
-                value={typedSlug}
-                onChange={(e) => setTypedSlug(e.target.value)}
+                value={typedName}
+                onChange={(e) => setTypedName(e.target.value)}
                 autoFocus
                 autoComplete="off"
               />
@@ -533,7 +516,10 @@ export default function Organizations() {
               <button
                 className="danger"
                 onClick={() => void remove()}
-                disabled={busy === doomed.org_id || typedSlug.trim() !== doomed.slug}
+                disabled={
+                  busy === doomed.org_id ||
+                  typedName.trim() !== (doomed.internal_name || doomed.name)
+                }
               >
                 {busy === doomed.org_id ? 'Deleting…' : 'Delete permanently'}
               </button>
@@ -548,18 +534,6 @@ export default function Organizations() {
             <label className="field">
               Name
               <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Beth Shalom" autoFocus />
-            </label>
-            <label className="field">
-              Slug
-              <input
-                value={slug}
-                onChange={(e) => setSlug(e.target.value)}
-                placeholder="beth-shalom"
-              />
-              <span className="muted small">
-                Lowercase letters, numbers and hyphens. It appears in support conversations, so
-                make it something that survives being read aloud.
-              </span>
             </label>
             <div className="modal-actions">
               <button className="secondary" onClick={() => setCreating(false)} disabled={busy === 'create'}>
