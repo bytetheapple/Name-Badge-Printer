@@ -1,11 +1,11 @@
 import { useCallback, useEffect, useState } from 'react'
+import { BRIDGE_FRESH_MS } from '../../../lib/bridge'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../../../lib/supabase'
 import { useOrg } from '../../../lib/org'
 import { lastSeenLabel } from '../../../lib/secrets'
 import type { PlatformOrg } from '../../../lib/types'
 
-const BRIDGE_FRESH_MS = 45000
 
 /** The fields the detail panel edits, in one place so Save writes exactly them. */
 type Draft = {

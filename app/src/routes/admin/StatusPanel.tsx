@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
+import { BRIDGE_FRESH_MS } from '../../lib/bridge'
 import { supabase } from '../../lib/supabase'
 import JoinNetwork from './JoinNetwork'
 import { useOrg } from '../../lib/org'
@@ -12,7 +13,6 @@ import type {
 } from '../../lib/types'
 
 // The bridge heartbeats every ~15s; treat it as online if seen within 45s.
-const BRIDGE_FRESH_MS = 45000
 
 /**
  * Why an interface has no address, in the reader's words rather than

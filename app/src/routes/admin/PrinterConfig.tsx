@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { BRIDGE_FRESH_MS } from '../../lib/bridge'
 import { supabase } from '../../lib/supabase'
 import { useOrg } from '../../lib/org'
 import BadgeDesign from './BadgeDesign'
@@ -226,7 +227,6 @@ const LOCATE_STALL_MS = 195 * 1000
 const LOCATES_KEY = 'nbk.locates'
 //: The bridge heartbeats every ~15s; treat it as online if seen within 45s,
 //: the same threshold the Print Server tab uses.
-const BRIDGE_FRESH_MS = 45000
 
 type LocateRow = {
   printer_id: string
