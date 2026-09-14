@@ -98,7 +98,8 @@ r = bridge.probe_printers([dict(P)])[0]
 check("reports unreachable", r["reachable"] is False)
 check("nothing else is claimed", set(r) == {"id", "reachable", "media_type",
                                             "media_width", "error_state",
-                                            "unreachable_reason"}, str(r))
+                                            "unreachable_reason", "searching_since",
+                                            "last_search_at", "next_search_at"}, str(r))
 
 print("— an unreachable printer says why, and a reachable one does not —")
 world.update(reachable=set(), dns={}, arp={}, diagnosis="on a different network")

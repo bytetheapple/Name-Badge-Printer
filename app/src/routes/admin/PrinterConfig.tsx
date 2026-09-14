@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { BRIDGE_FRESH_MS } from '../../lib/bridge'
 import { supabase } from '../../lib/supabase'
+import SearchProgress from './SearchProgress'
 import { useOrg } from '../../lib/org'
 import BadgeDesign from './BadgeDesign'
 import ProvisionWizard from './ProvisionWizard'
@@ -568,7 +569,11 @@ export default function PrinterConfig() {
               <div>
                 <div className="printer-summary-name">{current.name}</div>
                 <div className="muted small">
-                  {[current.location, current.printer_ip ?? 'no address set']
+                  {[
+                    current.location,
+                    current.printer_ip ?? 'no address set',
+                    current.serial ? `SN ${current.serial}` : null,
+                  ]
                     .filter(Boolean)
                     .join(' · ')}
                 </div>
@@ -577,6 +582,11 @@ export default function PrinterConfig() {
                   bridgeOnline={bridgeOnline}
                   bridgeChecked={bridgeChecked}
                 />
+                {/* The background search's own progress. Hidden while a manual
+                    "Find it again" is actively spinning, so the two do not show
+                    two spinners at once — but shown after one finishes, so a
+                    failed manual search still reads as "we are still trying". */}
+                {!searchActive(locates[current.id]) && <SearchProgress printer={current} />}
               </div>
               <div className="printer-summary-actions">
                 <button className="secondary btn-sm" onClick={() => setDialog(current)}>

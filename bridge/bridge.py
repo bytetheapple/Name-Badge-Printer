@@ -11,7 +11,7 @@ import os
 import sys
 import time
 import traceback
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from io import BytesIO
 
 import requests
@@ -310,6 +310,35 @@ def handle_network_request(request: dict) -> dict:
 _rehomer = rehome.Rehomer()
 
 
+def _search_fields(printer_id: str) -> dict:
+    """The background search's schedule for a printer, as wall-clock times the
+    console can show, or nulls when it is not being searched for.
+
+    The rehomer keeps its schedule in monotonic time (right for measuring
+    intervals, immune to the clock being set); the console needs real dates. The
+    two share the same monotonic clock, so the offset from now converts each.
+    """
+    st = _rehomer.status(printer_id)
+    if not st:
+        # Always present, always cleared when not searching: like
+        # unreachable_reason, a stale schedule on a recovered printer is worse
+        # than none, so these must be written null rather than simply omitted.
+        return {"searching_since": None, "last_search_at": None, "next_search_at": None}
+    now_mono = time.monotonic()
+    now_wall = datetime.now(timezone.utc)
+
+    def wall(mono):
+        if mono is None:
+            return None
+        return (now_wall + timedelta(seconds=mono - now_mono)).isoformat()
+
+    return {
+        "searching_since": wall(st["since"]),
+        "last_search_at": wall(st["last_at"]),
+        "next_search_at": wall(st["next_at"]),
+    }
+
+
 def probe_printers(printers: list) -> list:
     """Ask each printer how it is, for the next poll to report upstream.
 
@@ -358,6 +387,9 @@ def probe_printers(printers: list) -> list:
             "media_width": status.get("media_width"),
             "error_state": status.get("error_state"),
             "unreachable_reason": None if status.get("reachable") else _why_unreachable(ip, port),
+            # What the background search is doing, for the console to show while
+            # a printer is missing. Null on a reachable one, so it clears.
+            **_search_fields(p["id"]),
         }
         if ip and ip != p.get("printer_ip"):
             report["printer_ip"] = ip

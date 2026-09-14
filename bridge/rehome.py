@@ -57,14 +57,17 @@ def _due_in(attempts: int) -> float:
 class _Job:
     """One offline printer the background sweep is working on."""
 
-    __slots__ = ("mac", "serial", "subnet", "ip", "attempts", "next_at", "found", "searching")
+    __slots__ = ("mac", "serial", "subnet", "ip", "since", "attempts",
+                 "last_at", "next_at", "found", "searching")
 
-    def __init__(self, mac, serial, subnet, ip, next_at):
+    def __init__(self, mac, serial, subnet, ip, since, next_at):
         self.mac = mac
         self.serial = serial
         self.subnet = subnet
         self.ip = ip                 # the address it was last known at, to avoid re-reporting it
+        self.since = since           # when it went quiet and the search began
         self.attempts = 0
+        self.last_at: float | None = None  # when the last sweep ran, or None if none has
         self.next_at = next_at
         self.found: str | None = None  # a new address waiting for the heartbeat to adopt
         self.searching = False
@@ -117,17 +120,35 @@ class Rehomer:
             mac = printer.get("mac") or printer.get("wired_mac")
             serial = printer.get("serial")
             if not mac and not serial:
-                return  # nothing to recognise it by across a move
+                self._jobs.pop(pid, None)  # nothing to recognise it by; do not search
+                return
             job = self._jobs.get(pid)
             if job is None:
+                now = self._clock()
                 self._jobs[pid] = _Job(
                     mac, serial, printer.get("subnet"), printer.get("printer_ip"),
-                    next_at=self._clock() + _due_in(0),
+                    since=now, next_at=now + _due_in(0),
                 )
             else:
                 # Keep the schedule, refresh what we know it by and where it was.
                 job.mac, job.serial = mac, serial
                 job.subnet, job.ip = printer.get("subnet"), printer.get("printer_ip")
+
+    def status(self, printer_id: str) -> dict | None:
+        """Where the background search for this printer stands, or None if it is
+        not being searched for. Times are in the injected clock's domain; the
+        caller turns them into wall-clock for the console to show.
+        """
+        with self._lock:
+            job = self._jobs.get(printer_id)
+            if job is None:
+                return None
+            return {
+                "since": job.since,
+                "last_at": job.last_at,
+                "next_at": job.next_at,
+                "attempts": job.attempts,
+            }
 
     def take(self, printer_id: str) -> str | None:
         """A new address a background sweep found for this printer, or None.
@@ -179,9 +200,11 @@ class Rehomer:
         with self._lock:
             job = self._jobs.get(pid)
             if job is not None:
+                now = self._clock()
                 job.searching = False
+                job.last_at = now
                 job.attempts += 1
-                job.next_at = self._clock() + _due_in(job.attempts)
+                job.next_at = now + _due_in(job.attempts)
                 if found and found != snap[3]:
                     job.found = found
 

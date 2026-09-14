@@ -6,7 +6,8 @@
 //
 // Request  (POST, header `x-bridge-key`):
 //   { printers?:   [{ id, reachable, media_type, media_width, error_state,
-//                     unreachable_reason, printer_ip?, mac?, wired_mac? }],
+//                     unreachable_reason, searching_since, last_search_at,
+//                     next_search_at, printer_ip?, mac?, serial?, wired_mac? }],
 //     network?:    { interfaces: [{name, kind, state, ip, ssid?, signal?}],
 //                    wifi_radio },   // which networks this server is on
 //     provision_result?: { session_id, task, ok, next_state, data, log, error },
@@ -47,6 +48,14 @@ import { orgIsActive } from "../_shared/org.ts";
 import { rpc } from "../_shared/rpc.ts";
 
 const nowIso = () => new Date().toISOString();
+
+// A timestamp the bridge reported, kept only if it is a string that really
+// parses as a date. The bridge composes these, but they reach a timestamptz
+// column and a countdown in the UI, so a malformed one is dropped to null
+// rather than written.
+function isoOrNull(v: unknown): string | null {
+  return typeof v === "string" && !Number.isNaN(Date.parse(v)) ? v : null;
+}
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
@@ -147,6 +156,13 @@ Deno.serve(async (req) => {
           typeof row.unreachable_reason === "string" && row.unreachable_reason
             ? row.unreachable_reason.slice(0, 500)
             : null,
+        // The background search's schedule, so the console can show a missing
+        // printer being looked for. Defaulted to null like unreachable_reason,
+        // for the same reason: it must clear the moment the printer answers, or
+        // a card keeps counting down a search that is already over.
+        searching_since: isoOrNull(row.searching_since),
+        last_search_at: isoOrNull(row.last_search_at),
+        next_search_at: isoOrNull(row.next_search_at),
         last_checked: now,
         // Only when the bridge actually says so. These are spread in rather
         // than defaulted to null like the fields above, because a null here

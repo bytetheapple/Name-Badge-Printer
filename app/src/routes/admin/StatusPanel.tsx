@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { BRIDGE_FRESH_MS } from '../../lib/bridge'
 import { supabase } from '../../lib/supabase'
 import JoinNetwork from './JoinNetwork'
+import SearchProgress from './SearchProgress'
 import { useOrg } from '../../lib/org'
 import { lastSeenLabel } from '../../lib/secrets'
 import type {
@@ -289,6 +290,10 @@ export default function StatusPanel() {
               {p.reachable === false && p.unreachable_reason && (
                 <div className="muted small">{p.unreachable_reason}</div>
               )}
+              {/* And that the server is doing something about it — the
+                  background search's progress, so a missing printer reads as
+                  one being recovered rather than one nobody is coming for. */}
+              <SearchProgress printer={p} />
             </div>
           )
         })}

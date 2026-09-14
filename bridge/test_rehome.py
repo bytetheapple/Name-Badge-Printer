@@ -96,6 +96,22 @@ check("sweeps get further apart, then settle at the floor",
       gaps[0] < gaps[-1] and gaps[-1] == int(rehome._FLOOR), str(gaps))
 check("it keeps trying rather than giving up", len(times) == 8, str(len(times)))
 
+print("— status() reports the schedule the console shows —")
+r, clock = make(lambda mac, serial, subnet, ip: "192.168.0.60")
+check("no status before a printer is known", r.status("p1") is None)
+r.update(P, reachable=False)
+st = r.status("p1")
+check("a scheduled printer has a since and a next", st and st["since"] == 0 and st["next_at"] == 30, str(st))
+check("but no last search until one has run", st and st["last_at"] is None, str(st))
+clock.advance(30)
+r._run_once()
+st = r.status("p1")
+check("after a sweep, last search is recorded", st and st["last_at"] == 30, str(st))
+check("and the attempt is counted", st and st["attempts"] == 1, str(st))
+check("and the next search is pushed out by the backoff", st and st["next_at"] == 30 + 60, str(st))
+r.update(P, reachable=True)
+check("a recovered printer has no status", r.status("p1") is None)
+
 print("— a printer with no identity to match on is left alone —")
 calls = []
 r, clock = make(lambda *a: calls.append(a) or None)

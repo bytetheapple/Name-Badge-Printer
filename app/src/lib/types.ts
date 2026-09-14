@@ -267,9 +267,10 @@ export interface Printer {
   /** Wired MAC. Separate because the mDNS name depends on which interface
    *  answers: BRW+mac on wireless, BRN+wired_mac on Ethernet. */
   wired_mac: string | null
-  /** Read over HTTP from the printer; stable across DHCP and subnet changes,
-   *  so it can re-find a printer whose address moved when the MAC (from ARP)
-   *  cannot. Filled in by the bridge the first time the printer answers. */
+  /** Read over SNMP (falling back to HTTP) from the printer; stable across
+   *  DHCP and subnet changes, so it can re-find a printer whose address moved
+   *  when the MAC (from ARP) cannot. Filled in by the bridge the first time the
+   *  printer answers. */
   serial: string | null
   port: number
   reachable: boolean | null
@@ -280,6 +281,13 @@ export interface Printer {
    *  act on. Null while it is reachable. "Unreachable" alone sent somebody
    *  hunting a printer fault that was really two networks with no route. */
   unreachable_reason: string | null
+  /** While a moved printer is being searched for in the background: when the
+   *  search began, when it last swept, and when it will next. All null once the
+   *  printer answers (the search is over) or when there is nothing to search
+   *  by. Let the console show a missing printer as being actively recovered. */
+  searching_since: string | null
+  last_search_at: string | null
+  next_search_at: string | null
   last_checked: string | null
   header_image_url: string | null
   created_at: string
