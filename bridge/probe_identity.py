@@ -114,9 +114,15 @@ def probe_page(ip: str, path: str) -> None:
         return
 
     text = readable(r.text)
-    if looks_like_login(text, r.text):
-        print("    -> LOGIN PAGE (gated: this field would need the web password)")
-        return
+
+    # Report the login heuristic as a note, never as a reason to stop. An
+    # earlier version bailed here on any password input in the markup, and a
+    # Brother page carries a login widget in its header even while showing real
+    # content -- so it hid the very serial we were looking for. Always parse,
+    # always dump.
+    has_pw = 'type="password"' in r.text.lower()
+    print(f"    has a password input: {'yes' if has_pw else 'no'}"
+          f"{'  (may just be the header login box, not a wall)' if has_pw else ''}")
 
     model = labelled_value(text, "Model")
     serial = find_serial(text)
@@ -126,12 +132,14 @@ def probe_page(ip: str, path: str) -> None:
     print(f"    serial: {serial or '(not found on this page)'}")
     print(f"    MACs:   {', '.join(macs) if macs else '(none on this page)'}")
 
-    # A short readable dump so we can see any other stable field by eye -- the
-    # point of the probe is partly to discover what is there, not only to
-    # confirm what we expected.
-    excerpt = "\n".join(f"      | {ln}" for ln in text.splitlines() if ln)[:1200]
-    print("    page text (trimmed):")
-    print(excerpt)
+    # The whole readable page, so we can see any stable field by eye -- the
+    # point is partly to discover what is there, not only to confirm what we
+    # expected. Capped generously; a serial can sit well down the page.
+    print("    ---- page text ----")
+    for ln in text.splitlines():
+        if ln.strip():
+            print(f"      | {ln}")
+    print("    ---- end ----")
 
 
 def main(argv: list[str]) -> int:
