@@ -46,11 +46,21 @@ function LocateStatus({ locate }: { locate?: LocateRow }) {
 
   if (!LOCATE_DONE.has(locate.state)) {
     const started = Date.parse(locate.updated_at)
-    const secs = Number.isNaN(started) ? 0 : Math.max(0, Math.round((Date.now() - started) / 1000))
+    const ms = Number.isNaN(started) ? 0 : Math.max(0, Date.now() - started)
+    if (ms > LOCATE_STALL_MS) {
+      // Not "searching" any more -- nothing is. The request was never taken
+      // up, so say the likely reason rather than spin a counter forever.
+      return (
+        <div className="locate-status missed">
+          The print server has not started this search. It may be offline — check the Print
+          Server tab. You can try again once it is back.
+        </div>
+      )
+    }
     return (
       <div className="locate-status searching">
         <span className="spinner-dot" aria-hidden="true" />
-        Searching the network for this printer… {secs}s
+        Searching the network for this printer… {Math.round(ms / 1000)}s (up to about 3 minutes)
       </div>
     )
   }
@@ -188,6 +198,11 @@ function PrinterDialog({
 const STATUS_REFRESH_MS = 20000
 //: A finished search stops being news after this long, and clears itself.
 const LOCATE_SHOW_MS = 5 * 60 * 1000
+//: The bridge caps its own search at 150s and reports on the next
+//: heartbeat. Past this with no result, the search is not running -- the
+//: print server has not picked the request up, which usually means it is
+//: offline.
+const LOCATE_STALL_MS = 195 * 1000
 
 type LocateRow = {
   printer_id: string
@@ -336,7 +351,11 @@ export default function PrinterConfig() {
 
   // Tick once a second while any search is still running, so its elapsed
   // counter advances. Stops itself the moment nothing is in flight.
-  const anySearching = Object.values(locates).some((l) => !LOCATE_DONE.has(l.state))
+  // Ticking, but not for a search that has stalled -- there is nothing left to
+  // count, so the once-a-second re-render can stop.
+  const anySearching = Object.values(locates).some(
+    (l) => !LOCATE_DONE.has(l.state) && Date.now() - Date.parse(l.updated_at) <= LOCATE_STALL_MS,
+  )
   useEffect(() => {
     if (!anySearching) return
     const id = window.setInterval(() => setTick((n) => n + 1), 1000)
@@ -502,7 +521,9 @@ export default function PrinterConfig() {
                   disabled={
                     busy === current.id ||
                     !current.mac ||
-                    (locates[current.id] && !LOCATE_DONE.has(locates[current.id].state))
+                    (locates[current.id] &&
+                      !LOCATE_DONE.has(locates[current.id].state) &&
+                      Date.now() - Date.parse(locates[current.id].updated_at) <= LOCATE_STALL_MS)
                   }
                   title={
                     current.mac
@@ -511,7 +532,9 @@ export default function PrinterConfig() {
                         'next time the printer answers'
                   }
                 >
-                  {locates[current.id] && !LOCATE_DONE.has(locates[current.id].state)
+                  {locates[current.id] &&
+                  !LOCATE_DONE.has(locates[current.id].state) &&
+                  Date.now() - Date.parse(locates[current.id].updated_at) <= LOCATE_STALL_MS
                     ? 'Searching…'
                     : 'Find it again'}
                 </button>
