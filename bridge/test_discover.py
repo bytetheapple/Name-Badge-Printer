@@ -26,6 +26,7 @@ def check(label, condition, detail=""):
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import discover  # noqa: E402
+import snmp  # noqa: E402
 
 WIRELESS_MAC = "44:f7:9f:bc:ab:e8"
 
@@ -101,9 +102,13 @@ print("— mDNS is preferred, and the sweep is the fallback —")
 calls = {"resolve": 0, "sweep": 0}
 real_resolve, real_sweep, real_mac = discover.resolve_all, discover.sweep, discover.mac_of
 # The stub carries its port in the address string, so the reachability check
-# that find_printer now performs has to be stubbed alongside it.
+# that find_printer now performs has to be stubbed alongside it. SNMP, which
+# find_printer consults for a cross-subnet MAC, is silenced here so these
+# ARP-level cases do not reach the network; its own case is below.
 real_port_open = discover._port_open
+real_snmp_macs = snmp.macs
 discover._port_open = lambda ip, port, timeout: ip.endswith(str(PORT))
+snmp.macs = lambda ip, timeout=2.0: []
 
 discover.resolve_all = lambda name, timeout=3.0: (calls.__setitem__("resolve", calls["resolve"] + 1)
                                                   or [f"127.0.0.1:{PORT}"])
@@ -144,6 +149,7 @@ check("lists the printers it found", [f.model for f in listed] == ["Brother QL-8
 
 discover.resolve_all, discover.sweep, discover.mac_of = real_resolve, real_sweep, real_mac
 discover._port_open = real_port_open
+snmp.macs = real_snmp_macs
 
 print("— the ARP table is parsed, whatever the platform prints —")
 check("normalises unpadded octets",
@@ -177,21 +183,36 @@ finally:
 
 print("— a moved printer is matched by serial, across a subnet —")
 _saved = (discover.sweep, discover.mac_of, discover.serial_of,
-          discover.model_of, discover.resolve_all)
+          discover.model_of, discover.resolve_all, snmp.macs)
 try:
     discover.sweep = lambda subnet=None, **k: ["10.0.5.60"]
     discover.mac_of = lambda ip: "aa:bb:cc:dd:ee:ff"   # the router, not the printer
     discover.serial_of = lambda ip, timeout=3.0: "H2G205774"
     discover.model_of = lambda ip, timeout=3.0: "QL-820NWB"
     discover.resolve_all = lambda name, timeout=3.0: []
+    snmp.macs = lambda ip, timeout=2.0: []             # SNMP silent unless a case sets it
     hit = discover.find_printer(serial="H2G205774", mac="40:5b:d8:25:57:55", subnet="10.0.5")
     check("serial finds it where ARP would give the router's MAC",
           hit is not None and hit.ip == "10.0.5.60", str(hit))
     miss = discover.find_printer(serial="OTHER99", mac="40:5b:d8:25:57:55", subnet="10.0.5")
     check("a wrong serial does not fall through to a false match", miss is None, str(miss))
+
+    # A printer stored with only a MAC (provisioned before the serial column):
+    # ARP still hands back the router's MAC across a subnet, but SNMP reads the
+    # printer's own over the routed path, so the MAC match survives the hop.
+    discover.serial_of = lambda ip, timeout=3.0: None
+    snmp.macs = lambda ip, timeout=2.0: ["94:dd:f8:ac:36:45", "40:5b:d8:25:57:55"]
+    hit = discover.find_printer(mac="40:5b:d8:25:57:55", subnet="10.0.5")
+    check("SNMP finds it by MAC where ARP gives the router's",
+          hit is not None and hit.ip == "10.0.5.60", str(hit))
+    check("and records the printer's MAC, not the router's",
+          hit is not None and hit.mac == "40:5b:d8:25:57:55", str(hit))
+    snmp.macs = lambda ip, timeout=2.0: ["11:22:33:44:55:66"]
+    miss = discover.find_printer(mac="40:5b:d8:25:57:55", subnet="10.0.5")
+    check("a MAC SNMP does not report is not a false match", miss is None, str(miss))
 finally:
     (discover.sweep, discover.mac_of, discover.serial_of,
-     discover.model_of, discover.resolve_all) = _saved
+     discover.model_of, discover.resolve_all, snmp.macs) = _saved
 
 print("— the serial regex reads the real page wording —")
 check("serial pulled from the info text",

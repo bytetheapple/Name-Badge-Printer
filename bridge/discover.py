@@ -31,13 +31,16 @@ from dataclasses import dataclass
 
 import requests
 
+import snmp
+
 PRINT_PORT = 9100
 STATUS_PAGE = "/general/status.html"
-#: The Maintenance Information page. Unlike the network page, it is served
-#: without logging in, and it carries the serial -- a printer's one stable,
-#: routable identity. The MAC is only on a login-gated page and is read from
-#: ARP, which cannot cross a subnet; the serial can, over plain HTTP, which
-#: is what lets a printer be re-found after a DHCP move to another subnet.
+#: The Maintenance Information page, an HTTP *fallback* for the serial. It
+#: carries 'Serial no.' in the clear on some firmware -- but not all: the
+#: QL-820NWB at Shir Hadash serves it openly on one printer and behind the
+#: login on another, and we discard the web password after setup, so the page
+#: is not a reliable fleet-wide identity channel. SNMP is (see serial_of); this
+#: page is only tried when SNMP does not answer.
 INFO_PAGE = "/general/information.html?kind=item"
 #: 'Serial no. H2G205774' on that page, once the tags are gone. Requires a
 #: digit so a stray word cannot pass as a serial.
@@ -233,12 +236,18 @@ def sweep_wide(
 
 
 def serial_of(ip: str, timeout: float = 3.0) -> str | None:
-    """The printer's serial, read from the Maintenance Information page.
+    """The printer's serial -- its one stable, routable identity.
 
-    No login, and it works across subnets because it is a routed HTTP request
-    rather than an ARP lookup -- so a printer that took a new DHCP address, even
-    on a different subnet, can still be matched to the one we configured.
+    SNMP first (port 161, community 'public'): no login, works across subnets,
+    and firmware-independent, so it reads the serial even on a printer whose web
+    UI is gated -- which is how print managers recognise a device across a DHCP
+    move. The web page is only a fallback for a printer with SNMP switched off;
+    it carries the serial in the clear on some firmware but not all, and we no
+    longer hold the login for the ones that gate it.
     """
+    got = snmp.serial(ip, timeout=min(timeout, 2.0))
+    if got:
+        return got
     try:
         r = requests.get(f"http://{ip}{INFO_PAGE}", timeout=timeout)
         r.raise_for_status()
@@ -308,7 +317,15 @@ def find_printer(
         if wanted_serial and (found_serial or "").strip().lower() == wanted_serial:
             return found                              # exact: the serial matches
         if wanted_mac and found.mac == wanted_mac:
-            return found                              # exact: the MAC matches
+            return found                              # exact: the MAC matches (ARP)
+        if wanted_mac and wanted_mac in snmp.macs(ip):
+            # ARP only holds MACs for our own subnet; a printer a router away
+            # answers ARP with the router's MAC, so mac_of misses it. SNMP
+            # returns the printer's own MACs over the routed path, so a MAC
+            # match survives a subnet hop too. Record the confirmed MAC, not
+            # the router's, so nothing downstream stores the wrong one.
+            found.mac = wanted_mac
+            return found
         if not wanted_mac and not wanted_serial and is_supported(found.model, models):
             loose = loose or found                    # nothing to match on: model
     return loose

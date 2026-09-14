@@ -349,8 +349,9 @@ def probe_printers(printers: list) -> list:
                 _log(f"learned {p.get('name') or p['id']}'s {column} ({learned})")
 
         # The serial, likewise, and this is the one that outlives a subnet
-        # change: read over HTTP, it re-finds a printer the ARP-based MAC never
-        # could. Learned once, the first time the printer answers.
+        # change: read over SNMP (falling back to HTTP), it re-finds a printer
+        # the ARP-based MAC never could, and reads even on firmware that gates
+        # the web page. Learned once, the first time the printer answers.
         if status.get("reachable") and ip and not p.get("serial"):
             serial = discover.serial_of(ip)
             if serial:
