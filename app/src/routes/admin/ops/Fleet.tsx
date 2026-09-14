@@ -102,8 +102,8 @@ export default function Fleet() {
         devices.filter((d) => !d.pinned_ref),
       )
       const asked =
-        `Every print server not pinned to something else will move to ${ref} within about ` +
-        `fifteen minutes. A device that fails to start on it reverts itself.` +
+        `Every print server not pinned to something else will move to ${ref} within a ` +
+        `minute or two. A device that fails to start on it reverts itself.` +
         (warning ? `\n\n${warning}` : '') +
         `\n\nContinue?`
       if (!window.confirm(asked)) return
@@ -307,7 +307,7 @@ export default function Fleet() {
       <h2 style={{ marginTop: 28 }}>Bridge release</h2>
       <p className="muted small">
         The version every print server converges on, unless it is pinned to something else.
-        Devices check every fifteen minutes; one that fails to start on a new version puts the
+        Devices check about once a minute; one that fails to start on a new version puts the
         old one back by itself and says so below.
       </p>
       <div className="release-row">
