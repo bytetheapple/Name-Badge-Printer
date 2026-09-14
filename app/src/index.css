@@ -2438,3 +2438,29 @@ button.danger:disabled {
   color: var(--text-h);
   user-select: all;
 }
+
+/* The state of a "find it again" search, under a printer's address. */
+.locate-status {
+  margin-top: 6px;
+  font-size: 13px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.locate-status.searching { color: var(--muted); }
+.locate-status.found     { color: var(--ok-text); }
+.locate-status.missed    { color: var(--err-text); }
+
+/* A small pulsing dot, so a search reads as running rather than stuck. */
+.spinner-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--accent);
+  flex: 0 0 auto;
+  animation: spinner-pulse 1s ease-in-out infinite;
+}
+@keyframes spinner-pulse {
+  0%, 100% { opacity: 0.3; }
+  50%      { opacity: 1; }
+}

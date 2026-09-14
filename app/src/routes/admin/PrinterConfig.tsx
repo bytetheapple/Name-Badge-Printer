@@ -33,6 +33,42 @@ function PrinterTab({
   )
 }
 
+/**
+ * The live state of a "find it again" search, under the printer's address.
+ *
+ * Reads the session the bridge writes, so it is the truth rather than a
+ * hopeful message: still searching (with the seconds ticking, which is the
+ * progress the old version never showed), found and now at a new address, or
+ * finished without finding it and why. Nothing at all when no recent search.
+ */
+function LocateStatus({ locate }: { locate?: LocateRow }) {
+  if (!locate) return null
+
+  if (!LOCATE_DONE.has(locate.state)) {
+    const started = Date.parse(locate.updated_at)
+    const secs = Number.isNaN(started) ? 0 : Math.max(0, Math.round((Date.now() - started) / 1000))
+    return (
+      <div className="locate-status searching">
+        <span className="spinner-dot" aria-hidden="true" />
+        Searching the network for this printer… {secs}s
+      </div>
+    )
+  }
+  if (locate.state === 'done') {
+    return (
+      <div className="locate-status found">
+        Found it{locate.wireless_ip ? ` — now at ${locate.wireless_ip}` : ''}. Its address is updated.
+      </div>
+    )
+  }
+  return (
+    <div className="locate-status missed">
+      {locate.error ??
+        'The search finished without finding this printer. Check it is powered on and on the network.'}
+    </div>
+  )
+}
+
 /** Add or edit a printer.
  *
  *  A dialog rather than fields on the page, so the page can read as a plain
@@ -150,6 +186,18 @@ function PrinterDialog({
 /** Slightly longer than the bridge's ~15s heartbeat, so most polls see
  *  something new rather than re-reading the same rows. */
 const STATUS_REFRESH_MS = 20000
+//: A finished search stops being news after this long, and clears itself.
+const LOCATE_SHOW_MS = 5 * 60 * 1000
+
+type LocateRow = {
+  printer_id: string
+  state: string
+  error: string | null
+  updated_at: string
+  wireless_ip: string | null
+}
+
+const LOCATE_DONE = new Set(['done', 'failed'])
 
 /**
  * The printer whose tab was last open, so leaving the page and coming back
@@ -194,6 +242,15 @@ export default function PrinterConfig() {
   const [dialog, setDialog] = useState<'add' | Printer | null>(null)
   const [busy, setBusy] = useState<string | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
+  //: The most recent "find it again" search per printer, straight from the
+  //: session row the bridge writes. DB-backed on purpose: the old code kept
+  //: this in a notice string, which vanished on a tab switch and could not
+  //: tell a search still running from one that finished — so it read as
+  //: frozen whatever had happened. This survives a tab switch and a reload.
+  const [locates, setLocates] = useState<Record<string, LocateRow>>({})
+  //: A one-second heartbeat, live only while a search is, so the elapsed
+  //: counter moves and the search looks like it is doing something.
+  const [, setTick] = useState(0)
 
   const loadPrinters = useCallback(async () => {
     if (!orgId) return
@@ -206,19 +263,61 @@ export default function PrinterConfig() {
     setLoading(false)
   }, [orgId])
 
+  // The most recent locate session per printer, recent ones only. Latest per
+  // printer wins: order by newest and let the first seen for each id stand.
+  const loadLocates = useCallback(async () => {
+    if (!orgId) return
+    const since = new Date(Date.now() - LOCATE_SHOW_MS).toISOString()
+    const { data } = await supabase
+      .from('provisioning_sessions')
+      .select('printer_id, state, error, updated_at, data')
+      .eq('org_id', orgId)
+      .eq('kind', 'locate')
+      .gte('updated_at', since)
+      .order('updated_at', { ascending: false })
+    const latest: Record<string, LocateRow> = {}
+    for (const s of (data ?? []) as Array<Record<string, unknown>>) {
+      const pid = s.printer_id as string | null
+      if (!pid || latest[pid]) continue
+      latest[pid] = {
+        printer_id: pid,
+        state: String(s.state ?? ''),
+        error: (s.error as string | null) ?? null,
+        updated_at: String(s.updated_at ?? ''),
+        wireless_ip: ((s.data as Record<string, unknown>)?.wireless_ip as string | null) ?? null,
+      }
+    }
+    setLocates(latest)
+  }, [orgId])
+
   useEffect(() => {
     void loadPrinters()
-  }, [loadPrinters])
+    void loadLocates()
+  }, [loadPrinters, loadLocates])
 
   // The reachability dot is presented as live status, so it has to be. The
   // bridge reports each printer's state on its heartbeat, roughly every 15
   // seconds; without re-reading, the dot shows whatever was true when the page
-  // was opened and quietly goes stale.
+  // was opened and quietly goes stale. A running search is read faster, so
+  // that gets its own quicker poll.
   useEffect(() => {
     if (!orgId) return
-    const id = window.setInterval(() => void loadPrinters(), STATUS_REFRESH_MS)
+    const slow = window.setInterval(() => void loadPrinters(), STATUS_REFRESH_MS)
+    const fast = window.setInterval(() => void loadLocates(), 4000)
+    return () => {
+      window.clearInterval(slow)
+      window.clearInterval(fast)
+    }
+  }, [orgId, loadPrinters, loadLocates])
+
+  // Tick once a second while any search is still running, so its elapsed
+  // counter advances. Stops itself the moment nothing is in flight.
+  const anySearching = Object.values(locates).some((l) => !LOCATE_DONE.has(l.state))
+  useEffect(() => {
+    if (!anySearching) return
+    const id = window.setInterval(() => setTick((n) => n + 1), 1000)
     return () => window.clearInterval(id)
-  }, [orgId, loadPrinters])
+  }, [anySearching])
 
   // Land on a printer, not on the form for adding one. Most customers have a
   // single printer, and arriving at its status is what they came for.
@@ -273,12 +372,14 @@ export default function PrinterConfig() {
       printer_name: printer.name,
     })
     setBusy(null)
-    setNotice(
-      error
-        ? `Could not start the search: ${error.message}`
-        : `Looking for ${printer.name} on the network. This takes up to a couple of ` +
-          'minutes; the address updates here when it is found.',
-    )
+    if (error) {
+      setNotice(`Could not start the search: ${error.message}`)
+      return
+    }
+    // No notice: the search's own status line takes over from here, and it
+    // stays put across tab switches because it reads the session, not a string
+    // this function set and forgot.
+    await loadLocates()
   }
 
   async function remove(printer: Printer) {
@@ -346,6 +447,7 @@ export default function PrinterConfig() {
                     .filter(Boolean)
                     .join(' · ')}
                 </div>
+                <LocateStatus locate={locates[current.id]} />
               </div>
               <div className="printer-summary-actions">
                 <button className="secondary btn-sm" onClick={() => setDialog(current)}>
@@ -361,7 +463,11 @@ export default function PrinterConfig() {
                 <button
                   className="secondary btn-sm"
                   onClick={() => void locate(current)}
-                  disabled={busy === current.id || !current.mac}
+                  disabled={
+                    busy === current.id ||
+                    !current.mac ||
+                    (locates[current.id] && !LOCATE_DONE.has(locates[current.id].state))
+                  }
                   title={
                     current.mac
                       ? 'Sweep the network for this printer and correct its address'
@@ -369,7 +475,9 @@ export default function PrinterConfig() {
                         'next time the printer answers'
                   }
                 >
-                  {busy === current.id ? 'Looking…' : 'Find it again'}
+                  {locates[current.id] && !LOCATE_DONE.has(locates[current.id].state)
+                    ? 'Searching…'
+                    : 'Find it again'}
                 </button>
                 <button
                   className="secondary btn-sm"
