@@ -87,10 +87,13 @@ export default function StatusPanel() {
   }, [orgId])
 
   useEffect(() => {
-    void loadBridge()
-    void loadPrinters()
-    void loadJobs()
-    void loadNetReq()
+    const refreshAll = () => {
+      void loadBridge()
+      void loadPrinters()
+      void loadJobs()
+      void loadNetReq()
+    }
+    refreshAll()
     const channel = supabase
       .channel('status-panel')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'printer_status' }, () =>
@@ -106,17 +109,37 @@ export default function StatusPanel() {
         () => loadNetReq(),
       )
       .subscribe()
-    // Re-read rather than only re-render. Whether the server is online is
-    // judged against bridge_last_seen, so a page that never refetches it will
-    // eventually call a healthy server offline no matter what it is doing —
-    // which is exactly what a dropped realtime channel caused.
-    const timer = window.setInterval(() => {
-      setTick((n) => n + 1)
-      void loadBridge()
-    }, 5000)
+
+    // Re-read rather than only re-render: online-ness is judged against
+    // bridge_last_seen, so a page that never refetches it eventually calls a
+    // healthy server offline. Fast while the tab is watched, slow while it is
+    // hidden — and, most importantly, an immediate refetch the moment it comes
+    // back to the front, because a background tab's timers are throttled to
+    // about once a minute and the shown status would otherwise be that stale
+    // exactly when someone returns to it to check.
+    let timer = 0
+    const schedule = () => {
+      window.clearInterval(timer)
+      timer = window.setInterval(
+        () => {
+          setTick((n) => n + 1)
+          void loadBridge()
+        },
+        document.hidden ? 60000 : 5000,
+      )
+    }
+    schedule()
+    const onVisible = () => {
+      if (!document.hidden) refreshAll()
+      schedule()
+    }
+    document.addEventListener('visibilitychange', onVisible)
+    window.addEventListener('focus', onVisible)
     return () => {
       void supabase.removeChannel(channel)
       window.clearInterval(timer)
+      document.removeEventListener('visibilitychange', onVisible)
+      window.removeEventListener('focus', onVisible)
     }
   }, [loadBridge, loadPrinters, loadJobs, loadNetReq])
 
@@ -221,9 +244,10 @@ export default function StatusPanel() {
           )}
           {!bridgeOnline && (
             <p className="muted small">
-              As last reported
+              Last checked in
               {lastSeen ? ` at ${new Date(lastSeen).toLocaleTimeString()}` : ''}. The print
-              server is not answering now, so these may be out of date.
+              server checks in every couple of seconds; it hasn&apos;t in a little while, so
+              these figures may be out of date.
             </p>
           )}
         </div>
