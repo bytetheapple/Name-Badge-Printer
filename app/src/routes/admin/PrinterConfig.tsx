@@ -48,12 +48,13 @@ function LocateStatus({ locate }: { locate?: LocateRow }) {
     const started = Date.parse(locate.updated_at)
     const ms = Number.isNaN(started) ? 0 : Math.max(0, Date.now() - started)
     if (ms > LOCATE_STALL_MS) {
-      // Not "searching" any more -- nothing is. The request was never taken
-      // up, so say the likely reason rather than spin a counter forever.
+      // Past the point where a real search would have reported, so it did not
+      // find the printer -- or the print server never took the request up. A
+      // single actionable line either way, and the button is enabled to retry.
       return (
         <div className="locate-status missed">
-          The print server has not started this search. It may be offline — check the Print
-          Server tab. You can try again once it is back.
+          The search didn&apos;t find the printer. Check it is powered on and the print server
+          is online, then try again.
         </div>
       )
     }
@@ -203,6 +204,7 @@ const LOCATE_SHOW_MS = 5 * 60 * 1000
 //: print server has not picked the request up, which usually means it is
 //: offline.
 const LOCATE_STALL_MS = 195 * 1000
+const LOCATES_KEY = 'nbk.locates'
 
 type LocateRow = {
   printer_id: string
@@ -262,7 +264,17 @@ export default function PrinterConfig() {
   //: this in a notice string, which vanished on a tab switch and could not
   //: tell a search still running from one that finished — so it read as
   //: frozen whatever had happened. This survives a tab switch and a reload.
-  const [locates, setLocates] = useState<Record<string, LocateRow>>({})
+  const [locates, setLocates] = useState<Record<string, LocateRow>>(() => {
+    // Seeded from the last visit: the outcome of a search must survive a tab
+    // switch, which unmounts this whole page. It used to live only in the
+    // session row and the on-screen state, so leaving and returning lost it
+    // entirely -- the search vanished without a trace.
+    try {
+      return JSON.parse(localStorage.getItem(LOCATES_KEY) ?? '{}')
+    } catch {
+      return {}
+    }
+  })
   //: A one-second heartbeat, live only while a search is, so the elapsed
   //: counter moves and the search looks like it is doing something.
   const [, setTick] = useState(0)
@@ -314,20 +326,31 @@ export default function PrinterConfig() {
         wireless_ip: ((s.data as Record<string, unknown>)?.wireless_ip as string | null) ?? null,
       }
     }
-    // Merge, not replace: a search started a moment ago may not be in this
-    // read yet, and wiping it would flash the status away. Keep a local
-    // still-searching entry the read did not return, but only briefly, so a
-    // row that truly never surfaces gives up rather than spins forever.
+    // Merge, not replace. A search this read did not return -- because it is
+    // seconds old, or because the session aged out -- is kept from what we
+    // already had, so the outcome never blanks. A kept search that has run
+    // past the stall point renders as failed-try-again rather than spinning;
+    // that is handled where it is shown, so nothing has to mutate it here.
     setLocates((prev) => {
       const merged: Record<string, LocateRow> = { ...latest }
       for (const [pid, l] of Object.entries(prev)) {
-        if (!merged[pid] && !LOCATE_DONE.has(l.state) && Date.now() - Date.parse(l.updated_at) < 15000) {
-          merged[pid] = l
-        }
+        if (merged[pid]) continue
+        // Kept within the display window whether it finished or is still
+        // going; the render decides what a long-running one has become.
+        if (Date.now() - Date.parse(l.updated_at) < LOCATE_SHOW_MS) merged[pid] = l
       }
       return merged
     })
   }, [orgId])
+
+  // Mirror the tracker to storage so the next mount can seed from it.
+  useEffect(() => {
+    try {
+      localStorage.setItem(LOCATES_KEY, JSON.stringify(locates))
+    } catch {
+      // storage unavailable — the tracker still works within this mount
+    }
+  }, [locates])
 
   useEffect(() => {
     void loadPrinters()
