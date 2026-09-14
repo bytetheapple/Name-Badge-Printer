@@ -58,10 +58,12 @@ function LocateStatus({ locate }: { locate?: LocateRow }) {
         </div>
       )
     }
+    const total = Math.round(ms / 1000)
+    const clock = `${Math.floor(total / 60)}:${String(total % 60).padStart(2, '0')}`
     return (
       <div className="locate-status searching">
         <span className="spinner-dot" aria-hidden="true" />
-        Searching the network for this printer… {Math.round(ms / 1000)}s (up to about 3 minutes)
+        Searching the network for this printer… {clock} (up to about 3 minutes)
       </div>
     )
   }
