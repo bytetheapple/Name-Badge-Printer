@@ -267,27 +267,51 @@ export default function PrinterConfig() {
   // printer wins: order by newest and let the first seen for each id stand.
   const loadLocates = useCallback(async () => {
     if (!orgId) return
-    const since = new Date(Date.now() - LOCATE_SHOW_MS).toISOString()
-    const { data } = await supabase
+    // No time filter in the query: comparing the server's rows against the
+    // client's clock hid a just-created row whenever the two clocks disagreed,
+    // which showed as nothing happening at all. Recency is decided below, from
+    // each row's own timestamp, and only to drop a finished search that is no
+    // longer news -- a search still running always shows.
+    const { data, error } = await supabase
       .from('provisioning_sessions')
       .select('printer_id, state, error, updated_at, data')
       .eq('org_id', orgId)
       .eq('kind', 'locate')
-      .gte('updated_at', since)
       .order('updated_at', { ascending: false })
+      .limit(40)
+    if (error) return // keep whatever is shown rather than blanking it
+    const cutoff = Date.now() - LOCATE_SHOW_MS
     const latest: Record<string, LocateRow> = {}
     for (const s of (data ?? []) as Array<Record<string, unknown>>) {
       const pid = s.printer_id as string | null
       if (!pid || latest[pid]) continue
+      const state = String(s.state ?? '')
+      const updated = String(s.updated_at ?? '')
+      const done = LOCATE_DONE.has(state)
+      // A finished search older than the window is stale; a running one is
+      // always current, however long it has been.
+      if (done && Date.parse(updated) < cutoff) continue
       latest[pid] = {
         printer_id: pid,
-        state: String(s.state ?? ''),
+        state,
         error: (s.error as string | null) ?? null,
-        updated_at: String(s.updated_at ?? ''),
+        updated_at: updated,
         wireless_ip: ((s.data as Record<string, unknown>)?.wireless_ip as string | null) ?? null,
       }
     }
-    setLocates(latest)
+    // Merge, not replace: a search started a moment ago may not be in this
+    // read yet, and wiping it would flash the status away. Keep a local
+    // still-searching entry the read did not return, but only briefly, so a
+    // row that truly never surfaces gives up rather than spins forever.
+    setLocates((prev) => {
+      const merged: Record<string, LocateRow> = { ...latest }
+      for (const [pid, l] of Object.entries(prev)) {
+        if (!merged[pid] && !LOCATE_DONE.has(l.state) && Date.now() - Date.parse(l.updated_at) < 15000) {
+          merged[pid] = l
+        }
+      }
+      return merged
+    })
   }, [orgId])
 
   useEffect(() => {
@@ -376,9 +400,21 @@ export default function PrinterConfig() {
       setNotice(`Could not start the search: ${error.message}`)
       return
     }
-    // No notice: the search's own status line takes over from here, and it
-    // stays put across tab switches because it reads the session, not a string
-    // this function set and forgot.
+    // Show it searching at once, rather than waiting on a round trip to
+    // reveal the row we just wrote -- the button doing nothing visible for a
+    // beat is what a slow or skewed read looked like. The tracker refines this
+    // to found-or-not from the session, and stays put across tab switches
+    // because it reads the session rather than a string set and forgotten.
+    setLocates((prev) => ({
+      ...prev,
+      [printer.id]: {
+        printer_id: printer.id,
+        state: 'discover',
+        error: null,
+        updated_at: new Date().toISOString(),
+        wireless_ip: null,
+      },
+    }))
     await loadLocates()
   }
 
