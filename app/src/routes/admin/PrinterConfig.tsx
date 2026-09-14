@@ -80,7 +80,7 @@ function LocateStatus({
     return (
       <div className="locate-status searching">
         <span className="spinner-dot" aria-hidden="true" />
-        Searching the network for this printer… {clock} (up to about 3 minutes)
+        Searching the network for this printer… {clock} (a full search can take up to 3 min)
       </div>
     )
   }
