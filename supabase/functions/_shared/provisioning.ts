@@ -95,6 +95,7 @@ export async function claimStep(
     wired_ip: session.wired_ip ?? null,
     ssid: session.ssid ?? null,
     wireless_mac: session.wireless_mac ?? null,
+    serial: session.serial ?? null,
   };
   if (task === "rediscover" && session.wired_ip) {
     // Sweep the network the printer was actually on, not the one the print
@@ -340,6 +341,7 @@ interface Candidate {
   /** And its id — what a rehome binds to so it corrects that record rather
    *  than adding a second one for the same hardware. */
   configured_id?: string | null;
+  serial?: string | null;
 }
 
 /**
@@ -356,6 +358,7 @@ type KnownPrinter = {
   printer_ip: string | null;
   mac: string | null;
   wired_mac: string | null;
+  serial: string | null;
 };
 
 const norm = (v: unknown) => String(v ?? "").trim().toLowerCase();
@@ -392,26 +395,33 @@ async function updatePrinter(
 async function annotate(orgId: string, candidates: Candidate[]): Promise<Candidate[]> {
   if (!candidates.length) return candidates;
   const res = await fetch(
-    `${REST}/printers?org_id=eq.${orgId}&select=id,name,printer_ip,mac,wired_mac`,
+    `${REST}/printers?org_id=eq.${orgId}&select=id,name,printer_ip,mac,wired_mac,serial`,
     { headers: restHeaders },
   );
   if (!res.ok) return candidates;
 
-  // MAC first, address second.
+  // Serial first, then MAC, then address.
   //
-  // Matching on the address alone was the whole problem: a printer whose lease
-  // changed looked like a printer nobody had ever seen, so the operator was
-  // offered their own working hardware as though it were new. The MAC is the
-  // part that does not move, and it is what a rehome binds to.
+  // Address alone was the original bug: a printer whose lease changed looked
+  // like one nobody had ever seen. The MAC fixed that within a subnet, but is
+  // read from ARP and so comes back as the router's across one. The serial is
+  // read from the printer itself over routed HTTP, so it matches wherever the
+  // printer can be reached -- which is the only place any of this matters.
+  const bySerial = new Map<string, KnownPrinter>();
   const byMac = new Map<string, KnownPrinter>();
   const byIp = new Map<string, KnownPrinter>();
   for (const p of (await res.json()) as KnownPrinter[]) {
+    if (p.serial) bySerial.set(norm(p.serial), p);
     if (p.mac) byMac.set(norm(p.mac), p);
     if (p.wired_mac) byMac.set(norm(p.wired_mac), p);
     if (p.printer_ip) byIp.set(norm(p.printer_ip), p);
   }
   return candidates.map((c) => {
-    const hit = byMac.get(norm(c.mac)) ?? byIp.get(norm(c.ip)) ?? null;
+    const hit =
+      (c.serial ? bySerial.get(norm(c.serial)) : null) ??
+      byMac.get(norm(c.mac)) ??
+      byIp.get(norm(c.ip)) ??
+      null;
     return { ...c, configured_as: hit?.name ?? null, configured_id: hit?.id ?? null };
   });
 }

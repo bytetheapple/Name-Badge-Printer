@@ -348,6 +348,15 @@ def probe_printers(printers: list) -> list:
                 report[column] = learned
                 _log(f"learned {p.get('name') or p['id']}'s {column} ({learned})")
 
+        # The serial, likewise, and this is the one that outlives a subnet
+        # change: read over HTTP, it re-finds a printer the ARP-based MAC never
+        # could. Learned once, the first time the printer answers.
+        if status.get("reachable") and ip and not p.get("serial"):
+            serial = discover.serial_of(ip)
+            if serial:
+                report["serial"] = serial
+                _log(f"learned {p.get('name') or p['id']}'s serial ({serial})")
+
         reports.append(report)
     return reports
 

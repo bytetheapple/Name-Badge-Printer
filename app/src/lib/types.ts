@@ -267,6 +267,10 @@ export interface Printer {
   /** Wired MAC. Separate because the mDNS name depends on which interface
    *  answers: BRW+mac on wireless, BRN+wired_mac on Ethernet. */
   wired_mac: string | null
+  /** Read over HTTP from the printer; stable across DHCP and subnet changes,
+   *  so it can re-find a printer whose address moved when the MAC (from ARP)
+   *  cannot. Filled in by the bridge the first time the printer answers. */
+  serial: string | null
   port: number
   reachable: boolean | null
   media_type: string | null

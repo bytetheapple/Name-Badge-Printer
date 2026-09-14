@@ -60,7 +60,7 @@ class TaskResult:
 
 
 def _found_json(f) -> dict:
-    return {"ip": f.ip, "mac": f.mac, "model": f.model, "via": f.via}
+    return {"ip": f.ip, "mac": f.mac, "serial": f.serial, "model": f.model, "via": f.via}
 
 
 def _wait_for_printers(subnet, timeout, say, known=()) -> list:  # noqa: D417
@@ -433,6 +433,7 @@ def _wifi(ctx, say) -> TaskResult:
 
 def _rediscover(ctx, say) -> TaskResult:
     mac = ctx.get("wireless_mac")
+    serial = ctx.get("serial")
     subnet = ctx.get("subnet") or discover.local_subnet()
     say(f"looking for the printer on the wireless network ({mac or 'no MAC recorded'})")
     say(f"trying {discover.node_name_for(mac)}.local, then sweeping {subnet}.0/24"
@@ -447,10 +448,10 @@ def _rediscover(ctx, say) -> TaskResult:
         # mDNS first — one lookup, and it usually answers. Then the wired
         # network's range, then everywhere else: a printer that joins WiFi
         # frequently lands on a different subnet from the cable it just left.
-        target = discover.find_printer(mac=mac, subnet=subnet)
+        target = discover.find_printer(mac=mac, serial=serial, subnet=subnet)
         if not target:
             for net in nets[1:]:
-                target = discover.find_printer(mac=mac, subnet=net)
+                target = discover.find_printer(mac=mac, serial=serial, subnet=net)
                 if target:
                     break
         if target:

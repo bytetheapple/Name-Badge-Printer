@@ -120,7 +120,7 @@ install()
 r = pt.run("discover", BASE)
 check("succeeds and moves to the choice", r.ok and r.next_state == "select", r.next_state)
 check("reports what it found", r.data["candidates"] == [
-    {"ip": "10.0.0.5", "mac": "44:f7:9f:bc:ab:e8", "model": "Brother QL-820NWB", "via": "sweep"}])
+    {"ip": "10.0.0.5", "mac": "44:f7:9f:bc:ab:e8", "serial": None, "model": "Brother QL-820NWB", "via": "sweep"}])
 
 install(found=())
 r = pt.run("discover", BASE)
@@ -405,6 +405,7 @@ _saved = (discover.local_subnet, pt._wait_for_printers)
 class _F:
     def __init__(self, ip):
         self.ip, self.mac, self.model = ip, None, "QL-820NWB"
+        self.serial = None
         self.via, self.name = "sweep", None
 
 

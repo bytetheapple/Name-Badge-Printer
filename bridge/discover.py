@@ -26,12 +26,22 @@ import re
 import socket
 from collections.abc import Sequence
 import subprocess
+import html
 from dataclasses import dataclass
 
 import requests
 
 PRINT_PORT = 9100
 STATUS_PAGE = "/general/status.html"
+#: The Maintenance Information page. Unlike the network page, it is served
+#: without logging in, and it carries the serial -- a printer's one stable,
+#: routable identity. The MAC is only on a login-gated page and is read from
+#: ARP, which cannot cross a subnet; the serial can, over plain HTTP, which
+#: is what lets a printer be re-found after a DHCP move to another subnet.
+INFO_PAGE = "/general/information.html?kind=item"
+#: 'Serial no. H2G205774' on that page, once the tags are gone. Requires a
+#: digit so a stray word cannot pass as a serial.
+_SERIAL_RE = re.compile(r"serial\s*no\.?\s*([0-9A-Za-z]*[0-9][0-9A-Za-z]*)", re.I)
 
 #: The models this product supports. A site's network usually has other Brother
 #: devices on it — office lasers answer on 9100 and identify as Brother too —
@@ -51,6 +61,8 @@ def is_supported(model: str | None, models: tuple[str, ...] = SUPPORTED_MODELS) 
 class Found:
     ip: str
     mac: str | None = None
+    #: The printer's serial, read over HTTP. Subnet-independent, unlike the MAC.
+    serial: str | None = None
     model: str | None = None
     node_name: str | None = None
     #: How it was located — useful when a support transcript has to explain
@@ -220,6 +232,23 @@ def sweep_wide(
     return found
 
 
+def serial_of(ip: str, timeout: float = 3.0) -> str | None:
+    """The printer's serial, read from the Maintenance Information page.
+
+    No login, and it works across subnets because it is a routed HTTP request
+    rather than an ARP lookup -- so a printer that took a new DHCP address, even
+    on a different subnet, can still be matched to the one we configured.
+    """
+    try:
+        r = requests.get(f"http://{ip}{INFO_PAGE}", timeout=timeout)
+        r.raise_for_status()
+    except requests.RequestException:
+        return None
+    text = html.unescape(re.sub(r"<[^>]+>", " ", r.text))
+    m = _SERIAL_RE.search(text)
+    return m.group(1) if m else None
+
+
 def model_of(ip: str, timeout: float = 3.0) -> str | None:
     """The printer's model, read from its status page.
 
@@ -238,6 +267,7 @@ def model_of(ip: str, timeout: float = 3.0) -> str | None:
 def find_printer(
     *,
     mac: str | None = None,
+    serial: str | None = None,
     node_name: str | None = None,
     subnet: str | None = None,
     models: tuple[str, ...] = SUPPORTED_MODELS,
@@ -245,10 +275,11 @@ def find_printer(
 ) -> Found | None:
     """Locate one printer, preferring the cheap routes.
 
-    Give it the **wireless** MAC read before the cutover and it will normally
-    find the printer with a single mDNS lookup. Without a MAC it falls back to
-    sweeping and matching on the model name, which is only reliable when there
-    is one printer of that model on the network.
+    Given the **wireless** MAC it will normally find the printer with a single
+    mDNS lookup. Given the **serial** it can match a swept candidate even when
+    that candidate is on another subnet -- the serial is read over routed HTTP,
+    where the MAC (from ARP) would come back as the router's. Without either it
+    falls back to the model name, reliable only when there is one such printer.
     """
     name = node_name or (node_name_for(mac) if mac else None)
     if name:
@@ -257,18 +288,29 @@ def find_printer(
         # has the print port open, and otherwise fall through to the sweep.
         for ip in resolve_all(name):
             if _port_open(ip, PRINT_PORT, 1.5):
-                return Found(ip=ip, mac=mac, node_name=name, model=model_of(ip), via="mdns")
+                return Found(
+                    ip=ip, mac=mac, serial=serial or serial_of(ip),
+                    node_name=name, model=model_of(ip), via="mdns",
+                )
 
-    wanted = mac.lower() if mac else None
-    candidates = sweep(subnet, timeout=sweep_timeout)
+    wanted_mac = mac.lower() if mac else None
+    wanted_serial = serial.strip().lower() if serial else None
     loose: Found | None = None
-    for ip in candidates:
-        found = Found(ip=ip, mac=mac_of(ip), model=model_of(ip), node_name=name, via="sweep")
-        if wanted and found.mac == wanted:
+    for ip in sweep(subnet, timeout=sweep_timeout):
+        # Serial before MAC: it is the identity that survives a subnet hop. Read
+        # it only for an address that answered the sweep, so the cost is one
+        # HTTP GET per printer found, not per address probed.
+        found_serial = serial_of(ip) if wanted_serial else None
+        found = Found(
+            ip=ip, mac=mac_of(ip), serial=found_serial, model=model_of(ip),
+            node_name=name, via="sweep",
+        )
+        if wanted_serial and (found_serial or "").strip().lower() == wanted_serial:
+            return found                              # exact: the serial matches
+        if wanted_mac and found.mac == wanted_mac:
             return found                              # exact: the MAC matches
-        if not wanted and is_supported(found.model, models):
-            # Remember it, but keep looking for something better.
-            loose = loose or found
+        if not wanted_mac and not wanted_serial and is_supported(found.model, models):
+            loose = loose or found                    # nothing to match on: model
     return loose
 
 
@@ -293,7 +335,9 @@ def discover_printers(
     for ip in addresses:
         model = model_of(ip)
         if is_supported(model, models):
-            out.append(Found(ip=ip, mac=mac_of(ip), model=model, via="sweep"))
+            out.append(Found(
+                ip=ip, mac=mac_of(ip), serial=serial_of(ip), model=model, via="sweep",
+            ))
     return out
 
 

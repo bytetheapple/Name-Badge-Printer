@@ -175,6 +175,33 @@ try:
 finally:
     discover.sweep = real_sweep
 
+print("— a moved printer is matched by serial, across a subnet —")
+_saved = (discover.sweep, discover.mac_of, discover.serial_of,
+          discover.model_of, discover.resolve_all)
+try:
+    discover.sweep = lambda subnet=None, **k: ["10.0.5.60"]
+    discover.mac_of = lambda ip: "aa:bb:cc:dd:ee:ff"   # the router, not the printer
+    discover.serial_of = lambda ip, timeout=3.0: "H2G205774"
+    discover.model_of = lambda ip, timeout=3.0: "QL-820NWB"
+    discover.resolve_all = lambda name, timeout=3.0: []
+    hit = discover.find_printer(serial="H2G205774", mac="40:5b:d8:25:57:55", subnet="10.0.5")
+    check("serial finds it where ARP would give the router's MAC",
+          hit is not None and hit.ip == "10.0.5.60", str(hit))
+    miss = discover.find_printer(serial="OTHER99", mac="40:5b:d8:25:57:55", subnet="10.0.5")
+    check("a wrong serial does not fall through to a false match", miss is None, str(miss))
+finally:
+    (discover.sweep, discover.mac_of, discover.serial_of,
+     discover.model_of, discover.resolve_all) = _saved
+
+print("— the serial regex reads the real page wording —")
+check("serial pulled from the info text",
+      (discover._SERIAL_RE.search("Model Name QL-820NWB Serial no. H2G205774 Firmware 1.25") or
+       [None, None])[0] is not None
+      and discover._SERIAL_RE.search("Serial no. H2G205774").group(1) == "H2G205774")
+check("a label with no digit is not a serial",
+      discover._SERIAL_RE.search("Serial no. Model") is None)
+
+
 print()
 if FAILURES:
     print(f"RESULT: {len(FAILURES)} failure(s): {', '.join(FAILURES)}")

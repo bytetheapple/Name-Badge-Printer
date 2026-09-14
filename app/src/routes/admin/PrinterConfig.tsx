@@ -592,12 +592,16 @@ export default function PrinterConfig() {
                 <button
                   className="secondary btn-sm"
                   onClick={() => void locate(current)}
-                  disabled={busy === current.id || !current.mac || searchActive(locates[current.id])}
+                  disabled={
+                    busy === current.id ||
+                    (!current.mac && !current.serial) ||
+                    searchActive(locates[current.id])
+                  }
                   title={
-                    current.mac
+                    current.mac || current.serial
                       ? 'Sweep the network for this printer and correct its address'
-                      : 'No MAC recorded yet — the print server fills this in the ' +
-                        'next time the printer answers'
+                      : 'No serial or MAC recorded yet — the print server fills this ' +
+                        'in the next time the printer answers'
                   }
                 >
                   {searchActive(locates[current.id]) ? 'Searching…' : 'Find it again'}

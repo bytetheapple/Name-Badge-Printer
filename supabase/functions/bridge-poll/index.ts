@@ -156,6 +156,7 @@ Deno.serve(async (req) => {
           ? { printer_ip: row.printer_ip }
           : {}),
         ...(typeof row.mac === "string" && row.mac ? { mac: row.mac } : {}),
+        ...(typeof row.serial === "string" && row.serial ? { serial: row.serial } : {}),
         ...(typeof row.wired_mac === "string" && row.wired_mac
           ? { wired_mac: row.wired_mac }
           : {}),
@@ -252,7 +253,7 @@ Deno.serve(async (req) => {
 
   const printersRes = await fetch(
     `${REST}/printers?org_id=eq.${bridge.org_id}${printerFilter(bridge)}` +
-      `&select=id,name,printer_ip,port,mac,wired_mac,header_image_url,badge_header,` +
+      `&select=id,name,printer_ip,port,mac,wired_mac,serial,header_image_url,badge_header,` +
       `badge_subtitle,badge_header_mode` +
       `&order=created_at.asc`,
     { headers: restHeaders },
