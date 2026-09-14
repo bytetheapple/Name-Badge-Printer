@@ -24,6 +24,7 @@ import discover
 import netjoin
 import provision_task
 import printer
+import rehome
 from badge import render_badge, render_test_badge
 
 #: Under the state directory, not beside the code: the service account writes
@@ -304,6 +305,11 @@ def handle_network_request(request: dict) -> dict:
     return {"id": request_id, "ok": ok, "error": error, "log": log}
 
 
+#: Finds a moved printer that mDNS cannot — one on another subnet — by sweeping
+#: in the background on a backoff. Fed each heartbeat below; started in main().
+_rehomer = rehome.Rehomer()
+
+
 def probe_printers(printers: list) -> list:
     """Ask each printer how it is, for the next poll to report upstream.
 
@@ -312,20 +318,38 @@ def probe_printers(printers: list) -> list:
     be reached at its stored address — asks mDNS whether it has simply moved.
     A DHCP lease expiring is otherwise indistinguishable from a printer that
     has failed, and it is by far the more likely of the two.
+
+    When mDNS cannot answer — the move crossed a subnet — the background
+    rehomer sweeps for it instead; take() hands back any new address it found,
+    and it is adopted here just as an mDNS result is.
     """
     reports = []
     for p in printers:
+        name = p.get("name") or p["id"]
         ip = p.get("printer_ip")
         port = p.get("port", 9100)
         status = printer.query_status(ip, port) if ip else {"reachable": False}
 
         if not status.get("reachable") and (p.get("mac") or p.get("wired_mac")):
-            moved = _relocate(p)
+            moved = _relocate(p)                       # mDNS: cheap, every heartbeat
             if moved:
-                _log(f"{p.get('name') or p['id']} answered at {moved}, not {ip}")
-                status = printer.query_status(moved, port)
-                if status.get("reachable"):
-                    ip = moved
+                found = printer.query_status(moved, port)
+                if found.get("reachable"):
+                    _log(f"{name} answered at {moved}, not {ip}")
+                    status, ip = found, moved
+
+        if not status.get("reachable"):
+            swept = _rehomer.take(p["id"])             # a background sweep's find
+            if swept:
+                found = printer.query_status(swept, port)
+                if found.get("reachable"):
+                    _log(f"{name} found by background sweep at {swept}, not {ip}")
+                    status, ip = found, swept
+
+        # Tell the rehomer where this printer stands: a reachable one needs no
+        # recovery (and a just-recovered one stops being swept), an unreachable
+        # one with an identity to match on gets a background sweep on a backoff.
+        _rehomer.update(p, bool(status.get("reachable")))
 
         report = {
             "id": p["id"],
@@ -346,7 +370,7 @@ def probe_printers(printers: list) -> list:
             column = _classify_mac(ip, learned) if learned else None
             if column:
                 report[column] = learned
-                _log(f"learned {p.get('name') or p['id']}'s {column} ({learned})")
+                _log(f"learned {name}'s {column} ({learned})")
 
         # The serial, likewise, and this is the one that outlives a subnet
         # change: read over SNMP (falling back to HTTP), it re-finds a printer
@@ -356,7 +380,7 @@ def probe_printers(printers: list) -> list:
             serial = discover.serial_of(ip)
             if serial:
                 report["serial"] = serial
-                _log(f"learned {p.get('name') or p['id']}'s serial ({serial})")
+                _log(f"learned {name}'s serial ({serial})")
 
         reports.append(report)
     return reports
@@ -433,6 +457,10 @@ def main():
             "and set BRIDGE_TOKEN in bridge/.env.",
             err=True,
         )
+
+    # The background sweep that re-finds a printer moved across a subnet. A
+    # daemon thread, so it never holds the process open past a shutdown.
+    _rehomer.start()
 
     last_probe = 0.0
     printers = []
