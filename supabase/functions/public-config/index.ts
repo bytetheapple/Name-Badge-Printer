@@ -4,8 +4,13 @@
 // never the Drive folder id, and never another tenant's settings.
 import { corsHeaders, json } from "../_shared/cors.ts";
 import { REST, resolveKiosk, restHeaders } from "../_shared/kiosk.ts";
+import { defaultFieldConfig, resolveFieldConfig } from "../_shared/formConfig.ts";
 
-const DEFAULTS = { selfie_mode: "off", pronouns_enabled: false, org_name: null };
+const DEFAULTS = {
+  selfie_mode: "off",
+  field_config: defaultFieldConfig(false),
+  org_name: null,
+};
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
@@ -29,7 +34,7 @@ Deno.serve(async (req) => {
     // the organization is public.
     const [res, orgRes] = await Promise.all([
       fetch(
-        `${REST}/app_settings?org_id=eq.${kiosk.org_id}&select=selfie_mode,pronouns_enabled`,
+        `${REST}/app_settings?org_id=eq.${kiosk.org_id}&select=selfie_mode,pronouns_enabled,field_config`,
         { headers: restHeaders },
       ),
       fetch(`${REST}/organizations?id=eq.${kiosk.org_id}&select=name`, {
@@ -38,10 +43,13 @@ Deno.serve(async (req) => {
     ]);
     const rows = res.ok ? await res.json() : [];
     const orgRows = orgRes.ok ? await orgRes.json() : [];
+    const s = rows[0] ?? {};
     return json({
       ok: true,
-      selfie_mode: rows[0]?.selfie_mode ?? DEFAULTS.selfie_mode,
-      pronouns_enabled: rows[0]?.pronouns_enabled ?? DEFAULTS.pronouns_enabled,
+      selfie_mode: s.selfie_mode ?? DEFAULTS.selfie_mode,
+      // The whole thing, both audiences: the form lets someone switch between
+      // Member and Visitor, so it needs both to re-shape itself when they do.
+      field_config: resolveFieldConfig(s.field_config, Boolean(s.pronouns_enabled)),
       org_name: orgRows[0]?.name ?? DEFAULTS.org_name,
       printer_name: kiosk.printer_name,
     });

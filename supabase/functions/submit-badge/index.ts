@@ -9,6 +9,7 @@
 // ever trusted to say which tenant a sign-in belongs to.
 import { corsHeaders, json } from "../_shared/cors.ts";
 import { checkSubmitAllowed, resolveKiosk } from "../_shared/kiosk.ts";
+import { resolveFieldConfig } from "../_shared/formConfig.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_ROLE = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -96,13 +97,6 @@ Deno.serve(async (req) => {
   if (visitorType !== "member" && visitorType !== "visitor") {
     return json({ ok: false, error: "Please select Member or Visitor." });
   }
-  // Visitors must provide contact details; members only need their name.
-  if (visitorType === "visitor" && !phone) {
-    return json({ ok: false, error: "Please enter your phone number." });
-  }
-  if (visitorType === "visitor" && !email) {
-    return json({ ok: false, error: "Please enter your email address." });
-  }
   if (firstName.length > 60 || lastName.length > 60) {
     return json({ ok: false, error: "That name is too long." });
   }
@@ -121,6 +115,25 @@ Deno.serve(async (req) => {
   }
   const orgId = kiosk.org_id;
   const printerId = kiosk.printer_id;
+
+  // The org's own required-field rules are the authority here; the form enforces
+  // them too, but a crafted request must not slip a required field past. First
+  // and last name are always required (checked above); selfie has its own path.
+  // A field the org has hidden is never required, so this also stops the old
+  // "visitors must give a phone" rule rejecting a form that no longer asks.
+  const settingsRes = await fetch(
+    `${SUPABASE_URL}/rest/v1/app_settings?org_id=eq.${orgId}&select=field_config,pronouns_enabled`,
+    { headers: restHeaders },
+  );
+  const srow = settingsRes.ok ? (await settingsRes.json())[0] : null;
+  const rules = resolveFieldConfig(srow?.field_config, Boolean(srow?.pronouns_enabled))[visitorType];
+  const missing =
+    (rules.phone === "required" && !phone && "phone number") ||
+    (rules.email === "required" && !email && "email address") ||
+    (rules.pronouns === "required" && !pronouns && "pronouns");
+  if (missing) {
+    return json({ ok: false, error: `Please enter your ${missing}.` });
+  }
 
   // Rate limits and the queue cap. The message that comes back is written for
   // the visitor standing at the kiosk, so it is safe to show as-is.

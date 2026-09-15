@@ -888,6 +888,71 @@ a.pill:hover {
   padding-top: 16px;
 }
 
+/* Sign-in form customization panel (Settings): a row per question, each with a
+   hidden / optional / required segmented control. */
+.form-config .field-rows {
+  padding-top: 12px;
+  display: flex;
+  flex-direction: column;
+}
+.field-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding: 12px 0;
+  border-top: 1px solid var(--border);
+}
+.field-row:first-child {
+  border-top: none;
+}
+.field-row-label {
+  font-weight: 500;
+  color: var(--text-h);
+}
+.seg {
+  display: inline-flex;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+  flex: 0 0 auto;
+}
+.seg-btn {
+  appearance: none;
+  border: none;
+  border-left: 1px solid var(--border);
+  background: none;
+  color: var(--muted);
+  font: inherit;
+  font-size: 0.85rem;
+  padding: 6px 14px;
+  cursor: pointer;
+}
+.seg-btn:first-child {
+  border-left: none;
+}
+.seg-btn:hover:not(:disabled):not(.active) {
+  color: var(--text-h);
+}
+.seg-btn.active {
+  background: var(--accent);
+  color: #fff;
+  font-weight: 600;
+}
+.seg-btn:disabled {
+  cursor: default;
+}
+/* A locked row (first/last name): the chosen state still reads, the rest dim. */
+.seg-btn:disabled:not(.active) {
+  opacity: 0.45;
+}
+.photo-storage {
+  margin-top: 16px;
+  padding-top: 14px;
+  border-top: 1px solid var(--border);
+}
+
 /* ---- Printers page: flat, no panels ---- */
 .printer-summary {
   display: flex;

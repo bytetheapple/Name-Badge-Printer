@@ -3,8 +3,76 @@ import { supabase } from '../../lib/supabase'
 import { useOrg } from '../../lib/org'
 import { invokeFn } from '../../lib/functions'
 import OrgLogo from './OrgLogo'
+import {
+  defaultFieldConfig,
+  resolveFieldConfig,
+  type Audience,
+  type ConfigField,
+  type FieldConfig,
+  type FieldState,
+} from '../../lib/formConfig'
 
 type SelfieMode = 'off' | 'optional' | 'required'
+
+const STATE_LABEL: Record<FieldState, string> = {
+  hidden: 'Hidden',
+  optional: 'Optional',
+  required: 'Required',
+}
+
+/** A hidden / optional / required picker for one field. Locked rows (first and
+ *  last name) render the same control disabled, so the "always required" rule
+ *  is shown the same way it is set everywhere else. */
+function StateControl({
+  value,
+  onChange,
+  disabled,
+}: {
+  value: FieldState
+  onChange?: (s: FieldState) => void
+  disabled?: boolean
+}) {
+  return (
+    <div className="seg" role="group">
+      {(['hidden', 'optional', 'required'] as FieldState[]).map((s) => (
+        <button
+          key={s}
+          type="button"
+          className={`seg-btn${value === s ? ' active' : ''}`}
+          aria-pressed={value === s}
+          disabled={disabled || !onChange}
+          onClick={() => onChange?.(s)}
+        >
+          {STATE_LABEL[s]}
+        </button>
+      ))}
+    </div>
+  )
+}
+
+function FieldRow({
+  label,
+  hint,
+  value,
+  onChange,
+  locked,
+}: {
+  label: string
+  hint?: string
+  value: FieldState
+  onChange?: (s: FieldState) => void
+  locked?: boolean
+}) {
+  return (
+    <div className="field-row">
+      <div className="field-row-label">
+        {label}
+        {hint && <span className="muted small"> · {hint}</span>}
+      </div>
+      <StateControl value={value} onChange={onChange} disabled={locked} />
+    </div>
+  )
+}
 
 export default function Settings() {
   const { orgId, isAdmin, isOwner } = useOrg()
@@ -14,7 +82,9 @@ export default function Settings() {
   //: cannot read the integration itself (it belongs to the owner), so this is
   //: the one fact the database will tell them about it.
   const [driveConnected, setDriveConnected] = useState(false)
-  const [pronounsEnabled, setPronounsEnabled] = useState(false)
+  //: The form shape, per audience. The panel's two tabs edit the two halves.
+  const [fieldConfig, setFieldConfig] = useState<FieldConfig>(() => defaultFieldConfig(false))
+  const [tab, setTab] = useState<Audience>('member')
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -58,9 +128,10 @@ export default function Settings() {
         return
       }
       const mode = (data?.selfie_mode ?? 'off') as SelfieMode
-      const pronouns = Boolean(data?.pronouns_enabled)
       setSelfieMode(mode)
-      setPronounsEnabled(pronouns)
+      // pronouns_enabled seeds only the default for a row that has never been
+      // edited; once field_config is set it is the authority.
+      setFieldConfig(resolveFieldConfig(data?.field_config, Boolean(data?.pronouns_enabled)))
 
       // Not filtered on enabled: a revoked connection is exactly the one worth
       // showing, because Reconnect is the way out of it.
@@ -84,22 +155,26 @@ export default function Settings() {
     })()
   }, [orgId])
 
-  /** Written on click. Nothing else depends on it, so there is nothing for a
-   *  Save button to coordinate — only a change to lose by walking away. */
-  async function togglePronouns(value: boolean) {
-    const before = pronounsEnabled
-    setPronounsEnabled(value)
+  /** Set one field's state for one audience, written on click like every other
+   *  control here. The whole config is written each time — one column, always
+   *  complete — so a partial row can never be stored. */
+  async function setFieldState(audience: Audience, field: ConfigField, state: FieldState) {
+    const before = fieldConfig
+    const next: FieldConfig = {
+      ...fieldConfig,
+      [audience]: { ...fieldConfig[audience], [field]: state },
+    }
+    setFieldConfig(next)
     setError(null)
     const { error } = await supabase
       .from('app_settings')
-      .update({ pronouns_enabled: value })
+      .update({ field_config: next })
       .eq('org_id', orgId)
     if (error) {
-      // Back where it was: a switch showing a state the database does not
-      // hold is worse than the failure.
-      setPronounsEnabled(before)
+      // Back where it was: a control showing a state the database does not hold
+      // is worse than the failure.
+      setFieldConfig(before)
       setError(error.message)
-      return
     }
   }
 
@@ -229,108 +304,130 @@ export default function Settings() {
       {/* The column, so the panes line up. Every control on this page writes
           itself on change — there is nothing left to submit. */}
       <div className="config-form">
-        <section className="card">
-          <h2>Selfie (visitors only)</h2>
-          {/* Said before the control rather than after it, because it is the
-              reason the control is unavailable. */}
-          {!driveConnected && (
-            <p className="muted small" style={{ marginBottom: 12 }}>
-              Visitor photos are stored in your congregation's own Google Drive.{' '}
-              {isOwner
-                ? 'Choosing Optional or Required will ask you to connect a Google account, and ' +
-                  'the folder is made for you.'
-                : 'An owner needs to connect a Google account first — ask one to choose a ' +
-                  'selfie requirement here, or to connect Google under Integrations.'}
-            </p>
-          )}
+        {/* The sign-in form's shape, for every printer. Two tabs, one per kind
+            of person; each question can be required, optional or hidden. First
+            and last name are always asked, so they are shown but locked. */}
+        <section className="card form-config">
+          <h2>Sign-in form</h2>
+          <p className="muted small" style={{ marginBottom: 14 }}>
+            Which questions each person answers, and whether each is required. First and last name
+            are always asked. This applies to every printer.
+          </p>
 
-          <label className="field">
-            Selfie requirement
-            {/* The control stays live even when Drive is not connected — only
-                the two options that need it are unavailable. Disabling the
-                whole thing would trap an organization whose Drive was
-                disconnected while selfies were switched on: unable to select
-                the one value that would stop the failures. */}
-            <select
-              value={selfieMode}
-              disabled={saving}
-              onChange={(e) => {
-                const next = e.target.value as SelfieMode
-                // Belt and braces: the options are disabled, but a keyboard or
-                // an older browser can still land here, and silently ignoring
-                // the choice would look like the page was broken.
-                setError(null)
-                // Switching photographs on is what triggers the connection and
-                // the destination; switching them off never needs either.
-                if (next !== 'off') void enableWithDrive(next)
-                else void chooseSelfieMode(next)
-              }}
+          <div className="printer-tabs" role="tablist">
+            <button
+              type="button"
+              role="tab"
+              className={`printer-tab${tab === 'member' ? ' active' : ''}`}
+              onClick={() => setTab('member')}
             >
-              <option value="off">No selfie</option>
-              {/* Not disabled any more. Choosing one is how an owner connects
-                  Google — refusing the choice was what made the connection
-                  something to go and find first. */}
-              <option value="optional">Optional selfie</option>
-              <option value="required">Required selfie</option>
-            </select>
-          </label>
+              Member
+            </button>
+            <button
+              type="button"
+              role="tab"
+              className={`printer-tab${tab === 'visitor' ? ' active' : ''}`}
+              onClick={() => setTab('visitor')}
+            >
+              Visitor
+            </button>
+          </div>
 
-          {/* Whose Drive this is, and the two things worth doing to it. Only
-              owners see this: an admin cannot read the integration at all, and
-              the address of a congregation's Google account is not theirs to
-              hand around. */}
-          {isOwner && connection && (
-            <div style={{ marginTop: 16 }}>
-              <div className="muted small">
-                Photographs and sign-ins go to <strong>{connection.email}</strong>.
-              </div>
-              <div style={{ marginTop: 6, display: 'flex', gap: 8 }}>
-                <button
-                  type="button"
-                  className="secondary btn-sm"
+          <div className="field-rows">
+            <FieldRow label="First name" hint="always asked" value="required" locked />
+            <FieldRow label="Last name" hint="always asked" value="required" locked />
+            <FieldRow
+              label="Pronouns"
+              value={fieldConfig[tab].pronouns}
+              onChange={(s) => void setFieldState(tab, 'pronouns', s)}
+            />
+            <FieldRow
+              label="Phone"
+              value={fieldConfig[tab].phone}
+              onChange={(s) => void setFieldState(tab, 'phone', s)}
+            />
+            <FieldRow
+              label="Email"
+              value={fieldConfig[tab].email}
+              onChange={(s) => void setFieldState(tab, 'email', s)}
+            />
+
+            {/* Photo is visitor-only and lives in selfie_mode, not field_config
+                — it is tied to the Google Drive the pictures are stored in. On
+                the member tab it is simply not offered. */}
+            {tab === 'visitor' && (
+              <div className="field-row">
+                <div className="field-row-label">
+                  Photo
+                  <span className="muted small"> · stored in your Google Drive</span>
+                </div>
+                <StateControl
+                  value={selfieMode === 'off' ? 'hidden' : selfieMode}
                   disabled={saving}
-                  onClick={() => void reconnect()}
-                >
-                  Reconnect Google
-                </button>
-                <button
-                  type="button"
-                  className="secondary btn-sm"
-                  disabled={testing}
-                  onClick={() => void testConnection()}
-                >
-                  {testing ? 'Asking Google…' : 'Test connection'}
-                </button>
+                  onChange={(s) => {
+                    setError(null)
+                    // Switching photos on is what asks for the Google connection
+                    // and makes the folder; switching them off needs neither.
+                    if (s === 'hidden') void chooseSelfieMode('off')
+                    else void enableWithDrive(s)
+                  }}
+                />
               </div>
+            )}
+          </div>
+
+          {/* Where the photos go. Only on the visitor tab, where Photo lives. */}
+          {tab === 'visitor' && (
+            <div className="photo-storage">
+              {!driveConnected && (
+                <p className="muted small">
+                  Visitor photos are stored in your congregation's own Google Drive.{' '}
+                  {isOwner
+                    ? 'Choosing Optional or Required will ask you to connect a Google account, and ' +
+                      'the folder is made for you.'
+                    : 'An owner needs to connect a Google account first — ask one to choose a ' +
+                      'photo requirement here, or to connect Google under Integrations.'}
+                </p>
+              )}
+
+              {isOwner && connection && (
+                <div style={{ marginTop: 12 }}>
+                  <div className="muted small">
+                    Photographs and sign-ins go to <strong>{connection.email}</strong>.
+                  </div>
+                  <div style={{ marginTop: 6, display: 'flex', gap: 8 }}>
+                    <button
+                      type="button"
+                      className="secondary btn-sm"
+                      disabled={saving}
+                      onClick={() => void reconnect()}
+                    >
+                      Reconnect Google
+                    </button>
+                    <button
+                      type="button"
+                      className="secondary btn-sm"
+                      disabled={testing}
+                      onClick={() => void testConnection()}
+                    >
+                      {testing ? 'Asking Google…' : 'Test connection'}
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* Already asking for photos, and Drive has gone away underneath
+                  it — the one case where something is actively failing. */}
+              {!driveConnected && selfieMode !== 'off' && (
+                <p className="warn" style={{ marginTop: 10 }}>
+                  Visitors are being asked for a photo, but no Google account is connected, so every
+                  upload is failing. Set Photo to <strong>Hidden</strong> here, or ask an owner to
+                  connect one under Integrations.
+                </p>
+              )}
             </div>
           )}
-
-          {/* Already asking for photos, and Drive has gone away underneath it.
-              The urgent case, and the only one where something is actively
-              failing in front of visitors. */}
-          {!driveConnected && selfieMode !== 'off' && (
-            <p className="warn" style={{ marginTop: 8 }}>
-              Visitors are being asked for a photo, but no Google account is connected, so every
-              upload is failing. Choose <strong>No selfie</strong> here, or ask an owner to
-              connect one under Integrations.
-            </p>
-          )}
         </section>
-
-      <section className="card">
-        <h2>Pronouns</h2>
-        {/* Takes effect on click, like the integration switches. There is
-            nothing to coordinate it with, so making someone press Save for one
-            checkbox was only ever a way to lose the change. */}
-        <label className="check">
-          <input
-            type="checkbox"
-            checked={pronounsEnabled}
-            onChange={(e) => void togglePronouns(e.target.checked)}
-          />
-          Show an optional pronouns field on the sign-in form
-        </label>
-      </section>
 
       {/* In the column too. Outside it the name mark ran to the full width of
           the page against two narrower panes, and picked up none of the

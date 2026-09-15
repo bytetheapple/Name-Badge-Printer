@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
 import { useParams, useSearchParams } from 'react-router-dom'
 import { getJobStatus, getPublicConfig, submitBadge, uploadSelfie, type SelfieMode } from '../lib/api'
+import { defaultFieldConfig, type FieldConfig } from '../lib/formConfig'
 import { SelfieCapture } from '../components/SelfieCapture'
 
 type Stage = 'choose' | 'form' | 'selfie' | 'submitting' | 'printing' | 'done' | 'error'
@@ -32,7 +33,7 @@ export default function PublicForm() {
   const [printCount, setPrintCount] = useState(1)
   const [message, setMessage] = useState<string | null>(null)
   const [selfieMode, setSelfieMode] = useState<SelfieMode>('off')
-  const [pronounsEnabled, setPronounsEnabled] = useState(false)
+  const [fieldConfig, setFieldConfig] = useState<FieldConfig>(() => defaultFieldConfig(false))
   //: Asked of visitors only, and named after the congregation — "learn more
   //: about us" is a worse question than one with the name in it.
   const [wantsFollowup, setWantsFollowup] = useState(false)
@@ -72,7 +73,7 @@ export default function PublicForm() {
   useEffect(() => {
     void getPublicConfig(kiosk).then((c) => {
       setSelfieMode(c.selfie_mode)
-      setPronounsEnabled(c.pronouns_enabled)
+      setFieldConfig(c.field_config)
       setOrgName(c.org_name ?? null)
     })
   }, [kiosk])
@@ -255,7 +256,11 @@ export default function PublicForm() {
     )
   }
 
-  // Step 2 — details form.
+  // Step 2 — details form. Which optional fields appear, and which are
+  // required, is the organization's own choice, per audience.
+  const fc = fieldConfig[visitorType]
+  const suffix = (state: 'hidden' | 'optional' | 'required') =>
+    state === 'required' ? ' *' : ' (optional)'
   const badgeCount = 1 + people.filter((p) => p.first.trim() && p.last.trim()).length
   return (
     <main className="page">
@@ -290,9 +295,9 @@ export default function PublicForm() {
             autoComplete="family-name"
           />
         </label>
-        {pronounsEnabled && (
+        {fc.pronouns !== 'hidden' && (
           <label>
-            Pronouns (optional)
+            Pronouns{suffix(fc.pronouns)}
             <input
               type="text"
               value={pronouns}
@@ -300,6 +305,7 @@ export default function PublicForm() {
               placeholder="e.g. she/her, they/them"
               list="pronoun-options"
               maxLength={40}
+              required={fc.pronouns === 'required'}
               autoComplete="off"
             />
             <datalist id="pronoun-options">
@@ -312,30 +318,34 @@ export default function PublicForm() {
             </datalist>
           </label>
         )}
-        <label>
-          Phone{visitorType === 'visitor' ? ' *' : ''}
-          <input
-            type="tel"
-            value={phone}
-            onChange={(e) => setPhone(formatPhone(e.target.value))}
-            placeholder="(123)456-7890"
-            inputMode="tel"
-            pattern="\(\d{3}\)\d{3}-\d{4}"
-            title="Format: (123)456-7890"
-            required={visitorType === 'visitor'}
-            autoComplete="tel"
-          />
-        </label>
-        <label>
-          Email{visitorType === 'visitor' ? ' *' : ''}
-          <input
-            type="email"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            required={visitorType === 'visitor'}
-            autoComplete="email"
-          />
-        </label>
+        {fc.phone !== 'hidden' && (
+          <label>
+            Phone{suffix(fc.phone)}
+            <input
+              type="tel"
+              value={phone}
+              onChange={(e) => setPhone(formatPhone(e.target.value))}
+              placeholder="(123)456-7890"
+              inputMode="tel"
+              pattern="\(\d{3}\)\d{3}-\d{4}"
+              title="Format: (123)456-7890"
+              required={fc.phone === 'required'}
+              autoComplete="tel"
+            />
+          </label>
+        )}
+        {fc.email !== 'hidden' && (
+          <label>
+            Email{suffix(fc.email)}
+            <input
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              required={fc.email === 'required'}
+              autoComplete="email"
+            />
+          </label>
+        )}
 
         {/* Visitors only: a member has already said yes to hearing from their
             own congregation. Unticked is a no rather than an unknown, which is
@@ -354,7 +364,8 @@ export default function PublicForm() {
         <div className="family">
           <p className="family-head muted">
             Signing in as a couple or family? Add a badge for each person — only your
-            name{visitorType === 'visitor' ? ', contact info' : ''} above is needed for the group.
+            name{fc.phone === 'required' || fc.email === 'required' ? ' and contact info' : ''} above
+            is needed for the group.
           </p>
           {people.map((p, i) => (
             <div className="family-row" key={i}>
@@ -398,7 +409,10 @@ export default function PublicForm() {
                   ))}
                 </select>
               </label>
-              {pronounsEnabled && (
+              {/* Additional people are name-only; their pronouns follow the
+                  same on/off as the primary's, but are never required — a
+                  child's pronouns are not a gate on a parent's badge. */}
+              {fc.pronouns !== 'hidden' && (
                 <label>
                   Pronouns (optional)
                   <input

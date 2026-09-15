@@ -1,4 +1,5 @@
 import { supabase } from './supabase'
+import { defaultFieldConfig, resolveFieldConfig, type FieldConfig } from './formConfig'
 
 /**
  * Identifies which kiosk (and therefore which organization) a public call is
@@ -47,7 +48,8 @@ export type SelfieMode = 'off' | 'optional' | 'required'
 /** Public config the visitor/member form needs. */
 export async function getPublicConfig(kiosk: KioskRef): Promise<{
   selfie_mode: SelfieMode
-  pronouns_enabled: boolean
+  /** Which fields each audience answers, and whether each is required. */
+  field_config: FieldConfig
   /** The congregation's display name, for the wording of the follow-up
    *  question. Null when the kiosk could not be resolved, in which case the
    *  form falls back to naming nobody rather than guessing. */
@@ -57,11 +59,11 @@ export async function getPublicConfig(kiosk: KioskRef): Promise<{
     const { data } = await supabase.functions.invoke('public-config', { body: kiosk })
     return {
       selfie_mode: (data?.selfie_mode ?? 'off') as SelfieMode,
-      pronouns_enabled: Boolean(data?.pronouns_enabled),
+      field_config: resolveFieldConfig(data?.field_config, false),
       org_name: (data?.org_name as string | null) ?? null,
     }
   } catch {
-    return { selfie_mode: 'off', pronouns_enabled: false, org_name: null }
+    return { selfie_mode: 'off', field_config: defaultFieldConfig(false), org_name: null }
   }
 }
 
