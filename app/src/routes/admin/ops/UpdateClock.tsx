@@ -51,7 +51,7 @@ export default function UpdateClock({ at }: { at: string | null }) {
       aria-label={title}
       style={{ display: 'inline-flex', alignItems: 'center' }}
     >
-      <svg width="18" height="18" viewBox="0 0 20 20" role="img">
+      <svg width="27" height="27" viewBox="0 0 20 20" role="img">
         <circle cx="10" cy="10" r={r} fill="none" stroke="var(--border, #d1d5db)" strokeWidth="2.5" />
         {!overdue && (
           <circle

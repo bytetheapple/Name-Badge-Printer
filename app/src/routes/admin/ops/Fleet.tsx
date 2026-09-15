@@ -230,6 +230,24 @@ export default function Fleet() {
   }
 
   /**
+   * Whether a device is already on a given release.
+   *
+   * A device reports a short sha; a release is usually a short sha too, so a
+   * plain string match settles it. When one side is a full sha or the two are
+   * different lengths, resolving both through the version list catches the case
+   * the string compare would miss. A tag name resolves to nothing here, so a
+   * device is treated as not-yet-on a tag release until it reports that sha —
+   * which only over-shows the countdown, never hides it.
+   */
+  function onRelease(running: string | null, ref: string | null): boolean {
+    if (!running || !ref) return false
+    if (running === ref) return true
+    const a = known(running)
+    const b = known(ref)
+    return !!a && !!b && a.sha === b.sha
+  }
+
+  /**
    * Stop and ask when this would move a device backwards.
    *
    * Rolling back is a legitimate and sometimes urgent thing to do — a release
@@ -462,8 +480,11 @@ export default function Fleet() {
               <th>Built for</th>
               <th>Version</th>
               <th>Updates</th>
-              <th title="How long until this server next checks for a new version. Full just after a check; empties as the next comes due.">
-                Next check
+              <th
+                style={{ textAlign: 'center' }}
+                title="For a server that follows the fleet and is not yet on the release: how long until it next checks and pulls it. Full just after a check; empties as the next comes due."
+              >
+                Time to Update
               </th>
               <th>Claimed</th>
               <th>Notes</th>
@@ -529,8 +550,14 @@ export default function Fleet() {
                     </span>
                   )}
                 </td>
-                <td>
-                  <UpdateClock at={d.last_update_check} />
+                <td style={{ textAlign: 'center' }}>
+                  {/* Only where a countdown means something: a server that
+                      follows the fleet and has not yet converged on the set
+                      release. A pinned server, or one already on the release,
+                      has nothing to wait for, so the cell stays empty. */}
+                  {!d.pinned_ref && !!release?.ref && !onRelease(d.running_ref, release.ref) && (
+                    <UpdateClock at={d.last_update_check} />
+                  )}
                 </td>
                 <td className="small">
                   {d.claimed_at ? (
