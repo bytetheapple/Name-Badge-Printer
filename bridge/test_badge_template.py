@@ -230,6 +230,22 @@ check("a very long name is shrunk to fit the label, not clipped",
       _dl.textlength(_long, font=_f_long) <= _inner,
       f"width {_dl.textlength(_long, font=_f_long):.0f} > inner {_inner}")
 
+# A whole name typed into one field wraps onto a second line at a large size,
+# rather than shrinking to one small line — two big lines read across a room
+# where one small one does not.
+_two_font, _two_lines = badge_mod._fit_block(_dl, "Maria Guadalupe", _inner,
+                                             round(30 * badge_mod.MM), max_lines=2)
+_one_font = badge_mod._fit_line(_dl, "Maria Guadalupe", _inner, round(30 * badge_mod.MM))
+check("a multi-word field wraps onto two lines", len(_two_lines) == 2, str(_two_lines))
+check("and wrapping keeps it larger than one line would",
+      _two_font.size > _one_font.size, f"{_two_font.size} vs {_one_font.size}")
+check("every wrapped line fits the label",
+      all(_dl.textlength(ln, font=_two_font) <= _inner for ln in _two_lines), str(_two_lines))
+# A single word has nowhere to wrap, so it stays one line and shrinks to fit.
+_sf, _sl = badge_mod._fit_block(_dl, "Featherstonehaugh", _inner,
+                                round(30 * badge_mod.MM), max_lines=2)
+check("a single long word stays on one line", len(_sl) == 1, str(_sl))
+
 print("— a machine with no font refuses to print, instead of printing specks —")
 # Raspberry Pi OS Lite ships no TrueType fonts at all. Pillow's load_default()
 # hands back a real FreeTypeFont locked at 10 pixels, so every check we could

@@ -257,6 +257,76 @@ def _text_h(font, text):
     return box[3] - box[1]
 
 
+def _wrap(draw, words, font, max_width):
+    """Greedy word wrap into lines that each fit max_width.
+
+    Returns the lines, or None if a single word is wider than max_width at this
+    font — the signal to _fit_block that this size is too large to wrap the name
+    at, and it should try a smaller one.
+    """
+    lines: list[str] = []
+    cur = ""
+    for w in words:
+        trial = f"{cur} {w}".strip()
+        if draw.textlength(trial, font=font) <= max_width:
+            cur = trial
+            continue
+        if cur:
+            lines.append(cur)
+        if draw.textlength(w, font=font) > max_width:
+            return None  # this word will not fit a line on its own at this size
+        cur = w
+    if cur:
+        lines.append(cur)
+    return lines
+
+
+def _fit_block(draw, text, max_width, start_px, bold=True, max_lines=2):
+    """The largest font, and its wrapped lines, that fit within max_lines lines.
+
+    A name with more than one word — often a whole name typed into one field —
+    wraps onto a second line rather than shrinking to a single tiny one: two
+    lines of large text read across a room where one line of small text does
+    not. A single word has nowhere to wrap, so it just shrinks to fit as one
+    line, the way _fit_line does. The size is bounded by the longest word
+    fitting a line, which is why wrapping keeps a long name so much larger than
+    fitting the whole of it on one line would.
+    """
+    words = text.split() or [text]
+    size = max(start_px, _LINE_FLOOR_PX)
+    while size > _LINE_FLOOR_PX:
+        font = _load_font(size, bold)
+        lines = _wrap(draw, words, font, max_width)
+        if lines is not None and len(lines) <= max_lines:
+            return font, lines
+        size -= 2
+    # Floor: best effort, and never drop a word — a name too long to fit even
+    # here is shown complete and a touch tall rather than truncated.
+    font = _load_font(_LINE_FLOOR_PX, bold)
+    return font, (_wrap(draw, words, font, max_width) or [text])
+
+
+def _line_lead(font):
+    """The gap between wrapped lines of one field."""
+    return round(font.size * 0.12)
+
+
+def _block_h(font, lines):
+    """The height of a field's wrapped lines, including the gaps between them."""
+    return sum(_text_h(font, ln) for ln in lines) + _line_lead(font) * (len(lines) - 1)
+
+
+def _draw_block(draw, cx, y, font, lines):
+    """Draw a field's lines centred on cx, top at y; return the y below them."""
+    lead = _line_lead(font)
+    for i, ln in enumerate(lines):
+        draw.text((cx, y), ln, font=font, fill="black", anchor="ma")
+        y += _text_h(font, ln)
+        if i < len(lines) - 1:
+            y += lead
+    return y
+
+
 def render_badge(
     first: str,
     last: str = "",
@@ -373,56 +443,48 @@ def render_badge(
     last = (last or "").strip()
     pronouns = (pronouns or "").strip()
 
-    first_font = _fit_line(
-        draw,
-        first,
-        inner,
-        round(float(t.get("first_name_max_mm", 30)) * MM),
-        bold=True,
-    )
-    last_font = (
-        _fit_line(
-            draw,
-            last,
-            inner,
-            round(float(t.get("last_name_max_mm", 15)) * MM),
-            bold=False,
-        )
-        if last
-        else None
-    )
-    pronouns_font = (
-        _fit_line(
-            draw,
-            pronouns,
-            inner,
-            round(float(t.get("pronouns_max_mm", 10)) * MM),
-            bold=False,
-        )
-        if pronouns
-        else None
-    )
+    # Each field is fit to the width, wrapping a multi-word field onto a second
+    # line rather than shrinking it to one tiny one. The last name starts no
+    # larger than the first, and pronouns no larger than the last, so the
+    # hierarchy holds even when a long field had to come down in size — a long
+    # first name that shrank is not left dwarfed by a short last one.
+    first_max = round(float(t.get("first_name_max_mm", 30)) * MM)
+    last_max = round(float(t.get("last_name_max_mm", 15)) * MM)
+    pron_max = round(float(t.get("pronouns_max_mm", 10)) * MM)
 
-    # Keep the hierarchy when a long line had to shrink to fit: the last name is
-    # never larger than the first, nor pronouns larger than the last. Without
-    # this a long first name that shrank could end up dwarfed by a short last
-    # one, which reads as a mistake rather than a long name.
-    if last_font is not None and last_font.size > first_font.size:
-        last_font = _load_font(first_font.size, bold=False)
-    if pronouns_font is not None:
-        cap = last_font.size if last_font is not None else first_font.size
-        if pronouns_font.size > cap:
-            pronouns_font = _load_font(cap, bold=False)
+    first_font, first_lines = _fit_block(draw, first, inner, first_max, bold=True, max_lines=2)
+    if last:
+        last_font, last_lines = _fit_block(
+            draw, last, inner, min(last_max, first_font.size), bold=False, max_lines=2
+        )
+    else:
+        last_font, last_lines = None, []
+    if pronouns:
+        pron_cap = last_font.size if last_font is not None else first_font.size
+        # Pronouns stay on one line: they are short, and "she/her" split across
+        # two reads worse than the same shrunk a hair to fit.
+        pronouns_font, pronouns_lines = _fit_block(
+            draw, pronouns, inner, min(pron_max, pron_cap), bold=False, max_lines=1
+        )
+    else:
+        pronouns_font, pronouns_lines = None, []
 
-    first_h = _text_h(first_font, first)
     gap = round(float(t.get("name_gap_mm", 3)) * MM) if last else 0
-    last_h = _text_h(last_font, last) if last else 0
     pgap = round(float(t.get("pronouns_gap_mm", 2)) * MM) if pronouns else 0
-    pronouns_h = _text_h(pronouns_font, pronouns) if pronouns else 0
-    total_h = first_h + gap + last_h + pgap + pronouns_h
+
+    def _stack_height():
+        h = _block_h(first_font, first_lines)
+        if last:
+            h += gap + _block_h(last_font, last_lines)
+        if pronouns:
+            h += pgap + _block_h(pronouns_font, pronouns_lines)
+        return h
+
+    total_h = _stack_height()
 
     # Shrink the whole stack proportionally if it is taller than the band between
-    # the header and subtitle (so it never collides with them).
+    # the header and subtitle (so it never collides with them). The wrapped lines
+    # still fit the width at the smaller size, so only the fonts change.
     band = (bottom - top) * 0.96
     if total_h > band > 0:
         scale = band / total_h
@@ -431,23 +493,18 @@ def render_badge(
             last_font = _load_font(max(8, int(last_font.size * scale)), bold=False)
         if pronouns_font is not None:
             pronouns_font = _load_font(max(8, int(pronouns_font.size * scale)), bold=False)
-        first_h = _text_h(first_font, first)
         gap = round(gap * scale)
-        last_h = _text_h(last_font, last) if last else 0
         pgap = round(pgap * scale)
-        pronouns_h = _text_h(pronouns_font, pronouns) if pronouns else 0
-        total_h = first_h + gap + last_h + pgap + pronouns_h
+        total_h = _stack_height()
 
     y = (top + bottom) / 2 - total_h / 2
-    draw.text((width / 2, y), first, font=first_font, fill="black", anchor="ma")
-    y += first_h
+    y = _draw_block(draw, width / 2, y, first_font, first_lines)
     if last:
         y += gap
-        draw.text((width / 2, y), last, font=last_font, fill="black", anchor="ma")
-        y += last_h
+        y = _draw_block(draw, width / 2, y, last_font, last_lines)
     if pronouns:
         y += pgap
-        draw.text((width / 2, y), pronouns, font=pronouns_font, fill="black", anchor="ma")
+        _draw_block(draw, width / 2, y, pronouns_font, pronouns_lines)
 
     return img
 
