@@ -247,3 +247,5 @@ optional and amounts to re-running the installer.
      without altering how the bridge runs. -->
 <!-- Release canary #2: 2026-09-14. Another inert marker, one commit newer than
      the last, so a fresh fleet update can be set and watched. -->
+<!-- Release canary #3: 2026-09-14. One more inert marker, newer still, for
+     watching a fresh rollout across the fleet. -->
