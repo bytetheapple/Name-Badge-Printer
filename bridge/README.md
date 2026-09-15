@@ -245,3 +245,5 @@ optional and amounts to re-running the installer.
 <!-- Release canary: 2026-09-14. A deliberately inert change, so a fleet update
      can be set and watched end to end (fetch, checkout, restart, health check)
      without altering how the bridge runs. -->
+<!-- Release canary #2: 2026-09-14. Another inert marker, one commit newer than
+     the last, so a fresh fleet update can be set and watched. -->
