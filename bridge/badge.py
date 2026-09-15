@@ -229,15 +229,27 @@ def _load_font(size_px: int, bold: bool = True) -> ImageFont.FreeTypeFont:
     return font
 
 
-def _fit_line(draw, text, max_width, start_px, min_px, bold=True):
-    """Largest single-line font (down to min_px) whose width fits max_width."""
-    size = start_px
-    while size > min_px:
+#: A name shrinks no smaller than this to fit the label. It is a floor against a
+#: pathological input, not a size anything real reaches — a long name fits well
+#: above it, and stopping higher is what let long names run off the edge.
+_LINE_FLOOR_PX = round(2 * MM)
+
+
+def _fit_line(draw, text, max_width, start_px, bold=True):
+    """The largest single-line font, from start_px down, whose width fits.
+
+    Keeps shrinking until the text fits, down to a hard floor, rather than
+    stopping at a comfortable minimum and letting a long name run off the label.
+    The whole of a name has to be on the badge — a name printed with its ends
+    cut off is the wrong name — so a smaller name beats a clipped one.
+    """
+    size = max(start_px, _LINE_FLOOR_PX)
+    while size > _LINE_FLOOR_PX:
         font = _load_font(size, bold)
         if draw.textlength(text, font=font) <= max_width:
             return font
         size -= 2
-    return _load_font(min_px, bold)
+    return _load_font(_LINE_FLOOR_PX, bold)
 
 
 def _text_h(font, text):
@@ -366,7 +378,6 @@ def render_badge(
         first,
         inner,
         round(float(t.get("first_name_max_mm", 30)) * MM),
-        round(float(t.get("first_name_min_mm", 12)) * MM),
         bold=True,
     )
     last_font = (
@@ -375,7 +386,6 @@ def render_badge(
             last,
             inner,
             round(float(t.get("last_name_max_mm", 15)) * MM),
-            round(float(t.get("last_name_min_mm", 9)) * MM),
             bold=False,
         )
         if last
@@ -387,12 +397,22 @@ def render_badge(
             pronouns,
             inner,
             round(float(t.get("pronouns_max_mm", 10)) * MM),
-            round(float(t.get("pronouns_min_mm", 7)) * MM),
             bold=False,
         )
         if pronouns
         else None
     )
+
+    # Keep the hierarchy when a long line had to shrink to fit: the last name is
+    # never larger than the first, nor pronouns larger than the last. Without
+    # this a long first name that shrank could end up dwarfed by a short last
+    # one, which reads as a mistake rather than a long name.
+    if last_font is not None and last_font.size > first_font.size:
+        last_font = _load_font(first_font.size, bold=False)
+    if pronouns_font is not None:
+        cap = last_font.size if last_font is not None else first_font.size
+        if pronouns_font.size > cap:
+            pronouns_font = _load_font(cap, bold=False)
 
     first_h = _text_h(first_font, first)
     gap = round(float(t.get("name_gap_mm", 3)) * MM) if last else 0

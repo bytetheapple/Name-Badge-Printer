@@ -215,12 +215,20 @@ check("no former product name survives anywhere",
 # The name is the thing being judged, so it must be sized like a real one.
 from PIL import ImageDraw as _D
 _inner = _test.width - 2 * round(4 * badge_mod.MM)
-_f_test = badge_mod._fit_line(_D.Draw(_test), "Test", _inner,
-                              round(30 * badge_mod.MM), round(12 * badge_mod.MM))
-_f_date = badge_mod._fit_line(_D.Draw(_test), "2026-09-04", _inner,
-                              round(30 * badge_mod.MM), round(12 * badge_mod.MM))
+_f_test = badge_mod._fit_line(_D.Draw(_test), "Test", _inner, round(30 * badge_mod.MM))
+_f_date = badge_mod._fit_line(_D.Draw(_test), "2026-09-04", _inner, round(30 * badge_mod.MM))
 check("and it is sized like a name, not like a date",
       _f_test.size > _f_date.size, f"{_f_test.size} vs {_f_date.size}")
+
+# A name too long to fit at any comfortable size is shrunk until the whole of it
+# fits, rather than printed centred with its ends run off both edges of the
+# label — reported from the field as names that "wouldn't fit on the badge".
+_long = "Featherstonehaugh-Wolfeschlegelstein"
+_dl = _D.Draw(_test)
+_f_long = badge_mod._fit_line(_dl, _long, _inner, round(30 * badge_mod.MM))
+check("a very long name is shrunk to fit the label, not clipped",
+      _dl.textlength(_long, font=_f_long) <= _inner,
+      f"width {_dl.textlength(_long, font=_f_long):.0f} > inner {_inner}")
 
 print("— a machine with no font refuses to print, instead of printing specks —")
 # Raspberry Pi OS Lite ships no TrueType fonts at all. Pillow's load_default()
