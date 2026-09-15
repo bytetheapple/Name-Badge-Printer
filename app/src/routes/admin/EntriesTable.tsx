@@ -59,6 +59,73 @@ function SyncPill({
 }
 
 /**
+ * The Syncs cell for one sign-in.
+ *
+ * Recorded deliveries win — they say exactly where a sign-in went and let each
+ * be retried. Without them (an older sign-in, or a member synced nowhere) it
+ * falls back to the per-entry status, but only for the destinations the org
+ * actually has: nothing configured shows "—", not a row of pills for things
+ * that were never set up. A stored photo is always worth a link.
+ */
+function SyncCell({
+  entry,
+  rows,
+  kinds,
+  resyncing,
+  onResync,
+  onChanged,
+}: {
+  entry: FormEntry
+  rows: Delivery[] | undefined
+  kinds: Set<string>
+  resyncing: string | null
+  onResync: (entry: FormEntry, fn: 'google-sync' | 'shulcloud-sync') => void
+  onChanged: () => void
+}) {
+  if (rows?.length) return <DeliveryPill rows={rows} onChanged={onChanged} />
+
+  const showGoogle = kinds.has('google_sheet')
+  const showShul = kinds.has('shulcloud')
+  const showPhoto = Boolean(entry.selfie_link) || kinds.has('google_drive')
+  if (!showGoogle && !showShul && !showPhoto) return <span className="muted">—</span>
+
+  return (
+    <>
+      {showGoogle && (
+        <SyncPill
+          label="Google"
+          status={entry.google_sync_status}
+          busy={resyncing === `google:${entry.id}`}
+          onResync={() => onResync(entry, 'google-sync')}
+        />
+      )}
+      {showShul && (
+        <SyncPill
+          label="ShulCloud"
+          status={entry.shulcloud_sync_status}
+          busy={resyncing === `shulcloud:${entry.id}`}
+          onResync={() => onResync(entry, 'shulcloud-sync')}
+        />
+      )}
+      {showPhoto &&
+        (entry.selfie_link ? (
+          <a
+            href={entry.selfie_link}
+            target="_blank"
+            rel="noreferrer noopener"
+            className="pill pill-sync-sent"
+            title="Open this visitor's photograph in Google Drive"
+          >
+            Photo
+          </a>
+        ) : (
+          <SyncPill label="Photo" status={entry.selfie_status} title={entry.selfie_error} />
+        ))}
+    </>
+  )
+}
+
+/**
  * A date box that looks empty when it is empty.
  *
  * Safari draws today's date into an unset `type="date"` field, so both filters
@@ -155,6 +222,10 @@ export default function EntriesTable() {
   //: Where each sign-in went, keyed by entry. Empty until the deliveries
   //: migration is applied, which is what the fallback below is for.
   const [deliveries, setDeliveries] = useState<Record<string, Delivery[]>>({})
+  //: The integration kinds this org has switched on. The Syncs column shows a
+  //: destination only when it exists: an org with nothing configured shows "—"
+  //: on every sign-in rather than pills for destinations it never set up.
+  const [syncKinds, setSyncKinds] = useState<Set<string>>(new Set())
 
   const load = useCallback(async () => {
     if (!orgId) return
@@ -186,6 +257,18 @@ export default function EntriesTable() {
     } else {
       setDeliveries({})
     }
+
+    // Which destinations this org has, so a sign-in with no recorded deliveries
+    // (an older one, or a member synced nowhere) shows a pill only for a kind
+    // that is actually set up, and "—" when none is.
+    const { data: integ } = await supabase.rpc('integrations_brief', { p_org: orgId })
+    setSyncKinds(
+      new Set(
+        ((integ ?? []) as Array<{ kind: string; enabled: boolean }>)
+          .filter((i) => i.enabled)
+          .map((i) => i.kind),
+      ),
+    )
     setLoading(false)
   }, [orgId, from, to])
 
@@ -378,51 +461,14 @@ export default function EntriesTable() {
                     </td>
                     <td>
                       <div className="sync-cell">
-                        {deliveries[r.id]?.length ? (
-                          <DeliveryPill rows={deliveries[r.id]} onChanged={load} />
-                        ) : (
-                          <>
-                            {/* Before the deliveries migration is applied there
-                                is nothing to expand, so the old per-kind pills
-                                stand in rather than the column going blank. */}
-                            <SyncPill
-                              label="Google"
-                              status={r.google_sync_status}
-                              busy={resyncing === `google:${r.id}`}
-                              onResync={() => resync(r, 'google-sync')}
-                            />
-                            <SyncPill
-                              label="ShulCloud"
-                              status={r.shulcloud_sync_status}
-                              busy={resyncing === `shulcloud:${r.id}`}
-                              onResync={() => resync(r, 'shulcloud-sync')}
-                            />
-                            {/* No resync: the photo only exists in the kiosk's
-                                browser at capture time, so it cannot be sent
-                                again from here. */}
-                            {r.selfie_link ? (
-                              /* The link has been stored on every entry since
-                                 photographs began and shown nowhere, so the
-                                 only way to a visitor's picture was to go
-                                 looking through Drive for it. */
-                              <a
-                                href={r.selfie_link}
-                                target="_blank"
-                                rel="noreferrer noopener"
-                                className="pill pill-sync-sent"
-                                title="Open this visitor's photograph in Google Drive"
-                              >
-                                Photo
-                              </a>
-                            ) : (
-                              <SyncPill
-                                label="Photo"
-                                status={r.selfie_status}
-                                title={r.selfie_error}
-                              />
-                            )}
-                          </>
-                        )}
+                        <SyncCell
+                          entry={r}
+                          rows={deliveries[r.id]}
+                          kinds={syncKinds}
+                          resyncing={resyncing}
+                          onResync={resync}
+                          onChanged={load}
+                        />
                       </div>
                     </td>
                     <td>{r.printer?.name ?? '—'}</td>
