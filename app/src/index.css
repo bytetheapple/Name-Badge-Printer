@@ -290,6 +290,14 @@ button.secondary {
   flex-direction: column;
 }
 .admin-header {
+  /* Pinned to the top so the tabs stay reachable however long the page below
+     grows; the content scrolls under it. Above the page (z-index 20) but below
+     modals (z-index 50). An opaque background so nothing shows through as it
+     scrolls past. */
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  background: var(--bg);
   display: flex;
   align-items: center;
   gap: 24px;
