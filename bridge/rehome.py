@@ -4,21 +4,21 @@ The heartbeat already asks mDNS whether an unreachable printer has simply moved
 (bridge._relocate), and that quietly fixes the common case. But mDNS does not
 cross a subnet, nor a network that blocks multicast -- which is exactly the case
 an operator hit at a weekend event: the printer took a DHCP lease on another
-subnet, mDNS could not see it, and only a sweep would find it. The sweep is kept
-behind the manual "find it again" button on purpose, because sweeping on every
+subnet, mDNS could not see it, and only a sweep would find it. Sweeping on every
 heartbeat, for every printer that is merely switched off, would be a continuous
-scan of the customer's network.
+scan of the customer's network, so this runs the sweep on a backoff instead.
 
-This runs that sweep automatically without becoming that scan:
+It does that without becoming that scan:
 
   * on a backoff -- dense in the first minutes after a printer drops, when a
     DHCP move is by far the likeliest reason, then sparse, so a printer off for
     the night is swept a handful of times an hour rather than continuously;
   * on one background thread that never sweeps two printers at once, so the
     print loop is never blocked and the network never sees a burst; and
-  * across only the nearest few networks, not the dozen the manual button
-    tries -- an unattended sweep should stay a quiet neighbour, while a human
-    waiting on the button gets the exhaustive search.
+  * starting with the nearest few networks -- enough for the usual move, one
+    subnet over -- and widening to every candidate network only once those have
+    missed, so the dozen-network scan is the rare exception, not the rule, and
+    an unattended sweep stays a quiet neighbour.
 
 When it finds the printer at a new address it hands that back through take(),
 and the heartbeat adopts it exactly as it adopts an mDNS result: the address
@@ -37,11 +37,18 @@ import discover
 _BACKOFF = (30, 60, 120, 300, 600, 900)
 _FLOOR = 1800.0
 
-#: How many of discover.candidate_subnets() an automatic sweep covers. Own
-#: subnet plus the nearest neighbours -- enough for the two-routers-in-series
-#: move that puts a printer one subnet away, without unattended-scanning a dozen
-#: networks. The manual button still sweeps them all.
+#: How many of discover.candidate_subnets() the first sweeps cover: own subnet
+#: plus the nearest neighbours, enough for the two-routers-in-series move that
+#: puts a printer one subnet away. A repeating unattended scan of a dozen
+#: networks would read as a port sweep of the customer's site, so the common,
+#: near case is kept cheap and quiet.
 _AUTO_SUBNETS = 4
+
+#: After this many misses at the near range, widen to every candidate subnet. A
+#: printer that was not one subnet over has jumped somewhere unusual, and by now
+#: the exhaustive scan has earned its cost -- and it runs only once the near
+#: sweeps have failed, so the dozen-network scan stays the exception.
+_ESCALATE_AFTER = 2
 
 #: How often the worker wakes to see whether any printer is due. Well under the
 #: shortest backoff, so a due sweep starts promptly; a sweep itself takes far
@@ -190,7 +197,8 @@ class Rehomer:
                 return
             pid, job = min(due, key=lambda kv: kv[1].next_at)
             job.searching = True
-            snap = (job.mac, job.serial, job.subnet, job.ip)
+            # attempts so far decides how wide to sweep — near first, then all.
+            snap = (job.mac, job.serial, job.subnet, job.ip, job.attempts)
 
         found = None
         try:
@@ -208,14 +216,20 @@ class Rehomer:
                 if found and found != snap[3]:
                     job.found = found
 
-    def _sweep(self, mac, serial, subnet, ip) -> str | None:
-        """The real search: the nearest few networks, cheapest route first.
+    def _sweep(self, mac, serial, subnet, ip, attempts) -> str | None:
+        """The real search: the nearest networks first, all of them once those
+        miss, cheapest route first within each.
 
         discover.find_printer tries mDNS before it sweeps, so a printer that is
         reachable by name is found without a scan even here; the sweep is the
-        fallback that crosses the subnet mDNS cannot.
+        fallback that crosses the subnet mDNS cannot. The near range covers the
+        usual one-subnet-over move; widening only after `_ESCALATE_AFTER` misses
+        keeps the dozen-network scan for the rare printer that jumped further.
         """
-        for net in discover.candidate_subnets(subnet)[:_AUTO_SUBNETS]:
+        nets = discover.candidate_subnets(subnet)
+        if attempts < _ESCALATE_AFTER:
+            nets = nets[:_AUTO_SUBNETS]
+        for net in nets:
             found = discover.find_printer(mac=mac, serial=serial, subnet=net)
             if found and found.ip and found.ip != ip:
                 return found.ip

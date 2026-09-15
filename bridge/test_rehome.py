@@ -63,7 +63,7 @@ check("nothing is scheduled for a healthy printer", calls == [], str(calls))
 print("— an unreachable printer is swept, but only after a grace —")
 found_at = {"ip": None}
 calls = []
-r, clock = make(lambda mac, serial, subnet, ip: calls.append((mac, ip)) or found_at["ip"])
+r, clock = make(lambda mac, serial, subnet, ip, attempts: calls.append((mac, ip)) or found_at["ip"])
 r.update(P, reachable=False)
 clock.advance(5)
 r._run_once()
@@ -97,7 +97,7 @@ check("sweeps get further apart, then settle at the floor",
 check("it keeps trying rather than giving up", len(times) == 8, str(len(times)))
 
 print("— status() reports the schedule the console shows —")
-r, clock = make(lambda mac, serial, subnet, ip: "192.168.0.60")
+r, clock = make(lambda mac, serial, subnet, ip, attempts: "192.168.0.60")
 check("no status before a printer is known", r.status("p1") is None)
 r.update(P, reachable=False)
 st = r.status("p1")
@@ -131,7 +131,7 @@ check("a recovered printer is dropped and not swept", calls == [], str(calls))
 
 print("— only one printer is swept per tick —")
 calls = []
-r, clock = make(lambda mac, serial, subnet, ip: calls.append(ip) or None)
+r, clock = make(lambda mac, serial, subnet, ip, attempts: calls.append(ip) or None)
 r.update({**P, "id": "a", "printer_ip": "192.168.1.10"}, reachable=False)
 r.update({**P, "id": "b", "printer_ip": "192.168.1.11"}, reachable=False)
 clock.advance(60)                        # both are due
@@ -165,19 +165,42 @@ check("the exception is swallowed, the job survives", not crashed)
 check("and the failed attempt was still counted (it will retry, later)",
       r._jobs["p1"].attempts == 1)
 
-print("— the real sweep asks only the nearest few networks —")
+print("— the real sweep starts near, then widens once it has missed —")
 asked = []
 _real_find = rehome.discover.find_printer
 _real_cands = rehome.discover.candidate_subnets
 try:
     rehome.discover.candidate_subnets = lambda own=None: [f"10.0.{n}" for n in range(20)]
     rehome.discover.find_printer = lambda **kw: asked.append(kw["subnet"]) or None
-    rehome.Rehomer()._sweep("mac", "serial", "10.0.0", "10.0.0.5")
-    check("an unattended sweep is bounded to a handful of subnets",
+    r = rehome.Rehomer()
+    # Early attempts stay near: the common one-subnet-over move, kept cheap.
+    r._sweep("mac", "serial", "10.0.0", "10.0.0.5", 0)
+    check("an early sweep is bounded to the nearest few subnets",
           len(asked) == rehome._AUTO_SUBNETS, str(asked))
+    asked.clear()
+    r._sweep("mac", "serial", "10.0.0", "10.0.0.5", rehome._ESCALATE_AFTER - 1)
+    check("still near on the last attempt before escalating",
+          len(asked) == rehome._AUTO_SUBNETS, str(asked))
+    # Once the near range has missed, widen to every candidate network.
+    asked.clear()
+    r._sweep("mac", "serial", "10.0.0", "10.0.0.5", rehome._ESCALATE_AFTER)
+    check("after enough misses it widens to every candidate subnet",
+          len(asked) == 20, str(len(asked)))
 finally:
     rehome.discover.find_printer = _real_find
     rehome.discover.candidate_subnets = _real_cands
+
+print("— the rehomer widens on its own as attempts pile up —")
+# The search seam sees the attempt count, so we can watch it escalate through
+# _run_once without touching the network.
+seen = []
+r, clock = make(lambda mac, serial, subnet, ip, attempts: seen.append(attempts) or None)
+r.update(P, reachable=False)
+for _ in range(rehome._ESCALATE_AFTER + 1):
+    clock.t = r._jobs["p1"].next_at
+    r._run_once()
+check("each sweep is told how many have already missed", seen == list(range(len(seen))), str(seen))
+check("and it reaches the escalation threshold", max(seen) >= rehome._ESCALATE_AFTER, str(seen))
 
 
 print()
