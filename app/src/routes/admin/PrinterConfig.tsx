@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { BRIDGE_FRESH_MS } from '../../lib/bridge'
 import { supabase } from '../../lib/supabase'
 import SearchProgress from './SearchProgress'
 import { useOrg } from '../../lib/org'
@@ -32,72 +31,6 @@ function PrinterTab({
       <span className={`tab-dot ${state}`} aria-hidden="true" />
       {printer.name || 'Unnamed printer'}
     </button>
-  )
-}
-
-/**
- * The live state of a "find it again" search, under the printer's address.
- *
- * Reads the session the bridge writes, so it is the truth rather than a
- * hopeful message: still searching (with the seconds ticking, which is the
- * progress the old version never showed), found and now at a new address, or
- * finished without finding it and why. Nothing at all when no recent search.
- */
-function LocateStatus({
-  locate,
-  bridgeOnline,
-  bridgeChecked,
-}: {
-  locate?: LocateRow
-  bridgeOnline: boolean
-  bridgeChecked: boolean
-}) {
-  if (!locate) return null
-
-  if (!LOCATE_DONE.has(locate.state)) {
-    const started = Date.parse(locate.updated_at)
-    const ms = Number.isNaN(started) ? 0 : Math.max(0, Date.now() - started)
-    // Offline is the fast, honest answer: a search cannot run without the
-    // server, and the heartbeat says so in seconds. This is the case the
-    // three-minute wait was hiding.
-    if (bridgeChecked && !bridgeOnline) {
-      return (
-        <div className="locate-status missed">
-          The print server is offline, so the search can&apos;t run. Reconnect it on the Print
-          Server tab, then try again.
-        </div>
-      )
-    }
-    if (ms > LOCATE_STALL_MS) {
-      // Online, but past when it should have reported. The search ran and did
-      // not find the printer -- powered off, or gone.
-      return (
-        <div className="locate-status missed">
-          The search didn&apos;t find the printer. Check it is powered on, then try again.
-        </div>
-      )
-    }
-    const total = Math.round(ms / 1000)
-    const clock = `${Math.floor(total / 60)}:${String(total % 60).padStart(2, '0')}`
-    return (
-      <div className="locate-status searching">
-        <span className="spinner-dot" aria-hidden="true" />
-        Searching the network for this printer… {clock} (a full search can take up to 3 min)
-      </div>
-    )
-  }
-  if (locate.state === 'done') {
-    return (
-      <div className="locate-status found">
-        Found it{locate.wireless_ip ? ` — now at ${locate.wireless_ip}` : ''}. Its address is updated.
-      </div>
-    )
-  }
-  return (
-    <div className="locate-status missed">
-      {locate.error ??
-        'The search finished without finding this printer. Check it is powered on and on the network.'}
-    </div>
   )
 }
 
@@ -218,26 +151,6 @@ function PrinterDialog({
 /** Slightly longer than the bridge's ~15s heartbeat, so most polls see
  *  something new rather than re-reading the same rows. */
 const STATUS_REFRESH_MS = 20000
-//: A finished search stops being news after this long, and clears itself.
-const LOCATE_SHOW_MS = 5 * 60 * 1000
-//: The bridge caps its own search at 150s and reports on the next
-//: heartbeat. Past this with no result, the search is not running -- the
-//: print server has not picked the request up, which usually means it is
-//: offline.
-const LOCATE_STALL_MS = 195 * 1000
-const LOCATES_KEY = 'nbk.locates'
-//: The bridge heartbeats every ~15s; treat it as online if seen within 45s,
-//: the same threshold the Print Server tab uses.
-
-type LocateRow = {
-  printer_id: string
-  state: string
-  error: string | null
-  updated_at: string
-  wireless_ip: string | null
-}
-
-const LOCATE_DONE = new Set(['done', 'failed'])
 
 /**
  * The printer whose tab was last open, so leaving the page and coming back
@@ -282,31 +195,6 @@ export default function PrinterConfig() {
   const [dialog, setDialog] = useState<'add' | Printer | null>(null)
   const [busy, setBusy] = useState<string | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
-  //: The most recent "find it again" search per printer, straight from the
-  //: session row the bridge writes. DB-backed on purpose: the old code kept
-  //: this in a notice string, which vanished on a tab switch and could not
-  //: tell a search still running from one that finished — so it read as
-  //: frozen whatever had happened. This survives a tab switch and a reload.
-  const [locates, setLocates] = useState<Record<string, LocateRow>>(() => {
-    // Seeded from the last visit: the outcome of a search must survive a tab
-    // switch, which unmounts this whole page. It used to live only in the
-    // session row and the on-screen state, so leaving and returning lost it
-    // entirely -- the search vanished without a trace.
-    try {
-      return JSON.parse(localStorage.getItem(LOCATES_KEY) ?? '{}')
-    } catch {
-      return {}
-    }
-  })
-  //: A one-second heartbeat, live only while a search is, so the elapsed
-  //: counter moves and the search looks like it is doing something.
-  const [, setTick] = useState(0)
-  //: When the print server was last heard from, and whether we have looked
-  //: yet. A search cannot run while the server is offline, and that is
-  //: knowable at once from the heartbeat rather than after a three-minute
-  //: wait -- which was the whole of the complaint.
-  const [bridgeSeen, setBridgeSeen] = useState<string | null>(null)
-  const [bridgeChecked, setBridgeChecked] = useState(false)
 
   const loadPrinters = useCallback(async () => {
     if (!orgId) return
@@ -319,119 +207,20 @@ export default function PrinterConfig() {
     setLoading(false)
   }, [orgId])
 
-  // The most recent locate session per printer, recent ones only. Latest per
-  // printer wins: order by newest and let the first seen for each id stand.
-  const loadLocates = useCallback(async () => {
-    if (!orgId) return
-    // No time filter in the query: comparing the server's rows against the
-    // client's clock hid a just-created row whenever the two clocks disagreed,
-    // which showed as nothing happening at all. Recency is decided below, from
-    // each row's own timestamp, and only to drop a finished search that is no
-    // longer news -- a search still running always shows.
-    const { data, error } = await supabase
-      .from('provisioning_sessions')
-      .select('printer_id, state, error, updated_at, data')
-      .eq('org_id', orgId)
-      .eq('kind', 'locate')
-      .order('updated_at', { ascending: false })
-      .limit(40)
-    if (error) return // keep whatever is shown rather than blanking it
-
-    // Whether the print server is even there. Cheap, and it turns "waited three
-    // minutes to be told nothing started" into "offline, said so at once".
-    const { data: st } = await supabase
-      .from('printer_status')
-      .select('bridge_last_seen')
-      .eq('org_id', orgId)
-      .maybeSingle()
-    setBridgeSeen((st?.bridge_last_seen as string | null) ?? null)
-    setBridgeChecked(true)
-
-    const cutoff = Date.now() - LOCATE_SHOW_MS
-    const latest: Record<string, LocateRow> = {}
-    for (const s of (data ?? []) as Array<Record<string, unknown>>) {
-      const pid = s.printer_id as string | null
-      if (!pid || latest[pid]) continue
-      const state = String(s.state ?? '')
-      const updated = String(s.updated_at ?? '')
-      const done = LOCATE_DONE.has(state)
-      // A finished search older than the window is stale; a running one is
-      // always current, however long it has been.
-      if (done && Date.parse(updated) < cutoff) continue
-      latest[pid] = {
-        printer_id: pid,
-        state,
-        error: (s.error as string | null) ?? null,
-        updated_at: updated,
-        wireless_ip: ((s.data as Record<string, unknown>)?.wireless_ip as string | null) ?? null,
-      }
-    }
-    // Merge, not replace. A search this read did not return -- because it is
-    // seconds old, or because the session aged out -- is kept from what we
-    // already had, so the outcome never blanks. A kept search that has run
-    // past the stall point renders as failed-try-again rather than spinning;
-    // that is handled where it is shown, so nothing has to mutate it here.
-    setLocates((prev) => {
-      const merged: Record<string, LocateRow> = { ...latest }
-      for (const [pid, l] of Object.entries(prev)) {
-        if (merged[pid]) continue
-        // Kept within the display window whether it finished or is still
-        // going; the render decides what a long-running one has become.
-        if (Date.now() - Date.parse(l.updated_at) < LOCATE_SHOW_MS) merged[pid] = l
-      }
-      return merged
-    })
-  }, [orgId])
-
-  // Mirror the tracker to storage so the next mount can seed from it.
-  useEffect(() => {
-    try {
-      localStorage.setItem(LOCATES_KEY, JSON.stringify(locates))
-    } catch {
-      // storage unavailable — the tracker still works within this mount
-    }
-  }, [locates])
-
   useEffect(() => {
     void loadPrinters()
-    void loadLocates()
-  }, [loadPrinters, loadLocates])
+  }, [loadPrinters])
 
-  // The reachability dot is presented as live status, so it has to be. The
-  // bridge reports each printer's state on its heartbeat, roughly every 15
-  // seconds; without re-reading, the dot shows whatever was true when the page
-  // was opened and quietly goes stale. A running search is read faster, so
-  // that gets its own quicker poll.
+  // The reachability dot, and a missing printer's recovery progress, are
+  // presented as live status, so they have to be. The bridge reports each
+  // printer's state on its heartbeat, roughly every 15 seconds; without
+  // re-reading, the page shows whatever was true when it was opened and quietly
+  // goes stale.
   useEffect(() => {
     if (!orgId) return
-    const slow = window.setInterval(() => void loadPrinters(), STATUS_REFRESH_MS)
-    const fast = window.setInterval(() => void loadLocates(), 4000)
-    return () => {
-      window.clearInterval(slow)
-      window.clearInterval(fast)
-    }
-  }, [orgId, loadPrinters, loadLocates])
-
-  // Tick once a second while any search is still running, so its elapsed
-  // counter advances. Stops itself the moment nothing is in flight.
-  const bridgeOnline =
-    bridgeSeen != null && Date.now() - new Date(bridgeSeen).getTime() < BRIDGE_FRESH_MS
-
-  // A search is actively running only while the server is online and it has
-  // not overrun. Offline, or overrun, it is finished -- so the button frees up
-  // and the ticker stops.
-  const searchActive = (l?: LocateRow) =>
-    !!l &&
-    !LOCATE_DONE.has(l.state) &&
-    (!bridgeChecked || bridgeOnline) &&
-    Date.now() - Date.parse(l.updated_at) <= LOCATE_STALL_MS
-
-  const anySearching = Object.values(locates).some((l) => searchActive(l))
-  useEffect(() => {
-    if (!anySearching) return
-    const id = window.setInterval(() => setTick((n) => n + 1), 1000)
-    return () => window.clearInterval(id)
-  }, [anySearching])
+    const timer = window.setInterval(() => void loadPrinters(), STATUS_REFRESH_MS)
+    return () => window.clearInterval(timer)
+  }, [orgId, loadPrinters])
 
   // Land on a printer, not on the form for adding one. Most customers have a
   // single printer, and arriving at its status is what they came for.
@@ -465,47 +254,6 @@ export default function PrinterConfig() {
       .insert({ org_id: orgId, type: 'test', status: 'queued', printer_id: printer.id })
     setBusy(null)
     setNotice(error ? `Could not queue a test print: ${error.message}` : 'Test print queued.')
-  }
-
-  /** Ask the print server to sweep for a printer whose address has changed.
-   *
-   *  The heartbeat already follows a printer by mDNS, so this is for the case
-   *  where that fails — mDNS blocked, or the printer on a different subnet
-   *  from the one it was on. That needs a scan of the network, which is fine
-   *  once because somebody asked for it, and would be wrong as a background
-   *  habit; so it lives behind this button rather than in the heartbeat.
-   */
-  async function locate(printer: Printer) {
-    setBusy(printer.id)
-    setNotice(null)
-    const { error } = await supabase.from('provisioning_sessions').insert({
-      org_id: printer.org_id,
-      kind: 'locate',
-      state: 'discover',
-      printer_id: printer.id,
-      printer_name: printer.name,
-    })
-    setBusy(null)
-    if (error) {
-      setNotice(`Could not start the search: ${error.message}`)
-      return
-    }
-    // Show it searching at once, rather than waiting on a round trip to
-    // reveal the row we just wrote -- the button doing nothing visible for a
-    // beat is what a slow or skewed read looked like. The tracker refines this
-    // to found-or-not from the session, and stays put across tab switches
-    // because it reads the session rather than a string set and forgotten.
-    setLocates((prev) => ({
-      ...prev,
-      [printer.id]: {
-        printer_id: printer.id,
-        state: 'discover',
-        error: null,
-        updated_at: new Date().toISOString(),
-        wireless_ip: null,
-      },
-    }))
-    await loadLocates()
   }
 
   async function remove(printer: Printer) {
@@ -577,16 +325,10 @@ export default function PrinterConfig() {
                     .filter(Boolean)
                     .join(' · ')}
                 </div>
-                <LocateStatus
-                  locate={locates[current.id]}
-                  bridgeOnline={bridgeOnline}
-                  bridgeChecked={bridgeChecked}
-                />
-                {/* The background search's own progress. Hidden while a manual
-                    "Find it again" is actively spinning, so the two do not show
-                    two spinners at once — but shown after one finishes, so a
-                    failed manual search still reads as "we are still trying". */}
-                {!searchActive(locates[current.id]) && <SearchProgress printer={current} />}
+                {/* If it has gone missing, the print server searches for it in
+                    the background and this shows the progress — no button, no
+                    waiting. It re-finds a moved printer on its own. */}
+                <SearchProgress printer={current} />
               </div>
               <div className="printer-summary-actions">
                 <button className="secondary btn-sm" onClick={() => setDialog(current)}>
@@ -598,23 +340,6 @@ export default function PrinterConfig() {
                   disabled={busy === current.id}
                 >
                   {busy === current.id ? 'Queuing…' : 'Test print'}
-                </button>
-                <button
-                  className="secondary btn-sm"
-                  onClick={() => void locate(current)}
-                  disabled={
-                    busy === current.id ||
-                    (!current.mac && !current.serial) ||
-                    searchActive(locates[current.id])
-                  }
-                  title={
-                    current.mac || current.serial
-                      ? 'Sweep the network for this printer and correct its address'
-                      : 'No serial or MAC recorded yet — the print server fills this ' +
-                        'in the next time the printer answers'
-                  }
-                >
-                  {searchActive(locates[current.id]) ? 'Searching…' : 'Find it again'}
                 </button>
                 <button
                   className="secondary btn-sm"
