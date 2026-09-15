@@ -187,6 +187,10 @@ export interface PiDevice {
   /** What it last reported running. Reported, never assumed. */
   running_ref: string | null
   last_seen: string | null
+  /** When the device last asked what version it should run — the updater's
+   *  own ~1-minute check, distinct from last_seen (the ~2s job poll). Drives
+   *  the countdown to the next update check. */
+  last_update_check: string | null
   update_error: string | null
   bridge_token_id: string | null
   created_at: string

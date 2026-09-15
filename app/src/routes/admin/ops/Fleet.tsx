@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { supabase } from '../../../lib/supabase'
 import type { PiDevice, PlatformOrg } from '../../../lib/types'
 import {
@@ -8,6 +8,13 @@ import {
   type RepoVersion,
 } from '../../../lib/repoVersions'
 import BuildServer from '../BuildServer'
+import UpdateClock from './UpdateClock'
+
+//: The device columns the fleet table reads. Named once because both the full
+//: load and the lighter status refresh below select the same set.
+const DEVICE_COLS =
+  'id, serial, org_id, customer, notes, claim_prefix, claimed_at, bridge_token_id, ' +
+  'created_at, pinned_ref, running_ref, last_seen, last_update_check, update_error'
 
 /**
  * The print servers, and what they run.
@@ -53,13 +60,21 @@ export default function Fleet() {
   //: fleet unmanageable.
   const [versionsError, setVersionsError] = useState<string | null>(null)
 
+  //: Just the devices, for the periodic refresh: it keeps the update-check
+  //: countdown honest without re-reading the release and the org list every
+  //: time. The full load() below also refreshes these on any action.
+  const reloadDevices = useCallback(async () => {
+    const { data: rows } = await supabase
+      .from('pi_devices')
+      .select(DEVICE_COLS)
+      .order('created_at', { ascending: false })
+    if (rows) setDevices(rows as unknown as PiDevice[])
+  }, [])
+
   const load = useCallback(async () => {
     const { data: rows } = await supabase
       .from('pi_devices')
-      .select(
-        'id, serial, org_id, customer, notes, claim_prefix, claimed_at, bridge_token_id, ' +
-          'created_at, pinned_ref, running_ref, last_seen, update_error',
-      )
+      .select(DEVICE_COLS)
       .order('created_at', { ascending: false })
     setDevices((rows ?? []) as unknown as PiDevice[])
 
@@ -79,9 +94,22 @@ export default function Fleet() {
     void load()
   }, [load])
 
-  // Once per visit rather than inside load(): every action reloads, and the
-  // unauthenticated GitHub budget is sixty requests an hour.
+  // Keep the update-check countdown live: re-read the devices every 15s so a
+  // ring resets when its device actually checks in, rather than only on an
+  // action or a page reload. Devices only — the release and org list do not
+  // move on this cadence.
   useEffect(() => {
+    const timer = window.setInterval(() => void reloadDevices(), 15000)
+    return () => window.clearInterval(timer)
+  }, [reloadDevices])
+
+  //: When the version list was last fetched, so opening a picker can refresh
+  //: it without hammering GitHub. The unauthenticated budget is sixty requests
+  //: an hour and each fetch spends one or two, so repeated opens are throttled.
+  const lastVersionFetch = useRef(0)
+  const refreshVersions = useCallback((force = false) => {
+    if (!force && Date.now() - lastVersionFetch.current < 20000) return
+    lastVersionFetch.current = Date.now()
     void repoVersions()
       .then((v) => {
         setVersions(v)
@@ -89,6 +117,12 @@ export default function Fleet() {
       })
       .catch((e: Error) => setVersionsError(e.message))
   }, [])
+
+  // Once on arrival; then again whenever a version picker is opened (below), so
+  // a release pushed a moment ago is in the list without reloading the page.
+  useEffect(() => {
+    refreshVersions(true)
+  }, [refreshVersions])
 
   async function setReleaseRef() {
     const ref = refDraft.trim()
@@ -324,7 +358,11 @@ export default function Fleet() {
               placeholder="commit or tag"
             />
           ) : (
-            <select value={refDraft} onChange={(e) => setRefDraft(e.target.value)}>
+            <select
+              value={refDraft}
+              onChange={(e) => setRefDraft(e.target.value)}
+              onFocus={() => refreshVersions()}
+            >
               <option value="">Hold every server where it is</option>
               {versions.map((v) => (
                 <option key={v.sha} value={v.short}>
@@ -367,7 +405,11 @@ export default function Fleet() {
               placeholder="commit or tag"
             />
           ) : (
-            <select value={holdRef} onChange={(e) => setHoldRef(e.target.value)}>
+            <select
+              value={holdRef}
+              onChange={(e) => setHoldRef(e.target.value)}
+              onFocus={() => refreshVersions()}
+            >
               <option value="">Choose a version…</option>
               {versions.map((v) => (
                 <option key={v.sha} value={v.short}>
@@ -420,6 +462,9 @@ export default function Fleet() {
               <th>Built for</th>
               <th>Version</th>
               <th>Updates</th>
+              <th title="How long until this server next checks for a new version. Full just after a check; empties as the next comes due.">
+                Next check
+              </th>
               <th>Claimed</th>
               <th>Notes</th>
               <th />
@@ -484,6 +529,9 @@ export default function Fleet() {
                     </span>
                   )}
                 </td>
+                <td>
+                  <UpdateClock at={d.last_update_check} />
+                </td>
                 <td className="small">
                   {d.claimed_at ? (
                     new Date(d.claimed_at).toLocaleDateString()
@@ -528,7 +576,7 @@ export default function Fleet() {
             ))}
             {!devices.length && (
               <tr>
-                <td colSpan={8} className="muted">
+                <td colSpan={9} className="muted">
                   No print servers built yet.
                 </td>
               </tr>
