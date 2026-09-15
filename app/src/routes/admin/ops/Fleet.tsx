@@ -46,7 +46,9 @@ export default function Fleet() {
   const [reissued, setReissued] = useState<
     { serial: string; claim_code: string; revoked: number } | null
   >(null)
-  const [release, setRelease] = useState<{ ref: string | null; notes: string | null } | null>(null)
+  const [release, setRelease] = useState<
+    { ref: string | null; notes: string | null; updated_at: string | null } | null
+  >(null)
   const [refDraft, setRefDraft] = useState('')
   //: Which devices the version actions apply to, by serial.
   const [selected, setSelected] = useState<Set<string>>(new Set())
@@ -80,9 +82,12 @@ export default function Fleet() {
 
     const { data: rel } = await supabase
       .from('bridge_release')
-      .select('ref, notes')
+      .select('ref, notes, updated_at')
       .maybeSingle()
-    setRelease((rel as { ref: string | null; notes: string | null } | null) ?? null)
+    setRelease(
+      (rel as { ref: string | null; notes: string | null; updated_at: string | null } | null) ??
+        null,
+    )
     setRefDraft((rel?.ref as string | null) ?? '')
 
     const { data: orgRows } = await supabase.rpc('platform_overview')
@@ -94,14 +99,18 @@ export default function Fleet() {
     void load()
   }, [load])
 
-  // Keep the update-check countdown live: re-read the devices every 15s so a
-  // ring resets when its device actually checks in, rather than only on an
-  // action or a page reload. Devices only — the release and org list do not
-  // move on this cadence.
+  // Re-read the devices on a timer so a ring vanishes when its server reports
+  // the release, rather than only on an action or a page reload. Faster while a
+  // rollout is actually in flight — a pending server watched should update
+  // within seconds of it happening — and slow again once every server has
+  // converged, so an idle page is not polling for nothing.
+  const anyPending =
+    !!release?.ref &&
+    devices.some((d) => !d.pinned_ref && !onRelease(d.running_ref, release.ref))
   useEffect(() => {
-    const timer = window.setInterval(() => void reloadDevices(), 15000)
+    const timer = window.setInterval(() => void reloadDevices(), anyPending ? 5000 : 15000)
     return () => window.clearInterval(timer)
-  }, [reloadDevices])
+  }, [reloadDevices, anyPending])
 
   //: When the version list was last fetched, so opening a picker can refresh
   //: it without hammering GitHub. The unauthenticated budget is sixty requests
@@ -517,7 +526,11 @@ export default function Fleet() {
                         reports the release. Nothing beside a pinned server or
                         one already current — those have no update coming. */}
                     {!d.pinned_ref && !!release?.ref && !onRelease(d.running_ref, release.ref) && (
-                      <UpdateClock at={d.last_update_check} />
+                      <UpdateClock
+                        since={release.updated_at}
+                        lastCheck={d.last_update_check}
+                        target={release.ref}
+                      />
                     )}
                   </span>
                   {known(d.running_ref) && (

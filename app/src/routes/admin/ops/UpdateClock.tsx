@@ -1,49 +1,60 @@
 import { useEffect, useState } from 'react'
 
 /**
- * How long until a print server next checks for a new version.
+ * A pending update, counting down beside a server that is behind the release.
  *
- * The updater runs on a systemd timer, about once a minute (OnUnitActiveSec=1min
- * plus up to 15s of jitter), and each run records the moment it asked. This
- * draws a ring that is full just after a check and empties as the next one
- * approaches — so after setting a fleet release you can watch it come due on
- * each device rather than wondering whether anything is happening.
+ * The ring is full the moment a release is set and empties over about the
+ * updater's one-minute check interval, so it reads as "this server should pull
+ * the release around now". It is deliberately anchored to when the release was
+ * set, not to the device's last check: the updater touches that every minute,
+ * and anchoring there refilled the ring on each routine poll — a reset right
+ * before the version flipped. Anchored to the release, it counts down once and
+ * then sits blank until the server reports the new version, at which point the
+ * caller stops rendering it and it vanishes.
  *
- * A device that has not asked in well over a period is drawn hollow: its update
- * path is not reporting, which is a fault worth seeing on its own.
+ * The tooltip carries the live detail — the target, and how long since the
+ * server actually checked in — so an empty ring that is not moving can still be
+ * told apart from a server that has gone quiet.
  */
 
-//: The nominal seconds between checks — the timer's period. The ring is scaled
-//: to this; the actual gap is a little longer with jitter, which the overdue
-//: threshold allows for.
+//: The updater's check interval. The ring is scaled to it; a little jitter and
+//: the restart itself mean the version often flips a touch after the ring is
+//: already empty, which is why empty holds rather than meaning "late".
 const PERIOD = 60
-//: Past this, a check is late enough to mean the device is not reporting rather
-//: than merely between checks. Period, plus the jitter, plus a margin.
-const OVERDUE = 105
 
-export default function UpdateClock({ at }: { at: string | null }) {
-  // Tick so the ring empties smoothly between data reloads.
+export default function UpdateClock({
+  since,
+  lastCheck,
+  target,
+}: {
+  /** When the release was set — the stable anchor the countdown runs from. */
+  since: string | null
+  /** When the device last asked for its version, for the tooltip only. */
+  lastCheck: string | null
+  /** The release it is converging on, for the tooltip only. */
+  target: string | null
+}) {
+  // Tick so the ring empties smoothly between the table's data reloads.
   const [, setTick] = useState(0)
   useEffect(() => {
     const id = window.setInterval(() => setTick((n) => n + 1), 1000)
     return () => window.clearInterval(id)
   }, [])
 
-  const t = at ? new Date(at).getTime() : null
-  const elapsed = t === null ? null : Math.max(0, (Date.now() - t) / 1000)
-  const overdue = elapsed === null || elapsed > OVERDUE
-  const fraction = overdue ? 0 : Math.max(0, Math.min(1, 1 - elapsed! / PERIOD))
+  const start = since ? new Date(since).getTime() : null
+  const elapsed = start === null ? null : Math.max(0, (Date.now() - start) / 1000)
+  const fraction = elapsed === null ? 1 : Math.max(0, Math.min(1, 1 - elapsed / PERIOD))
 
   const r = 7
   const circumference = 2 * Math.PI * r
 
+  const lastElapsed =
+    lastCheck === null ? null : Math.max(0, (Date.now() - new Date(lastCheck).getTime()) / 1000)
   const title =
-    elapsed === null
-      ? 'Has not reported an update check yet.'
-      : overdue
-        ? `Last checked for an update ${describe(elapsed)} ago — not currently reporting.`
-        : `Checks for a new version about once a minute. Last checked ${describe(elapsed)} ago; ` +
-          `next in about ${Math.max(0, Math.round(PERIOD - elapsed))}s.`
+    `Update${target ? ` to ${target}` : ''} pending. ` +
+    (lastElapsed === null
+      ? 'Has not checked in yet.'
+      : `Last checked ${describe(lastElapsed)} ago.`)
 
   return (
     <span
@@ -51,9 +62,9 @@ export default function UpdateClock({ at }: { at: string | null }) {
       aria-label={title}
       style={{ display: 'inline-flex', alignItems: 'center' }}
     >
-      <svg width="27" height="27" viewBox="0 0 20 20" role="img">
+      <svg width="18" height="18" viewBox="0 0 20 20" role="img">
         <circle cx="10" cy="10" r={r} fill="none" stroke="var(--border, #d1d5db)" strokeWidth="2.5" />
-        {!overdue && (
+        {fraction > 0 && (
           <circle
             cx="10"
             cy="10"
