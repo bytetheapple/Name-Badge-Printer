@@ -289,14 +289,17 @@ button.secondary {
   display: flex;
   flex-direction: column;
 }
-.admin-header {
-  /* Pinned to the top so the tabs stay reachable however long the page below
-     grows; the content scrolls under it. Above the page (z-index 20) but below
-     modals (z-index 50). An opaque background so nothing shows through as it
-     scrolls past. */
+/* The banner (when operating) and the header pin together, so the tabs — and
+   the "in a customer org" warning above them — stay reachable however long the
+   page below grows; the content scrolls under it. Above the page (z-index 20)
+   but below modals (z-index 50). */
+.admin-top {
   position: sticky;
   top: 0;
   z-index: 20;
+}
+.admin-header {
+  /* Opaque, so nothing shows through as content scrolls past behind it. */
   background: var(--bg);
   display: flex;
   align-items: center;

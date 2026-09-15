@@ -87,6 +87,10 @@ export default function AdminLayout() {
 
   return (
     <div className={`admin${operating ? ' operating' : ''}`}>
+      {/* Banner and tab bar pin together, so the "in a customer org" warning
+          stays put on a long page rather than scrolling away from an operator
+          working deep in it. */}
+      <div className="admin-top">
       {operating && (
         <div className="op-banner">
           ⚠ You are in <strong>{org?.organization.name}</strong> as Guest Badges operations. Changes
@@ -170,6 +174,7 @@ export default function AdminLayout() {
           </button>
         </div>
       </header>
+      </div>
       <main className="admin-main">
         <Outlet />
       </main>
