@@ -69,7 +69,17 @@ export interface RepoVersion {
 }
 
 async function json(url: string): Promise<unknown> {
-  const res = await fetch(url, { headers: { Accept: 'application/vnd.github+json' } })
+  // Revalidate every time. GitHub sends `Cache-Control: max-age=60` on these
+  // responses, so the browser's HTTP cache would otherwise answer a re-fetch
+  // from its own copy for a minute — which is why opening the version picker
+  // right after a push kept showing the old list until a hard reload. `no-cache`
+  // makes the browser send a conditional request instead: a 304 when nothing
+  // has changed (free, and not counted against the rate limit) and the fresh
+  // list the moment a new release lands.
+  const res = await fetch(url, {
+    cache: 'no-cache',
+    headers: { Accept: 'application/vnd.github+json' },
+  })
   if (!res.ok) {
     // 403 here is nearly always the unauthenticated rate limit — 60 an hour per
     // address — rather than anything being wrong. Say which, since the remedy
