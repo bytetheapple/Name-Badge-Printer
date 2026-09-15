@@ -112,8 +112,16 @@ export default function Fleet() {
     lastVersionFetch.current = Date.now()
     void repoVersions()
       .then((v) => {
-        setVersions(v)
         setVersionsError(null)
+        // Only swap the list when it has actually changed. A fresh array on
+        // every focus re-renders the <option>s underneath an open native
+        // dropdown, which in Chrome jumps the highlight and swallows the first
+        // pick — exactly the "it selects the first item and Set Release stays
+        // grey" report. Same shas in the same order: keep the old array, no
+        // re-render, and the dropdown stays put.
+        setVersions((prev) =>
+          prev.length === v.length && prev.every((p, i) => p.sha === v[i].sha) ? prev : v,
+        )
       })
       .catch((e: Error) => setVersionsError(e.message))
   }, [])
@@ -480,12 +488,6 @@ export default function Fleet() {
               <th>Built for</th>
               <th>Version</th>
               <th>Updates</th>
-              <th
-                style={{ textAlign: 'center' }}
-                title="For a server that follows the fleet and is not yet on the release: how long until it next checks and pulls it. Full just after a check; empties as the next comes due."
-              >
-                Time to Update
-              </th>
               <th>Claimed</th>
               <th>Notes</th>
               <th />
@@ -507,7 +509,17 @@ export default function Fleet() {
                 </td>
                 <td>{d.customer ?? <span className="muted">—</span>}</td>
                 <td className="small">
-                  {d.running_ref ? <code>{d.running_ref}</code> : <span className="muted">—</span>}
+                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                    {d.running_ref ? <code>{d.running_ref}</code> : <span className="muted">—</span>}
+                    {/* A ring beside the version of any server that follows the
+                        fleet and is behind the set release: it counts down to
+                        the next update check, and vanishes once the server
+                        reports the release. Nothing beside a pinned server or
+                        one already current — those have no update coming. */}
+                    {!d.pinned_ref && !!release?.ref && !onRelease(d.running_ref, release.ref) && (
+                      <UpdateClock at={d.last_update_check} />
+                    )}
+                  </span>
                   {known(d.running_ref) && (
                     <div className="muted" title={known(d.running_ref)!.subject}>
                       {versionDate(known(d.running_ref)!.date)}
@@ -548,15 +560,6 @@ export default function Fleet() {
                     >
                       follows the fleet
                     </span>
-                  )}
-                </td>
-                <td style={{ textAlign: 'center' }}>
-                  {/* Only where a countdown means something: a server that
-                      follows the fleet and has not yet converged on the set
-                      release. A pinned server, or one already on the release,
-                      has nothing to wait for, so the cell stays empty. */}
-                  {!d.pinned_ref && !!release?.ref && !onRelease(d.running_ref, release.ref) && (
-                    <UpdateClock at={d.last_update_check} />
                   )}
                 </td>
                 <td className="small">
@@ -603,7 +606,7 @@ export default function Fleet() {
             ))}
             {!devices.length && (
               <tr>
-                <td colSpan={9} className="muted">
+                <td colSpan={8} className="muted">
                   No print servers built yet.
                 </td>
               </tr>
