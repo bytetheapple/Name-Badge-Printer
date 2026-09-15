@@ -239,24 +239,34 @@ export default function Settings() {
     }
     setSaving(true)
     setError(null)
-    const res = await invokeFn('google-provision', { org_id: orgId, what: 'drive' })
-    setSaving(false)
-    if (!res.ok) {
-      setError(res.error ?? 'Could not prepare the photographs destination.')
-      return
-    }
+    // Connect first; make the destination only on the way back, once there is a
+    // credential to put behind it. Creating the "Visitor photographs"
+    // destination up front — before the connection — left a phantom enabled
+    // destination behind whenever the consent screen was abandoned: it then
+    // showed under "Where sign-ins go" with no Google account behind it, and no
+    // way for an admin to make sense of it.
     if (!driveConnected) {
-      // Off to Google, and back to this page rather than to Integrations —
-      // this is where the question was asked.
       const begin = await invokeFn('google-oauth-begin', {
         org_id: orgId,
         return_to: '/admin/settings',
       })
+      setSaving(false)
       if (!begin.ok || typeof begin.url !== 'string') {
         setError(begin.error ?? 'Could not start the Google connection.')
         return
       }
+      // Off to Google, and back to this page rather than to Integrations — this
+      // is where the question was asked. On return, the notice invites choosing
+      // a requirement again, and that pass (now connected) is what makes the
+      // destination and sets the mode.
       window.location.assign(begin.url as string)
+      return
+    }
+    // Connected: now the destination can be made, with a credential behind it.
+    const res = await invokeFn('google-provision', { org_id: orgId, what: 'drive' })
+    setSaving(false)
+    if (!res.ok) {
+      setError(res.error ?? 'Could not prepare the photographs destination.')
       return
     }
     void chooseSelfieMode(next)
