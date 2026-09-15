@@ -241,3 +241,7 @@ The one Pi built before this exists lives in the home directory and runs as the
 login user. It keeps working: `credential.stored()` still reads the old token
 location, and `BRIDGE_STATE_DIR` defaults to the bridge directory. Moving it is
 optional and amounts to re-running the installer.
+
+<!-- Release canary: 2026-09-14. A deliberately inert change, so a fleet update
+     can be set and watched end to end (fetch, checkout, restart, health check)
+     without altering how the bridge runs. -->
