@@ -365,6 +365,17 @@ export default function Fleet() {
 
   if (loading) return <p className="muted">Loading…</p>
 
+  // Rollout progress toward the set release. Counted over the servers that
+  // follow the fleet and have reported a version: a pinned server is held on
+  // purpose, and a never-booted one has no version yet, so neither belongs in
+  // "still to update".
+  const following = release?.ref ? devices.filter((d) => !d.pinned_ref && d.running_ref) : []
+  const updatedCount = release?.ref
+    ? following.filter((d) => onRelease(d.running_ref, release.ref)).length
+    : 0
+  const pendingCount = following.length - updatedCount
+  const heldCount = devices.filter((d) => d.pinned_ref).length
+
   return (
     <>
       <h1>Fleet</h1>
@@ -426,6 +437,22 @@ export default function Fleet() {
       </div>
 
       <h2 style={{ marginTop: 36 }}>Print servers</h2>
+
+      {/* Rollout progress at a glance, so you do not have to scan every row to
+          see how far the release has reached. Only while there is a release to
+          measure against and a server that follows it. */}
+      {release?.ref && following.length > 0 && (
+        <p className="muted small" style={{ marginTop: 0 }}>
+          {pendingCount === 0
+            ? following.length === 1
+              ? `The server is on `
+              : `All ${following.length} servers are on `
+            : `${updatedCount} of ${following.length} ${following.length === 1 ? 'server' : 'servers'} on `}
+          <code>{release.ref}</code>
+          {pendingCount > 0 && ` · ${pendingCount} still to update`}
+          {heldCount > 0 && ` · ${heldCount} held on another version`}
+        </p>
+      )}
 
       {/* The version can be typed before anything is selected: deciding which
           version and choosing which devices are separate thoughts. Only the
