@@ -44,6 +44,12 @@ export default function StatusPanel() {
   const [netReq, setNetReq] = useState<ServerNetworkRequest | null>(null)
   const [joining, setJoining] = useState(false)
   const [, setTick] = useState(0)
+  //: How many badges are still waiting to print (not yet claimed by the print
+  //: server), which is what the "cancel pending" control acts on. Counted
+  //: separately from the recent-jobs list, which is capped at ten.
+  const [queued, setQueued] = useState(0)
+  const [cancelling, setCancelling] = useState(false)
+  const [notice, setNotice] = useState<string | null>(null)
 
   const loadBridge = useCallback(async () => {
     if (!orgId) return
@@ -85,7 +91,48 @@ export default function StatusPanel() {
       .order('created_at', { ascending: false })
       .limit(10)
     setJobs((data ?? []) as PrintJob[])
+    // The true number waiting, which can exceed the ten shown above.
+    const { count } = await supabase
+      .from('print_jobs')
+      .select('id', { count: 'exact', head: true })
+      .eq('org_id', orgId)
+      .eq('status', 'queued')
+    setQueued(count ?? 0)
   }, [orgId])
+
+  /**
+   * Clear the badges still waiting to print.
+   *
+   * Only the queued ones — a job the print server has already taken is not
+   * ours to pull out from under it, and the delete is scoped to 'queued' both
+   * here and in the row policy so it never can. The point is the printer that
+   * was offline overnight: without this, a day's worth of badges prints for
+   * people long gone the moment it reconnects.
+   */
+  async function cancelQueued() {
+    if (!orgId) return
+    if (
+      !window.confirm(
+        `Cancel ${queued} badge${queued === 1 ? '' : 's'} still waiting to print? ` +
+          `They will not print when the print server reconnects.`,
+      )
+    ) {
+      return
+    }
+    setCancelling(true)
+    setNotice(null)
+    const { error } = await supabase
+      .from('print_jobs')
+      .delete()
+      .eq('org_id', orgId)
+      .eq('status', 'queued')
+    setCancelling(false)
+    if (error) {
+      setNotice(`Could not cancel the pending badges: ${error.message}`)
+      return
+    }
+    await loadJobs()
+  }
 
   useEffect(() => {
     const refreshAll = () => {
@@ -301,6 +348,31 @@ export default function StatusPanel() {
       </div>
 
       <h2 style={{ marginTop: 20 }}>Recent print jobs</h2>
+
+      {notice && <div className="error">{notice}</div>}
+
+      {/* Badges still waiting to print, with a way to clear them. The case this
+          is for: the printer was offline overnight, and without this a day's
+          worth of badges prints for people long gone the moment it comes back. */}
+      {queued > 0 && (
+        <div
+          className="notice"
+          style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}
+        >
+          <span>
+            {queued} badge{queued === 1 ? ' is' : 's are'} waiting to print
+            {bridgeOnline ? '' : ' — the print server is offline'}. They print when it reconnects.
+          </span>
+          <button
+            className="secondary btn-sm"
+            onClick={() => void cancelQueued()}
+            disabled={cancelling}
+          >
+            {cancelling ? 'Cancelling…' : `Cancel ${queued} pending`}
+          </button>
+        </div>
+      )}
+
       <div className="table-wrap">
         <table className="data">
           <thead>
