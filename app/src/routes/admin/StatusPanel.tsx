@@ -4,7 +4,6 @@ import { supabase } from '../../lib/supabase'
 import JoinNetwork from './JoinNetwork'
 import SearchProgress from './SearchProgress'
 import { useOrg } from '../../lib/org'
-import { lastSeenLabel } from '../../lib/secrets'
 import type {
   Printer,
   PrinterStatusRow,
@@ -50,6 +49,13 @@ export default function StatusPanel() {
   const [queued, setQueued] = useState(0)
   const [cancelling, setCancelling] = useState(false)
   const [notice, setNotice] = useState<string | null>(null)
+  //: The last time a badge actually came out of each printer — the honest "it
+  //: was working" signal, unlike the reachability probe, which only says a port
+  //: answered.
+  const [lastPrints, setLastPrints] = useState<Record<string, string>>({})
+  //: The printer whose connection is being tested, and the result per printer.
+  const [testing, setTesting] = useState<string | null>(null)
+  const [testMsg, setTestMsg] = useState<Record<string, string>>({})
 
   const loadBridge = useCallback(async () => {
     if (!orgId) return
@@ -69,6 +75,79 @@ export default function StatusPanel() {
       .order('name')
     setPrinters((data ?? []) as Printer[])
   }, [orgId])
+  // The most recent successful print per printer, in one query — the newest
+  // printed job for each. Refreshed only when a job finishes, not on the status
+  // poll: a badge coming out is not a per-second event.
+  const loadLastPrints = useCallback(async () => {
+    if (!orgId) return
+    const { data } = await supabase
+      .from('print_jobs')
+      .select('printer_id, printed_at')
+      .eq('org_id', orgId)
+      .eq('status', 'printed')
+      .not('printed_at', 'is', null)
+      .order('printed_at', { ascending: false })
+      .limit(400)
+    const map: Record<string, string> = {}
+    for (const r of (data ?? []) as Array<{ printer_id: string | null; printed_at: string }>) {
+      if (r.printer_id && !map[r.printer_id]) map[r.printer_id] = r.printed_at
+    }
+    setLastPrints(map)
+  }, [orgId])
+
+  /**
+   * A real, on-demand connection test.
+   *
+   * Only the bridge can reach the printer, so this is a short round trip: ask it
+   * to probe (probe_requested_at), then wait for last_checked to move — a fresh
+   * probe, whether ours or a heartbeat that happened to land first. Watching
+   * last_checked *change* rather than comparing it to the browser clock keeps
+   * this right even when the two clocks disagree.
+   */
+  async function testConnection(p: Printer) {
+    const before = p.last_checked ?? ''
+    setTesting(p.id)
+    setTestMsg((m) => ({ ...m, [p.id]: '' }))
+    const { error } = await supabase
+      .from('printers')
+      .update({ probe_requested_at: new Date().toISOString() })
+      .eq('id', p.id)
+    if (error) {
+      setTesting(null)
+      setTestMsg((m) => ({ ...m, [p.id]: `Could not start the test: ${error.message}` }))
+      return
+    }
+    const startedAt = Date.now()
+    const poll = async () => {
+      const { data } = await supabase
+        .from('printers')
+        .select('reachable, last_checked, unreachable_reason')
+        .eq('id', p.id)
+        .maybeSingle()
+      const checked = (data?.last_checked as string | null) ?? ''
+      if (checked && checked !== before) {
+        setTesting(null)
+        setTestMsg((m) => ({
+          ...m,
+          [p.id]: data?.reachable
+            ? 'Reachable — the printer answered.'
+            : `No answer${data?.unreachable_reason ? ` — ${data.unreachable_reason}` : '.'}`,
+        }))
+        void loadPrinters()
+        return
+      }
+      if (Date.now() - startedAt > 12000) {
+        setTesting(null)
+        setTestMsg((m) => ({
+          ...m,
+          [p.id]: 'No response from the print server (it may be offline). Try again.',
+        }))
+        return
+      }
+      window.setTimeout(() => void poll(), 1000)
+    }
+    window.setTimeout(() => void poll(), 1200)
+  }
   // Only the most recent: this is "did the change I just made land", not a
   // history, and an old failure sitting under a working server reads as a
   // current fault.
@@ -139,6 +218,7 @@ export default function StatusPanel() {
       void loadBridge()
       void loadPrinters()
       void loadJobs()
+      void loadLastPrints()
       void loadNetReq()
     }
     refreshAll()
@@ -150,7 +230,10 @@ export default function StatusPanel() {
       .on('postgres_changes', { event: '*', schema: 'public', table: 'printers' }, () =>
         loadPrinters(),
       )
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'print_jobs' }, () => loadJobs())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'print_jobs' }, () => {
+        void loadJobs()
+        void loadLastPrints()
+      })
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'server_network_requests' },
@@ -189,7 +272,7 @@ export default function StatusPanel() {
       document.removeEventListener('visibilitychange', onVisible)
       window.removeEventListener('focus', onVisible)
     }
-  }, [loadBridge, loadPrinters, loadJobs, loadNetReq])
+  }, [loadBridge, loadPrinters, loadJobs, loadLastPrints, loadNetReq])
 
   const lastSeen = bridge?.bridge_last_seen ? new Date(bridge.bridge_last_seen).getTime() : null
   const bridgeOnline = lastSeen !== null && Date.now() - lastSeen < BRIDGE_FRESH_MS
@@ -305,38 +388,54 @@ export default function StatusPanel() {
       <div className="status-row">
         {printers.map((p) => {
           const media = [p.media_width, p.media_type].filter(Boolean).join(' · ')
+          // A green dot only means "the last probe reached it" — and when the
+          // print server is offline, no probe has run, so that green is stale.
+          // Show it red then: for all practical purposes a printer the server
+          // cannot reach is unreachable.
+          const state =
+            !bridgeOnline ? 'bad' : p.reachable === true ? 'ok' : p.reachable === false ? 'bad' : ''
+          const lastPrint = lastPrints[p.id]
           return (
-            <div
-              key={p.id}
-              className={`status-card ${p.reachable === true ? 'ok' : p.reachable === false ? 'bad' : ''}`}
-            >
+            <div key={p.id} className={`status-card ${state}`}>
               <div className="status-label">
                 {p.name}
                 {p.location && <span className="muted"> · {p.location}</span>}
               </div>
               <div className="status-value">
-                {p.reachable === true ? 'Ready' : p.reachable === false ? 'Unreachable' : 'Not checked'}
+                {state === 'ok' ? 'Ready' : state === 'bad' ? 'Unreachable' : 'Not checked'}
               </div>
               {/* What is loaded, when the printer will say — the commonest
                   reason a badge does not come out is the wrong roll rather
-                  than the printer being off.
-
-                  Omitted rather than shown as unknown: the QL-820NWB does not
-                  answer status requests at all (see the recon doc), so on
-                  every printer we currently ship this line would permanently
-                  read "Media unknown", which is not information and teaches
-                  people to stop reading the card. */}
+                  than the printer being off. Omitted rather than shown as
+                  unknown: the QL-820NWB does not answer status requests, so
+                  this would otherwise permanently read "Media unknown". */}
               {media && <div className="muted small">{media}</div>}
+
+              {/* The honest "it was working" signal: a badge actually came out.
+                  Unlike the dot, this cannot go stale-green. */}
               <div className="muted small">
-                {p.last_checked ? `Checked ${lastSeenLabel(p.last_checked, null)}` : 'Never checked'}
+                Last printout: {lastPrint ? new Date(lastPrint).toLocaleString() : 'never'}
               </div>
-              {p.error_state && <div className="muted small">{p.error_state}</div>}
-              {/* Only while it is actually unreachable: on a printer that has
-                  come back this is history, and a card that still explains a
-                  fixed fault is how people learn to stop reading the card. */}
-              {p.reachable === false && p.unreachable_reason && (
-                <div className="muted small">{p.unreachable_reason}</div>
+
+              {!bridgeOnline ? (
+                <div className="muted small">The print server is offline, so it can't be checked.</div>
+              ) : (
+                p.reachable === false &&
+                p.unreachable_reason && <div className="muted small">{p.unreachable_reason}</div>
               )}
+              {p.error_state && bridgeOnline && <div className="muted small">{p.error_state}</div>}
+
+              <div style={{ marginTop: 8 }}>
+                <button
+                  className="secondary btn-sm"
+                  onClick={() => void testConnection(p)}
+                  disabled={testing === p.id}
+                >
+                  {testing === p.id ? 'Testing…' : 'Test connection'}
+                </button>
+                {testMsg[p.id] && <div className="muted small" style={{ marginTop: 4 }}>{testMsg[p.id]}</div>}
+              </div>
+
               {/* And that the server is doing something about it — the
                   background search's progress, so a missing printer reads as
                   one being recovered rather than one nobody is coming for. */}

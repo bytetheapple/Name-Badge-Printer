@@ -187,6 +187,9 @@ export interface PiDevice {
   /** What it last reported running. Reported, never assumed. */
   running_ref: string | null
   last_seen: string | null
+  /** When we began recording this server's connectivity. The graph paints grey
+   *  before it — we have no data — and the online/outage record after. */
+  monitoring_since: string | null
   /** When the device last asked what version it should run — the updater's
    *  own ~1-minute check, distinct from last_seen (the ~2s job poll). Drives
    *  the countdown to the next update check. */
@@ -292,6 +295,9 @@ export interface Printer {
   searching_since: string | null
   last_search_at: string | null
   next_search_at: string | null
+  /** Set by the console to ask the bridge for an on-demand connection test; the
+   *  bridge probes once and advances last_checked past it. */
+  probe_requested_at: string | null
   last_checked: string | null
   header_image_url: string | null
   created_at: string

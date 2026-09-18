@@ -339,6 +339,26 @@ def _search_fields(printer_id: str) -> dict:
     }
 
 
+def _probe_requested(p: dict) -> bool:
+    """Whether someone asked to test this printer since it was last checked.
+
+    The console sets probe_requested_at; a probe advances last_checked past it,
+    so this is true exactly once per request and needs nothing cleared.
+    """
+    req = p.get("probe_requested_at")
+    if not req:
+        return False
+    checked = p.get("last_checked")
+    if not checked:
+        return True
+    try:
+        return datetime.fromisoformat(req.replace("Z", "+00:00")) > datetime.fromisoformat(
+            checked.replace("Z", "+00:00")
+        )
+    except (ValueError, AttributeError):
+        return False
+
+
 def probe_printers(printers: list) -> list:
     """Ask each printer how it is, for the next poll to report upstream.
 
@@ -503,12 +523,19 @@ def main():
     while True:
         try:
             # Probing each printer costs a TCP round trip, so it keeps the slower
-            # heartbeat cadence; job polling stays fast.
+            # heartbeat cadence; job polling stays fast. Between heartbeats, a
+            # printer someone asked to test is probed on its own, so the "Test
+            # connection" button gets a fresh answer in a couple of seconds
+            # rather than at the next heartbeat.
             now = time.monotonic()
             reports = None
             if now - last_probe >= config.HEARTBEAT_INTERVAL:
                 reports = probe_printers(printers)
                 last_probe = now
+            else:
+                due = [p for p in printers if _probe_requested(p)]
+                if due:
+                    reports = probe_printers(due)
 
             result = client.poll(reports, provision_result, network_result)
             if provision_result is not None:

@@ -24,6 +24,7 @@ type Device = {
   serial: string
   customer: string | null
   last_seen: string | null
+  monitoring_since: string | null
 }
 type Outage = { started_at: string; ended_at: string; seconds: number }
 
@@ -51,7 +52,7 @@ export default function OpsConnectivity() {
   const loadDevices = useCallback(async () => {
     const { data } = await supabase
       .from('pi_devices')
-      .select('id, serial, customer, last_seen')
+      .select('id, serial, customer, last_seen, monitoring_since')
       .order('customer', { ascending: true, nullsFirst: false })
     const rows = (data ?? []) as Device[]
     setDevices(rows)
@@ -96,6 +97,9 @@ export default function OpsConnectivity() {
   const device = devices.find((d) => d.id === selected) ?? null
   const lastSeenMs = device?.last_seen ? new Date(device.last_seen).getTime() : null
   const currentlyDown = lastSeenMs !== null && now - lastSeenMs > DROP_SECONDS * 1000
+  // Before this we have no record, so the graph paints grey and the stats count
+  // only the time we were actually watching.
+  const monitoringStart = device?.monitoring_since ? new Date(device.monitoring_since).getTime() : null
 
   // The offline spans within the current window, clipped and merged with any
   // outage still in progress (which no row records yet).
@@ -117,14 +121,18 @@ export default function OpsConnectivity() {
   const stats = useMemo(() => {
     const downMs = spans.reduce((sum, s) => sum + (s.end - s.start), 0)
     const longestMs = spans.reduce((m, s) => Math.max(m, s.end - s.start), 0)
-    const total = WINDOW_MS[range]
+    // Uptime is measured over the part of the window we were actually
+    // monitoring, not the grey unknown before it — otherwise a server watched
+    // for an hour would claim a week of perfect uptime.
+    const monitoredStart = Math.max(windowStart, monitoringStart ?? now)
+    const monitoredMs = Math.max(0, now - monitoredStart)
     return {
       drops: spans.length,
       downMinutes: Math.round(downMs / 60000),
       longestMinutes: Math.round(longestMs / 60000),
-      uptime: Math.max(0, Math.min(100, ((total - downMs) / total) * 100)),
+      uptime: monitoredMs > 0 ? Math.max(0, Math.min(100, ((monitoredMs - downMs) / monitoredMs) * 100)) : null,
     }
-  }, [spans, range])
+  }, [spans, windowStart, monitoringStart, now])
 
   if (loading) return <p className="muted">Loading…</p>
 
@@ -187,10 +195,20 @@ export default function OpsConnectivity() {
             <Stat label="Drops" value={String(stats.drops)} sub={`in the last ${range}`} />
             <Stat label="Disconnected" value={minutes(stats.downMinutes)} sub="total, this range" />
             <Stat label="Longest drop" value={minutes(stats.longestMinutes)} sub="this range" />
-            <Stat label="Uptime" value={`${stats.uptime.toFixed(stats.uptime >= 99.95 ? 0 : 2)}%`} sub="this range" />
+            <Stat
+              label="Uptime"
+              value={stats.uptime === null ? '—' : `${stats.uptime.toFixed(stats.uptime >= 99.95 ? 0 : 2)}%`}
+              sub={stats.uptime === null ? 'not yet monitored' : 'while monitored'}
+            />
           </div>
 
-          <ConnectivityGraph spans={spans} windowStart={windowStart} now={now} range={range} />
+          <ConnectivityGraph
+            spans={spans}
+            windowStart={windowStart}
+            now={now}
+            range={range}
+            monitoringStart={monitoringStart}
+          />
         </>
       )}
     </>
@@ -207,22 +225,31 @@ function Stat({ label, value, sub }: { label: string; value: string; sub: string
   )
 }
 
-/** A timeline: online ground with red bands where the server was down. */
+/** A timeline: online ground with red bands where the server was down, and a
+ *  grey band over any part of the window before monitoring began. */
 function ConnectivityGraph({
   spans,
   windowStart,
   now,
   range,
+  monitoringStart,
 }: {
   spans: Span[]
   windowStart: number
   now: number
   range: Window
+  monitoringStart: number | null
 }) {
   const W = 1000
   const H = 64
   const total = now - windowStart
   const x = (t: number) => ((t - windowStart) / total) * W
+
+  // Where the record begins within this window: everything left of it is grey,
+  // "no data", rather than an assumed green. Null means never monitored — the
+  // whole window is grey.
+  const monitoredFrom = monitoringStart === null ? now : Math.max(windowStart, monitoringStart)
+  const greyW = Math.max(0, x(monitoredFrom))
 
   // A handful of evenly spaced time ticks along the bottom.
   const ticks: { at: number; label: string }[] = []
@@ -237,6 +264,12 @@ function ConnectivityGraph({
       <svg viewBox={`0 0 ${W} ${H + 22}`} width="100%" role="img" aria-label="Connectivity timeline">
         {/* Online ground. */}
         <rect x="0" y="8" width={W} height={H - 16} rx="4" fill="var(--ok-bg, #d1fae5)" />
+        {/* No-data ground, before monitoring began. */}
+        {greyW > 0 && (
+          <rect x="0" y="8" width={greyW} height={H - 16} rx="4" fill="var(--pending-bg, #f3f4f6)">
+            <title>No data before {new Date(monitoredFrom).toLocaleString()} — not yet monitored</title>
+          </rect>
+        )}
         {/* Down bands. */}
         {spans.map((s, i) => {
           const x1 = x(s.start)

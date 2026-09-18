@@ -270,7 +270,7 @@ Deno.serve(async (req) => {
   const printersRes = await fetch(
     `${REST}/printers?org_id=eq.${bridge.org_id}${printerFilter(bridge)}` +
       `&select=id,name,printer_ip,port,mac,wired_mac,serial,header_image_url,badge_header,` +
-      `badge_subtitle,badge_header_mode` +
+      `badge_subtitle,badge_header_mode,probe_requested_at,last_checked` +
       `&order=created_at.asc`,
     { headers: restHeaders },
   );
