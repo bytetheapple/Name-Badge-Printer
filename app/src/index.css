@@ -964,6 +964,37 @@ a.pill:hover {
   border-top: 1px solid var(--border);
 }
 
+/* Connectivity screen: stat tiles and the timeline graph. */
+.stat-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin: 18px 0;
+}
+.stat-tile {
+  flex: 1 1 130px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 12px 14px;
+  background: var(--bg);
+}
+.stat-value {
+  font-size: 1.5rem;
+  font-weight: 600;
+  color: var(--text-h);
+  line-height: 1.1;
+}
+.stat-label {
+  font-weight: 500;
+  margin-top: 3px;
+}
+.graph-wrap {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 14px 14px 6px;
+  background: var(--bg);
+}
+
 /* ---- Printers page: flat, no panels ---- */
 .printer-summary {
   display: flex;

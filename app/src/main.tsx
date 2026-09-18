@@ -25,6 +25,7 @@ import OpsOrganizations from './routes/admin/ops/Organizations'
 import OpsFleet from './routes/admin/ops/Fleet'
 import OpsOperators from './routes/admin/ops/Operators'
 import OpsActivity from './routes/admin/ops/Activity'
+import OpsConnectivity from './routes/admin/ops/Connectivity'
 
 /**
  * What `/` serves.
@@ -73,6 +74,7 @@ const router = createBrowserRouter([
       { path: 'ops', element: <Navigate to="/admin/ops/organizations" replace /> },
       { path: 'ops/organizations', element: <OpsOrganizations /> },
       { path: 'ops/fleet', element: <OpsFleet /> },
+      { path: 'ops/connectivity', element: <OpsConnectivity /> },
       { path: 'ops/operators', element: <OpsOperators /> },
       { path: 'ops/activity', element: <OpsActivity /> },
       // Where the console used to live; bookmarks and browser history still
