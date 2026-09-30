@@ -962,6 +962,9 @@ function WifiConfirm({
   }, [shared, choice, session.ssid, suggested])
   const [passphrase, setPassphrase] = useState('')
   const [passphrase2, setPassphrase2] = useState('')
+  //: An open network has no passphrase. The printer supports it (auth "open",
+  //: no key); this only tells the wizard to stop insisting on a password.
+  const [noPassword, setNoPassword] = useState(false)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -969,15 +972,25 @@ function WifiConfirm({
 
   async function apply() {
     if (!ssid) return setError('Choose the network the printer should join.')
-    if (!passphrase) return setError('Enter the WiFi password.')
-    if (passphrase !== passphrase2) return setError('The two WiFi passwords do not match.')
+    if (!noPassword) {
+      if (!passphrase) return setError('Enter the WiFi password, or tick "This network has no password".')
+      if (passphrase !== passphrase2) return setError('The two WiFi passwords do not match.')
+    }
 
     setSaving(true)
-    const { error } = await supabase.rpc('set_provisioning_secret', {
-      p_session: session.id,
-      p_kind: 'wifi_passphrase',
-      p_secret: passphrase,
-    })
+    const { error } = noPassword
+      ? // Drop any passphrase a previous attempt on this session stored, so the
+        // printer is not configured for WPA on a network that has none. A no-op
+        // when nothing was stored.
+        await supabase.rpc('clear_provisioning_secret', {
+          p_session: session.id,
+          p_kind: 'wifi_passphrase',
+        })
+      : await supabase.rpc('set_provisioning_secret', {
+          p_session: session.id,
+          p_kind: 'wifi_passphrase',
+          p_secret: passphrase,
+        })
     setSaving(false)
     if (error) return setError(error.message)
     await advance('wifi', { ssid })
@@ -1051,26 +1064,46 @@ function WifiConfirm({
           </label>
         )}
 
-        {/* Typed twice rather than shown back: there is no way to check a WiFi
-            password after it has been used, only to discover it was wrong. */}
-        <label className="field">
-          WiFi password
+        <label className="checkline">
           <input
-            type="password"
-            value={passphrase}
-            onChange={(e) => setPassphrase(e.target.value)}
-            autoComplete="new-password"
+            type="checkbox"
+            checked={noPassword}
+            onChange={(e) => setNoPassword(e.target.checked)}
           />
+          This network has no password (open network)
         </label>
-        <label className="field">
-          WiFi password again
-          <input
-            type="password"
-            value={passphrase2}
-            onChange={(e) => setPassphrase2(e.target.value)}
-            autoComplete="new-password"
-          />
-        </label>
+
+        {noPassword ? (
+          <p className="muted small">
+            The printer will join without a password. This works only for a truly open
+            network — one that connects straight away. A network that shows a
+            &ldquo;click to accept&rdquo; or sign-in page after connecting will not work,
+            because the printer cannot fill that page in.
+          </p>
+        ) : (
+          <>
+            {/* Typed twice rather than shown back: there is no way to check a WiFi
+                password after it has been used, only to discover it was wrong. */}
+            <label className="field">
+              WiFi password
+              <input
+                type="password"
+                value={passphrase}
+                onChange={(e) => setPassphrase(e.target.value)}
+                autoComplete="new-password"
+              />
+            </label>
+            <label className="field">
+              WiFi password again
+              <input
+                type="password"
+                value={passphrase2}
+                onChange={(e) => setPassphrase2(e.target.value)}
+                autoComplete="new-password"
+              />
+            </label>
+          </>
+        )}
       </fieldset>
 
       <button onClick={() => void apply()} disabled={busy || saving}>
