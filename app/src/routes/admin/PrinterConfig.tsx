@@ -195,6 +195,12 @@ export default function PrinterConfig() {
   const [dialog, setDialog] = useState<'add' | Printer | null>(null)
   const [busy, setBusy] = useState<string | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
+  //: The printer currently being searched for by identity, and how it went.
+  const [locating, setLocating] = useState<string | null>(null)
+  const [locateMsg, setLocateMsg] = useState<string | null>(null)
+  const [locateOk, setLocateOk] = useState(false)
+  //: Bumped on each new search so a poll from a superseded one stops quietly.
+  const locateToken = useRef(0)
 
   const loadPrinters = useCallback(async () => {
     if (!orgId) return
@@ -241,6 +247,7 @@ export default function PrinterConfig() {
   function openTab(id: string) {
     setTab(id)
     setNotice(null)
+    setLocateMsg(null)
     if (id !== 'add') rememberTab(id)
   }
 
@@ -319,6 +326,88 @@ export default function PrinterConfig() {
     }
     setTab('add')
     setNotice(`Setting up Wi-Fi for ${printer.name} — enter the printer's password to continue.`)
+  }
+
+  /**
+   * Find this printer again wherever it is on the network, by identity.
+   *
+   * For the printer that was set up somewhere else — configured at home before
+   * a visit, say — and is now plugged in here on a new address. A plain address
+   * search is no help: the recorded address is the old one. This sweeps for the
+   * printer by its serial (and MAC), which survive a move, and rewrites this
+   * record's address to wherever it answers. It reuses the unattended "locate"
+   * session the bridge already knows how to run, and polls it to completion.
+   */
+  async function rediscover(printer: Printer) {
+    const token = ++locateToken.current
+    setLocating(printer.id)
+    setLocateMsg(null)
+    setNotice(null)
+    // Start clean: drop any earlier locate for this printer so we are not
+    // polling a stale one.
+    await supabase
+      .from('provisioning_sessions')
+      .delete()
+      .eq('org_id', orgId!)
+      .eq('kind', 'locate')
+      .eq('printer_id', printer.id)
+    const { data, error } = await supabase
+      .from('provisioning_sessions')
+      .insert({
+        org_id: orgId,
+        kind: 'locate',
+        state: 'discover',
+        printer_id: printer.id,
+        printer_name: printer.name,
+        // The identities the sweep matches on — what lets it recognise the
+        // printer at an address it has never had before.
+        serial: printer.serial,
+        wireless_mac: printer.mac,
+      })
+      .select('id')
+      .maybeSingle()
+    if (error || !data) {
+      if (locateToken.current === token) {
+        setLocating(null)
+        setLocateMsg(`Could not start the search: ${error?.message ?? 'unknown error'}`)
+      }
+      return
+    }
+
+    const id = data.id as string
+    const deadline = Date.now() + 4 * 60 * 1000
+    const tick = async () => {
+      if (locateToken.current !== token) return // a newer search took over
+      const { data: s } = await supabase
+        .from('provisioning_sessions')
+        .select('state, wireless_ip, error')
+        .eq('id', id)
+        .maybeSingle()
+      if (locateToken.current !== token) return
+
+      // A locate only ever runs the one step, so the moment it leaves 'discover'
+      // it is finished — done if it matched, failed if it did not.
+      const finished = !s || s.state !== 'discover' || Date.now() > deadline
+      if (!finished) {
+        window.setTimeout(() => void tick(), 2500)
+        return
+      }
+      setLocating(null)
+      if (s?.state === 'done') {
+        setLocateOk(true)
+        setLocateMsg(`Found ${printer.name} at ${s.wireless_ip} — its address is updated.`)
+        await loadPrinters()
+      } else {
+        setLocateOk(false)
+        setLocateMsg(
+          s?.error ||
+            'The printer did not answer. It may be powered off, or on a network this print server cannot reach.',
+        )
+      }
+      // The locate row has done its job; clear it so it does not accumulate.
+      if (s) await supabase.from('provisioning_sessions').delete().eq('id', id)
+    }
+    window.setTimeout(() => void tick(), 2500)
   }
 
   async function remove(printer: Printer) {
@@ -401,6 +490,16 @@ export default function PrinterConfig() {
                     the background and this shows the progress — no button, no
                     waiting. It re-finds a moved printer on its own. */}
                 <SearchProgress printer={current} />
+                {locating === current.id ? (
+                  <div className="locate-status searching">
+                    <span className="spinner-dot" aria-hidden="true" />
+                    <span>Searching for this printer by its serial number…</span>
+                  </div>
+                ) : (
+                  locateMsg && (
+                    <div className={`locate-status ${locateOk ? 'found' : 'missed'}`}>{locateMsg}</div>
+                  )
+                )}
               </div>
               <div className="printer-summary-actions">
                 <button className="secondary btn-sm" onClick={() => setDialog(current)}>
@@ -412,6 +511,20 @@ export default function PrinterConfig() {
                   disabled={busy === current.id}
                 >
                   {busy === current.id ? 'Queuing…' : 'Test print'}
+                </button>
+                {/* For a printer configured elsewhere and now plugged in here:
+                    find it by its serial wherever it landed and fix its address. */}
+                <button
+                  className="secondary btn-sm"
+                  onClick={() => void rediscover(current)}
+                  disabled={locating === current.id || (!current.serial && !current.mac)}
+                  title={
+                    current.serial || current.mac
+                      ? 'Search for this printer by its serial number and update its address'
+                      : 'This printer has no serial or MAC on record yet to search by'
+                  }
+                >
+                  {locating === current.id ? 'Searching…' : 'Rediscover'}
                 </button>
                 {/* For a printer added by its wired address: put it on WiFi
                     without resetting it and running the whole setup again. */}

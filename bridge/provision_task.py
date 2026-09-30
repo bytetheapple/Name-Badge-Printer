@@ -63,23 +63,20 @@ def _found_json(f) -> dict:
     return {"ip": f.ip, "mac": f.mac, "serial": f.serial, "model": f.model, "via": f.via}
 
 
-def _wait_for_printers(subnet, timeout, say, known=()) -> list:  # noqa: D417
-    """Scan until a printer we do not already know answers.
+def _wait_for_printers(subnet, timeout, say, want) -> list:  # noqa: D417
+    """Scan until a printer the caller is waiting for answers, or time runs out.
 
-    How long a reset printer takes to reach the network varies with the switch
-    and the DHCP server, so a fixed wait is either unreliable or slower than it
-    needs to be.
+    How long a printer takes to reach the network varies with the switch and the
+    DHCP server, so a fixed wait is either unreliable or slower than it needs to
+    be — hence a poll with a deadline rather than one look.
 
-    `known` is the addresses already in service. Stopping at the first printer
-    to answer sounds right and is wrong: a printer that has been running for
-    weeks replies instantly, while the one actually being set up is still
-    working through a factory reset — so the sweep would return the wrong
-    printer, every time, and never even look for the right one.
-
-    Everything found is returned, including the known ones, because the
-    operator may still need to see them to understand what is on the network.
+    `want(found)` decides when the sweep has what it came for, and it differs by
+    what is being done: a brand-new printer for a setup (the reset one is still
+    booting while any working printer answers at once, so stopping at the first
+    reply would return the wrong one), this exact printer for a locate, or any
+    printer for a move. Everything found is returned regardless of `want`, so the
+    caller can still show the operator what else is on the network.
     """
-    known = {str(ip).strip() for ip in known if ip}
     subnets = discover.candidate_subnets(subnet)
     deadline = time.monotonic() + timeout
     attempt = 0
@@ -89,17 +86,15 @@ def _wait_for_printers(subnet, timeout, say, known=()) -> list:  # noqa: D417
         found = discover.discover_printers(subnets=subnets)
         if found:
             seen = found
-            fresh = [f for f in found if f.ip.strip() not in known]
-            if fresh:
+            if any(want(f) for f in found):
                 return found
         remaining = deadline - time.monotonic()
         if remaining <= 0:
             return seen
-        if seen:
-            say(f"only printers already in service so far "
-                f"(attempt {attempt}, {int(remaining)}s left)")
-        else:
-            say(f"nothing yet (attempt {attempt}, {int(remaining)}s left)")
+        say(
+            f"{'still looking' if seen else 'nothing yet'} "
+            f"(attempt {attempt}, {int(remaining)}s left)"
+        )
         time.sleep(min(_POLL_INTERVAL, remaining))
 
 
@@ -109,19 +104,55 @@ def _wait_for_printers(subnet, timeout, say, known=()) -> list:  # noqa: D417
 def _discover(ctx, say) -> TaskResult:
     subnet = ctx.get("subnet") or discover.local_subnet()
     known = ctx.get("known_ips") or []
+    kind = ctx.get("kind") or "setup"
+    known_set = {str(ip).strip() for ip in known if ip}
     nets = discover.candidate_subnets(subnet)
+
+    # What each kind is actually waiting for:
+    #  - setup: a printer we do not already have. The one being set up is still
+    #    working through its ~90s reset while any working printer replies at once.
+    #  - locate: this exact printer, by the identity that survives a DHCP move —
+    #    its serial, or its MAC. That is what re-finds a printer at a new address
+    #    anywhere the sweep reaches (someone brought a printer configured
+    #    elsewhere and plugged it in here).
+    #  - rehome: the printer is already up and the operator picks it from the
+    #    list, so any printer answering is enough to move on — including one we
+    #    already have, which a move is deliberately about.
+    if kind == "locate":
+        want_serial = (ctx.get("serial") or "").strip().lower()
+        want_mac = (ctx.get("wireless_mac") or "").strip().lower()
+
+        def want(f) -> bool:
+            if want_serial and (f.serial or "").strip().lower() == want_serial:
+                return True
+            if want_mac and (f.mac or "").strip().lower() == want_mac:
+                return True
+            # No identity on record to match on: fall back to any printer, so a
+            # locate still returns rather than always waiting out the clock.
+            return not want_serial and not want_mac
+    elif kind == "rehome":
+        def want(f) -> bool:
+            return True
+    else:
+        def want(f) -> bool:
+            return f.ip.strip() not in known_set
+
     # Wide from the first pass rather than as a fallback. The wait here is for
     # the printer's network stack to come up, not for the sweep — a full pass
     # over every likely range measures at about seven seconds — so searching
     # narrowly first would save nothing and miss a printer one router away.
     say(f"sweeping {len(nets)} networks for printers on port 9100, starting with {nets[0]}.0/24")
-    if known:
+    if known and kind == "setup":
         say(f"({len(known)} printer(s) already in service will be marked as such)")
-    found = _wait_for_printers(subnet, DISCOVER_TIMEOUT, say, known)
+    found = _wait_for_printers(subnet, DISCOVER_TIMEOUT, say, want)
     if not found:
         return TaskResult(
             ok=False,
             log=say.lines,
+            # A locate is unattended — no operator standing at a printer to send
+            # back to a cabling step — so it ends rather than parking in a bridge
+            # state where it would be retried forever.
+            next_state="failed" if kind == "locate" else "",
             error=(
                 f"No printer answered on any of {len(nets)} networks searched. "
                 "The most likely reasons: the printer has not finished its "
@@ -134,7 +165,6 @@ def _discover(ctx, say) -> TaskResult:
             ),
         )
 
-    known_set = {str(ip).strip() for ip in known if ip}
     fresh = [f for f in found if f.ip.strip() not in known_set]
     say(f"found {len(found)} printer(s), {len(fresh)} of them new")
     for f in found:
@@ -158,7 +188,10 @@ def _discover(ctx, say) -> TaskResult:
                 "networks are routed — but a printer on the print server's own "
                 "network is one less thing to depend on.")
 
-    if not fresh:
+    # Only a setup insists on a printer we do not already have. A move or a
+    # locate is deliberately about one we do — so for those, an answer from a
+    # known printer is the answer, not a dead end.
+    if kind == "setup" and not fresh:
         return TaskResult(
             ok=False,
             data={"candidates": [_found_json(f) for f in found]},

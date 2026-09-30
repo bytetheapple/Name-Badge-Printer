@@ -92,6 +92,10 @@ export async function claimStep(
   const step: Record<string, unknown> = {
     session_id: session.id,
     task,
+    // What is being done, so the discover step knows whether to hold out for a
+    // brand-new printer (setup), this exact one by serial/MAC (locate), or take
+    // any that answers (rehome). Harmless to the other steps.
+    kind: session.kind ?? "setup",
     wired_ip: session.wired_ip ?? null,
     ssid: session.ssid ?? null,
     wireless_mac: session.wireless_mac ?? null,

@@ -32,6 +32,12 @@ import provision_task as pt  # noqa: E402
 FOUND = discover.Found(
     ip="10.0.0.5", mac="44:f7:9f:bc:ab:e8", model="Brother QL-820NWB", via="sweep"
 )
+# The same printer as the sweep reads it back: with a serial, which is the
+# identity a locate matches on across a move.
+FOUND_SN = discover.Found(
+    ip="10.0.0.77", mac="44:f7:9f:bc:ab:e8", serial="X1234",
+    model="Brother QL-820NWB", via="sweep",
+)
 WIRELESS = pc.Interface(node_name="BRW44F79FBCABE8", mac="44:f7:9f:bc:ab:e8", active=False)
 WIRED = pc.Interface(node_name="BRN94DDF8AC3645", mac="94:dd:f8:ac:36:45", active=True)
 
@@ -170,6 +176,37 @@ check("the transcript marks the one in service",
 install(found=(FOUND,))
 r = pt.run("discover", {**BASE, "known_ips": []})
 check("with nothing in service it still returns promptly", r.ok and r.next_state == "select")
+
+print("— a move or a locate is about a printer already on record —")
+# The setup rule above (only a brand-new printer counts) is exactly wrong for a
+# move or a locate: those are deliberately about a printer we already have, so a
+# known one answering is the answer, not a dead end.
+install(found=(IN_SERVICE,))
+r = pt.run("discover", {**BASE, "kind": "rehome", "known_ips": ["10.0.0.9"]})
+check("a move succeeds when only a known printer answers",
+      r.ok and r.next_state == "select", f"{r.ok} {r.next_state} {r.error}")
+
+# A locate finds this exact printer by serial, at whatever address it now has —
+# even one that belongs to no record yet.
+install(found=(FOUND_SN,))
+r = pt.run("discover", {"kind": "locate", "serial": "X1234", "known_ips": ["10.0.0.9"]})
+check("a locate matches its printer by serial and hands over",
+      r.ok and r.next_state == "select", f"{r.ok} {r.next_state} {r.error}")
+
+# Found the wrong printers, not the one being located: the bridge still hands
+# over what answered (the server decides the locate failed), but it does not
+# pretend a setup-style 'not arrived yet' failure.
+install(found=(FOUND_SN,))
+r = pt.run("discover", {"kind": "locate", "serial": "SOMEONE-ELSE"})
+check("a locate that did not match still returns what answered",
+      r.ok and r.next_state == "select", f"{r.ok} {r.next_state}")
+
+# Nothing at all on any network: a locate is unattended, so it ends rather than
+# parking in a bridge state to be retried forever.
+install(found=())
+r = pt.run("discover", {"kind": "locate", "serial": "X1234"})
+check("a locate that finds nothing ends cleanly",
+      not r.ok and r.next_state == "failed", f"{r.ok} {r.next_state}")
 
 print("— configure —")
 install()
@@ -411,7 +448,7 @@ class _F:
 
 try:
     discover.local_subnet = lambda: "192.168.3"
-    pt._wait_for_printers = lambda subnet, timeout, say, known=(): [_F("192.168.0.40")]
+    pt._wait_for_printers = lambda subnet, timeout, say, want: [_F("192.168.0.40")]
     r = pt.run("discover", {"subnet": "192.168.3"})
     joined = " ".join(r.log or [])
     check("notes both networks", "192.168.3.x" in joined and "192.168.0.x" in joined, joined)
@@ -419,7 +456,7 @@ try:
 
     # Same network: nothing to warn about, and a note that always fires is a
     # note nobody reads.
-    pt._wait_for_printers = lambda subnet, timeout, say, known=(): [_F("192.168.3.40")]
+    pt._wait_for_printers = lambda subnet, timeout, say, want: [_F("192.168.3.40")]
     r = pt.run("discover", {"subnet": "192.168.3"})
     check("stays quiet when they share a network",
           "note:" not in " ".join(r.log or []), " ".join(r.log or []))
