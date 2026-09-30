@@ -256,6 +256,66 @@ export default function PrinterConfig() {
     setNotice(error ? `Could not queue a test print: ${error.message}` : 'Test print queued.')
   }
 
+  /**
+   * Put an already-added printer onto WiFi, without starting the setup over.
+   *
+   * A printer found by its wired address and added by hand has never been
+   * through the walkthrough, so it has no wireless settings. Rather than reset
+   * it and run the whole thing, this reuses the back half of the move flow: it
+   * seeds a rehome session at the point where the printer has already been
+   * chosen — bound to this record, at this address — so the wizard picks up at
+   * "enter the printer's password", then surveys the networks it can see,
+   * writes the one chosen, and re-finds it on WiFi. Reaching Done updates this
+   * same printer's address rather than adding a second copy of it.
+   */
+  async function setupWifi(printer: Printer) {
+    if (!printer.printer_ip) {
+      setTab(printer.id)
+      setNotice("This printer has no address yet. Add its wired address first, then set up Wi-Fi.")
+      return
+    }
+    setBusy(printer.id)
+    setNotice(null)
+    // Never start a second walkthrough on top of one already running — the
+    // wizard follows the newest, and two live sessions is how an operator ends
+    // up configuring the wrong printer. Same definition of "in progress" the
+    // wizard uses to decide what to show.
+    const { data: active } = await supabase
+      .from('provisioning_sessions')
+      .select('id')
+      .eq('org_id', orgId!)
+      .neq('kind', 'locate')
+      .neq('state', 'done')
+      .limit(1)
+      .maybeSingle()
+    if (active) {
+      setBusy(null)
+      setTab('add')
+      setNotice('A printer setup is already in progress — finish or cancel it before starting another.')
+      return
+    }
+    const { error } = await supabase.from('provisioning_sessions').insert({
+      org_id: orgId,
+      kind: 'rehome',
+      // Straight to the password step: the printer is already chosen (this
+      // record) and already reachable at its wired address, so discovery and
+      // the "which one?" list have nothing to add.
+      state: 'password',
+      printer_id: printer.id,
+      wired_ip: printer.printer_ip,
+      printer_name: printer.name,
+      location: printer.location ?? null,
+    })
+    setBusy(null)
+    if (error) {
+      setTab(printer.id)
+      setNotice(`Could not start Wi-Fi setup: ${error.message}`)
+      return
+    }
+    setTab('add')
+    setNotice(`Setting up Wi-Fi for ${printer.name} — enter the printer's password to continue.`)
+  }
+
   async function remove(printer: Printer) {
     if (!window.confirm(`Delete "${printer.name}"? Its sign-in QR code will stop working.`)) return
     setBusy(printer.id)
@@ -340,6 +400,20 @@ export default function PrinterConfig() {
                   disabled={busy === current.id}
                 >
                   {busy === current.id ? 'Queuing…' : 'Test print'}
+                </button>
+                {/* For a printer added by its wired address: put it on WiFi
+                    without resetting it and running the whole setup again. */}
+                <button
+                  className="secondary btn-sm"
+                  onClick={() => void setupWifi(current)}
+                  disabled={busy === current.id || !current.printer_ip}
+                  title={
+                    current.printer_ip
+                      ? 'Survey the networks this printer can see and join one'
+                      : 'Add the printer’s wired address first'
+                  }
+                >
+                  Set up Wi-Fi
                 </button>
                 <button
                   className="secondary btn-sm"
