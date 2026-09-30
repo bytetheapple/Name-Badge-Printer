@@ -46,6 +46,31 @@ as_owner() {
   fi
 }
 
+# Make sure the service account may control NetworkManager, so joining a
+# wireless network works ("Not authorized to control networking" otherwise).
+# Here, not only in the installer, so a server deployed before this shipped
+# gains it on the next update without anyone visiting it. Idempotent: it acts
+# only when the installed file differs, and stays silent once in place. Runs
+# before the "nothing to do" exit below so it lands even without a version bump.
+ensure_polkit() {
+  local changed=0 src dst pair
+  for pair in \
+    "polkit/10-nbkbridge-networkmanager.rules:/etc/polkit-1/rules.d/10-nbkbridge-networkmanager.rules" \
+    "polkit/10-nbkbridge-networkmanager.pkla:/etc/polkit-1/localauthority/50-local.d/10-nbkbridge-networkmanager.pkla"; do
+    src="$BRIDGE_DIR/${pair%%:*}"
+    dst="${pair##*:}"
+    [ -f "$src" ] || continue
+    if ! cmp -s "$src" "$dst" 2>/dev/null; then
+      install -D -m 644 "$src" "$dst" && changed=1
+    fi
+  done
+  if [ "$changed" = 1 ]; then
+    log "installed NetworkManager authorisation for the bridge account"
+    systemctl reload polkit 2>/dev/null || systemctl restart polkit 2>/dev/null || true
+  fi
+}
+ensure_polkit
+
 # The live credential, which is the rotated one on disk if there is one and the
 # bootstrap value in .env otherwise — the same precedence the bridge uses.
 TOKEN=""

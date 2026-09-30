@@ -1,0 +1,17 @@
+// The print bridge runs as the unprivileged "nbkbridge" account, and joining a
+// wireless network on request goes through nmcli -> NetworkManager, which is
+// gated by polkit. Without this rule NetworkManager refuses with "Not authorized
+// to control networking" and the Join-a-network button fails.
+//
+// Scoped to the NetworkManager action namespace only, and to this one dedicated
+// account, which runs nothing but the bridge. Used by polkit 0.106+ (the JS
+// backend), i.e. Raspberry Pi OS Bookworm and newer; the .pkla beside this file
+// covers older polkit.
+polkit.addRule(function (action, subject) {
+  if (
+    subject.user === "nbkbridge" &&
+    action.id.indexOf("org.freedesktop.NetworkManager.") === 0
+  ) {
+    return polkit.Result.YES;
+  }
+});

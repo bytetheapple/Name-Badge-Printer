@@ -1,0 +1,9 @@
+# The same grant as 10-nbkbridge-networkmanager.rules, for older polkit (0.105,
+# the .pkla "local authority" backend) as shipped on Raspberry Pi OS Bullseye.
+# Harmless on newer systems that read the .rules file instead.
+[Let the print bridge control NetworkManager]
+Identity=unix-user:nbkbridge
+Action=org.freedesktop.NetworkManager.*
+ResultAny=yes
+ResultInactive=yes
+ResultActive=yes

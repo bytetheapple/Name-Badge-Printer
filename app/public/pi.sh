@@ -119,6 +119,17 @@ install -m 755 "$TARGET/bridge/systemd/name-badge-update.service" \
 install -m 644 "$TARGET/bridge/systemd/name-badge-update.timer" \
   /etc/systemd/system/name-badge-update.timer
 
+# Let the service account join a wireless network on request. nmcli goes through
+# NetworkManager, which polkit gates; without this the Join-a-network button
+# fails with "Not authorized to control networking". Both files are laid down so
+# the grant works on old polkit (.pkla) and new (.rules) alike.
+say "Authorising network control"
+install -D -m 644 "$TARGET/bridge/polkit/10-nbkbridge-networkmanager.rules" \
+  /etc/polkit-1/rules.d/10-nbkbridge-networkmanager.rules
+install -D -m 644 "$TARGET/bridge/polkit/10-nbkbridge-networkmanager.pkla" \
+  /etc/polkit-1/localauthority/50-local.d/10-nbkbridge-networkmanager.pkla
+systemctl reload polkit 2>/dev/null || systemctl restart polkit 2>/dev/null || true
+
 systemctl daemon-reload
 # enable, then restart. `--now` starts a service that is stopped and does
 # nothing to one that is already running — so on a device being upgraded in
