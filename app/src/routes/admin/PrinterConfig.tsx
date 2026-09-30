@@ -234,8 +234,13 @@ export default function PrinterConfig() {
 
   // Follow the operator's choice, so the next visit starts where this one
   // ended. The Add tab is deliberately not recorded — see TAB_KEY.
+  //
+  // Changing tabs by hand also clears any standing notice: a message like the
+  // Wi-Fi hand-off is about the tab it sent you to, and following the operator
+  // away from it is the clearest signal it has served its purpose.
   function openTab(id: string) {
     setTab(id)
+    setNotice(null)
     if (id !== 'add') rememberTab(id)
   }
 
@@ -351,7 +356,7 @@ export default function PrinterConfig() {
         <button
           type="button"
           className={`printer-tab${tab === 'add' ? ' active' : ''}`}
-          onClick={() => setTab('add')}
+          onClick={() => openTab('add')}
         >
           + Add a Printer
         </button>
@@ -362,7 +367,14 @@ export default function PrinterConfig() {
 
         {tab === 'add' && (
           <>
-            <ProvisionWizard onFinished={() => void loadPrinters()} />
+            <ProvisionWizard
+              onFinished={() => {
+                // The Wi-Fi hand-off notice, if it is still up, has done its
+                // job the moment the walkthrough reaches its end.
+                setNotice(null)
+                void loadPrinters()
+              }}
+            />
             <div className="add-by-hand">
               <button className="secondary btn-sm" onClick={() => setDialog('add')}>
                 Add a printer by hand
