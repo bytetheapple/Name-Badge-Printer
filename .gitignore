@@ -30,3 +30,6 @@ supabase/.temp/
 
 # The bridge writes its own rotated credential here.
 bridge/token
+
+# Local, uncommitted working assets (generated badge banners, scratch)
+/local-assets/
