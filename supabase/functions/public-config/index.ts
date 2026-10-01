@@ -11,6 +11,8 @@ const DEFAULTS = {
   license_mode: "off",
   field_config: defaultFieldConfig(false),
   org_name: null,
+  waiver_url: null,
+  waiver_label: null,
 };
 
 Deno.serve(async (req) => {
@@ -35,7 +37,7 @@ Deno.serve(async (req) => {
     // the organization is public.
     const [res, orgRes] = await Promise.all([
       fetch(
-        `${REST}/app_settings?org_id=eq.${kiosk.org_id}&select=selfie_mode,license_mode,pronouns_enabled,field_config`,
+        `${REST}/app_settings?org_id=eq.${kiosk.org_id}&select=selfie_mode,license_mode,pronouns_enabled,field_config,waiver_url,waiver_label`,
         { headers: restHeaders },
       ),
       fetch(`${REST}/organizations?id=eq.${kiosk.org_id}&select=name`, {
@@ -53,6 +55,10 @@ Deno.serve(async (req) => {
       // Member and Visitor, so it needs both to re-shape itself when they do.
       field_config: resolveFieldConfig(s.field_config, Boolean(s.pronouns_enabled)),
       org_name: orgRows[0]?.name ?? DEFAULTS.org_name,
+      // An optional external form (e.g. a guest waiver) the visitor flow links
+      // out to. The URL is already public — it is what the desk QR points at.
+      waiver_url: s.waiver_url ?? DEFAULTS.waiver_url,
+      waiver_label: s.waiver_label ?? DEFAULTS.waiver_label,
       printer_name: kiosk.printer_name,
     });
   } catch {

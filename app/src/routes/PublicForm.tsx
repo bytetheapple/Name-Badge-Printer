@@ -12,7 +12,7 @@ import {
 import { defaultFieldConfig, type FieldConfig } from '../lib/formConfig'
 import { PhotoButton } from '../components/PhotoButton'
 
-type Stage = 'choose' | 'form' | 'photos' | 'submitting' | 'printing' | 'done' | 'error'
+type Stage = 'choose' | 'form' | 'photos' | 'waiver' | 'submitting' | 'printing' | 'done' | 'error'
 
 const POLL_MS = 1500
 const TIMEOUT_MS = 30000
@@ -45,6 +45,10 @@ export default function PublicForm() {
   //: Each photo, taken on the one hub screen before printing.
   const [selfieImage, setSelfieImage] = useState<string | undefined>(undefined)
   const [licenseImage, setLicenseImage] = useState<string | undefined>(undefined)
+  //: An optional external form (e.g. a guest waiver) the visitor is sent to
+  //: before the badge prints. Empty when the org has not configured one.
+  const [waiverUrl, setWaiverUrl] = useState<string | null>(null)
+  const [waiverLabel, setWaiverLabel] = useState<string | null>(null)
   const [fieldConfig, setFieldConfig] = useState<FieldConfig>(() => defaultFieldConfig(false))
   //: Asked of visitors only, and named after the congregation — "learn more
   //: about us" is a worse question than one with the name in it.
@@ -88,6 +92,8 @@ export default function PublicForm() {
       setLicenseMode(c.license_mode)
       setFieldConfig(c.field_config)
       setOrgName(c.org_name ?? null)
+      setWaiverUrl(c.waiver_url)
+      setWaiverLabel(c.waiver_label)
     })
   }, [kiosk])
 
@@ -109,14 +115,23 @@ export default function PublicForm() {
   // button's wording on both the form and the photo hub.
   const badgeCount = 1 + people.filter((p) => p.first.trim() && p.last.trim()).length
 
+  // The visitor steps that may sit between the form and printing, in order:
+  // photos, then an external form (e.g. a waiver). Each is skipped when off.
+  function afterForm() {
+    if (visitorType === 'visitor') {
+      if (selfieMode !== 'off' || licenseMode !== 'off') return setStage('photos')
+      if (waiverUrl) return setStage('waiver')
+    }
+    void doSubmit()
+  }
+  function afterPhotos() {
+    if (waiverUrl) return setStage('waiver')
+    void doSubmit(selfieImage, licenseImage)
+  }
+
   function onFormSubmit(e: FormEvent) {
     e.preventDefault()
-    // Visitors with a photo step go to the one hub screen; members print direct.
-    if (visitorType === 'visitor' && (selfieMode !== 'off' || licenseMode !== 'off')) {
-      setStage('photos')
-    } else {
-      void doSubmit()
-    }
+    afterForm()
   }
 
   async function doSubmit(selfie?: string, license?: string) {
@@ -266,8 +281,12 @@ export default function PublicForm() {
         </div>
 
         <div className="actions">
-          <button disabled={!canPrint} onClick={() => void doSubmit(selfieImage, licenseImage)}>
-            {badgeCount > 1 ? `Print ${badgeCount} badges` : 'Print my badge'}
+          <button disabled={!canPrint} onClick={afterPhotos}>
+            {waiverUrl
+              ? 'Continue'
+              : badgeCount > 1
+                ? `Print ${badgeCount} badges`
+                : 'Print my badge'}
           </button>
           <button className="secondary" onClick={() => setStage('form')}>
             Back
@@ -285,6 +304,48 @@ export default function PublicForm() {
         )}
         <p className="muted small">
           Your photos will be saved by {orgName ?? 'this congregation'}.
+        </p>
+      </main>
+    )
+  }
+
+  if (stage === 'waiver') {
+    const label = waiverLabel?.trim() || 'guest form'
+    // Back to the photo hub if there was one, otherwise the form.
+    const back = selfieMode !== 'off' || licenseMode !== 'off' ? 'photos' : 'form'
+    return (
+      <main className="page">
+        <h1>{orgName ?? 'Guest Badges'}</h1>
+        <p className="big">One more step — the {label}</p>
+        <p className="muted">
+          Please complete {orgName ? `${orgName}'s` : 'the'} {label}. It opens in a new tab;
+          when you are done, come back here and print your badge.
+        </p>
+
+        <div className="actions">
+          {/* A real link rather than window.open, so phone browsers never block
+              it. noreferrer keeps our URL off the third-party page. */}
+          <a
+            className="choice-btn"
+            href={waiverUrl ?? '#'}
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            Open the {label} ↗
+          </a>
+        </div>
+
+        <div className="actions">
+          <button onClick={() => void doSubmit(selfieImage, licenseImage)}>
+            {badgeCount > 1 ? `I'm done — print ${badgeCount} badges` : "I'm done — print my badge"}
+          </button>
+          <button className="secondary" onClick={() => setStage(back)}>
+            Back
+          </button>
+        </div>
+
+        <p className="muted small">
+          Tap “Open the {label}” first, complete it, then return here to print.
         </p>
       </main>
     )

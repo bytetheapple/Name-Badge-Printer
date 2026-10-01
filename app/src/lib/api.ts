@@ -59,6 +59,10 @@ export async function getPublicConfig(kiosk: KioskRef): Promise<{
    *  question. Null when the kiosk could not be resolved, in which case the
    *  form falls back to naming nobody rather than guessing. */
   org_name: string | null
+  /** An optional external form (e.g. a guest waiver) the visitor flow links out
+   *  to before printing. Null when none is configured. */
+  waiver_url: string | null
+  waiver_label: string | null
 }> {
   try {
     const { data } = await supabase.functions.invoke('public-config', { body: kiosk })
@@ -67,6 +71,8 @@ export async function getPublicConfig(kiosk: KioskRef): Promise<{
       license_mode: (data?.license_mode ?? 'off') as CaptureMode,
       field_config: resolveFieldConfig(data?.field_config, false),
       org_name: (data?.org_name as string | null) ?? null,
+      waiver_url: (data?.waiver_url as string | null) ?? null,
+      waiver_label: (data?.waiver_label as string | null) ?? null,
     }
   } catch {
     return {
@@ -74,6 +80,8 @@ export async function getPublicConfig(kiosk: KioskRef): Promise<{
       license_mode: 'off',
       field_config: defaultFieldConfig(false),
       org_name: null,
+      waiver_url: null,
+      waiver_label: null,
     }
   }
 }

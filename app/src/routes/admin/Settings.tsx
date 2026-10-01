@@ -116,6 +116,9 @@ export default function Settings() {
   const [licenseMode, setLicenseMode] = useState<SelfieMode>('off')
   const [photoRetention, setPhotoRetention] = useState<RetentionPolicy>('never')
   const [licenseRetention, setLicenseRetention] = useState<RetentionPolicy>('never')
+  //: An optional external form (e.g. a guest waiver) the visitor flow links to.
+  const [waiverUrl, setWaiverUrl] = useState('')
+  const [waiverLabel, setWaiverLabel] = useState('')
   //: Whether anything can write to this organization's Drive — a connected
   //: Google account, or the service account that path is replacing. An admin
   //: cannot read the integration itself (it belongs to the owner), so this is
@@ -171,6 +174,8 @@ export default function Settings() {
       setLicenseMode((data?.license_mode ?? 'off') as SelfieMode)
       setPhotoRetention((data?.photo_retention ?? 'never') as RetentionPolicy)
       setLicenseRetention((data?.license_retention ?? 'never') as RetentionPolicy)
+      setWaiverUrl((data?.waiver_url ?? '') as string)
+      setWaiverLabel((data?.waiver_label ?? '') as string)
       // pronouns_enabled seeds only the default for a row that has never been
       // edited; once field_config is set it is the authority.
       setFieldConfig(resolveFieldConfig(data?.field_config, Boolean(data?.pronouns_enabled)))
@@ -337,6 +342,20 @@ export default function Settings() {
       setError(error.message)
       return
     }
+  }
+
+  /** Save the optional external-form link (URL + label), written on blur like a
+   *  single field. An empty URL turns the step off. */
+  async function saveWaiver() {
+    setError(null)
+    const { error } = await supabase
+      .from('app_settings')
+      .update({
+        waiver_url: waiverUrl.trim() || null,
+        waiver_label: waiverLabel.trim() || null,
+      })
+      .eq('org_id', orgId)
+    if (error) setError(error.message)
   }
 
   /** How long stored images are kept, per kind. The hourly sweep reads both. */
@@ -552,6 +571,46 @@ export default function Settings() {
                   or ask an owner to connect one under Integrations.
                 </p>
               )}
+            </div>
+          )}
+
+          {/* An optional hand-off to an outside form (e.g. a guest waiver) in
+              the visitor flow. A link, not an integration — the visitor opens it
+              and comes back to print; we cannot tell whether they finished it. */}
+          {tab === 'visitor' && (
+            <div className="waiver-config">
+              <div className="field-row-label" style={{ marginBottom: 6 }}>
+                External form in the visitor flow
+                <span className="muted small"> · optional</span>
+              </div>
+              <p className="muted small" style={{ marginTop: 0 }}>
+                Send visitors to an outside form — a guest waiver, say — before the badge prints. It
+                opens in a new tab and the visitor returns here to print. Leave the link blank to turn
+                the step off. (An outside form can't tell us it was completed, so the visitor
+                confirms.)
+              </p>
+              <label className="field">
+                Form link
+                <input
+                  type="url"
+                  value={waiverUrl}
+                  onChange={(e) => setWaiverUrl(e.target.value)}
+                  onBlur={() => void saveWaiver()}
+                  placeholder="https://…"
+                />
+              </label>
+              <label className="field">
+                What to call it
+                <input
+                  value={waiverLabel}
+                  onChange={(e) => setWaiverLabel(e.target.value)}
+                  onBlur={() => void saveWaiver()}
+                  placeholder="guest waiver"
+                />
+                <span className="muted small">
+                  Shown on the button: “Open the {waiverLabel.trim() || 'guest form'}”.
+                </span>
+              </label>
             </div>
           )}
         </section>

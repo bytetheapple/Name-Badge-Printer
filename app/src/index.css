@@ -969,6 +969,12 @@ a.pill:hover {
   border-top: none;
   padding-top: 0;
 }
+/* The optional external-form (waiver) settings, set off from the rows above. */
+.waiver-config {
+  margin-top: 20px;
+  padding-top: 16px;
+  border-top: 1px solid var(--border);
+}
 .field-row-label {
   font-weight: 500;
   color: var(--text-h);
