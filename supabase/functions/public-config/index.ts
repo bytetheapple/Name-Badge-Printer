@@ -37,7 +37,7 @@ Deno.serve(async (req) => {
     // the organization is public.
     const [res, orgRes] = await Promise.all([
       fetch(
-        `${REST}/app_settings?org_id=eq.${kiosk.org_id}&select=selfie_mode,license_mode,pronouns_enabled,field_config,waiver_url,waiver_label`,
+        `${REST}/app_settings?org_id=eq.${kiosk.org_id}&select=selfie_mode,license_mode,pronouns_enabled,field_config,waiver_url,waiver_label,waiver_enabled`,
         { headers: restHeaders },
       ),
       fetch(`${REST}/organizations?id=eq.${kiosk.org_id}&select=name`, {
@@ -56,8 +56,9 @@ Deno.serve(async (req) => {
       field_config: resolveFieldConfig(s.field_config, Boolean(s.pronouns_enabled)),
       org_name: orgRows[0]?.name ?? DEFAULTS.org_name,
       // An optional external form (e.g. a guest waiver) the visitor flow links
-      // out to. The URL is already public — it is what the desk QR points at.
-      waiver_url: s.waiver_url ?? DEFAULTS.waiver_url,
+      // out to. Returned only when the step is switched on, so the flow shows it
+      // exactly when enabled; the URL itself is public (the desk QR points at it).
+      waiver_url: s.waiver_enabled ? (s.waiver_url ?? DEFAULTS.waiver_url) : DEFAULTS.waiver_url,
       waiver_label: s.waiver_label ?? DEFAULTS.waiver_label,
       printer_name: kiosk.printer_name,
     });

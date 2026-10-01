@@ -117,6 +117,7 @@ export default function Settings() {
   const [photoRetention, setPhotoRetention] = useState<RetentionPolicy>('never')
   const [licenseRetention, setLicenseRetention] = useState<RetentionPolicy>('never')
   //: An optional external form (e.g. a guest waiver) the visitor flow links to.
+  const [waiverEnabled, setWaiverEnabled] = useState(false)
   const [waiverUrl, setWaiverUrl] = useState('')
   const [waiverLabel, setWaiverLabel] = useState('')
   //: Whether anything can write to this organization's Drive — a connected
@@ -174,6 +175,7 @@ export default function Settings() {
       setLicenseMode((data?.license_mode ?? 'off') as SelfieMode)
       setPhotoRetention((data?.photo_retention ?? 'never') as RetentionPolicy)
       setLicenseRetention((data?.license_retention ?? 'never') as RetentionPolicy)
+      setWaiverEnabled(Boolean(data?.waiver_enabled))
       setWaiverUrl((data?.waiver_url ?? '') as string)
       setWaiverLabel((data?.waiver_label ?? '') as string)
       // pronouns_enabled seeds only the default for a row that has never been
@@ -344,8 +346,23 @@ export default function Settings() {
     }
   }
 
+  /** Turn the external-form step on or off, without touching the saved URL. */
+  async function toggleWaiver(next: boolean) {
+    const before = waiverEnabled
+    setWaiverEnabled(next)
+    setError(null)
+    const { error } = await supabase
+      .from('app_settings')
+      .update({ waiver_enabled: next })
+      .eq('org_id', orgId)
+    if (error) {
+      setWaiverEnabled(before)
+      setError(error.message)
+    }
+  }
+
   /** Save the optional external-form link (URL + label), written on blur like a
-   *  single field. An empty URL turns the step off. */
+   *  single field. The Enable switch, not the URL, turns the step on and off. */
   async function saveWaiver() {
     setError(null)
     const { error } = await supabase
@@ -585,10 +602,24 @@ export default function Settings() {
               </div>
               <p className="muted small" style={{ marginTop: 0 }}>
                 Send visitors to an outside form — a guest waiver, say — before the badge prints. It
-                opens in a new tab and the visitor returns here to print. Leave the link blank to turn
-                the step off. (An outside form can't tell us it was completed, so the visitor
-                confirms.)
+                opens in a new tab and the visitor returns here to print. (An outside form can't tell
+                us it was completed, so the visitor confirms.)
               </p>
+
+              <label className="checkline" style={{ margin: '10px 0' }}>
+                <input
+                  type="checkbox"
+                  checked={waiverEnabled}
+                  onChange={(e) => void toggleWaiver(e.target.checked)}
+                />
+                Enable this step in the visitor flow
+              </label>
+              {waiverEnabled && !waiverUrl.trim() && (
+                <p className="warn" style={{ marginTop: 0 }}>
+                  Add a form link below — the step is on but has nowhere to send visitors, so it
+                  won’t appear until a link is set.
+                </p>
+              )}
               <label className="field">
                 Form link
                 <input
