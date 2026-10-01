@@ -570,7 +570,8 @@ a.pill:hover {
   color: var(--err-text);
 }
 .pill-sync-pending,
-.pill-sync-skipped {
+.pill-sync-skipped,
+.pill-sync-deleted {
   background: var(--pending-bg);
   color: var(--muted);
 }

@@ -50,6 +50,42 @@ function StateControl({
   )
 }
 
+type RetentionPolicy = '24h' | '7d' | 'never'
+const RETENTION_LABEL: Record<RetentionPolicy, string> = {
+  '24h': '24 hours',
+  '7d': '7 days',
+  never: 'Never delete',
+}
+
+/** How long stored visitor images are kept before an hourly sweep deletes them.
+ *  Same segmented look as the on/off/required controls. */
+function RetentionControl({
+  value,
+  onChange,
+  disabled,
+}: {
+  value: RetentionPolicy
+  onChange?: (s: RetentionPolicy) => void
+  disabled?: boolean
+}) {
+  return (
+    <div className="seg" role="group">
+      {(['24h', '7d', 'never'] as RetentionPolicy[]).map((s) => (
+        <button
+          key={s}
+          type="button"
+          className={`seg-btn${value === s ? ' active' : ''}`}
+          aria-pressed={value === s}
+          disabled={disabled || !onChange}
+          onClick={() => onChange?.(s)}
+        >
+          {RETENTION_LABEL[s]}
+        </button>
+      ))}
+    </div>
+  )
+}
+
 function FieldRow({
   label,
   hint,
@@ -78,6 +114,7 @@ export default function Settings() {
   const { orgId, isAdmin, isOwner } = useOrg()
   const [selfieMode, setSelfieMode] = useState<SelfieMode>('off')
   const [licenseMode, setLicenseMode] = useState<SelfieMode>('off')
+  const [retention, setRetention] = useState<RetentionPolicy>('never')
   //: Whether anything can write to this organization's Drive — a connected
   //: Google account, or the service account that path is replacing. An admin
   //: cannot read the integration itself (it belongs to the owner), so this is
@@ -131,6 +168,7 @@ export default function Settings() {
       const mode = (data?.selfie_mode ?? 'off') as SelfieMode
       setSelfieMode(mode)
       setLicenseMode((data?.license_mode ?? 'off') as SelfieMode)
+      setRetention((data?.photo_retention ?? 'never') as RetentionPolicy)
       // pronouns_enabled seeds only the default for a row that has never been
       // edited; once field_config is set it is the authority.
       setFieldConfig(resolveFieldConfig(data?.field_config, Boolean(data?.pronouns_enabled)))
@@ -299,6 +337,23 @@ export default function Settings() {
     }
   }
 
+  /** How long stored visitor images are kept. The hourly sweep reads this. */
+  async function chooseRetention(next: RetentionPolicy) {
+    const before = retention
+    setRetention(next)
+    setError(null)
+    setSaving(true)
+    const { error } = await supabase
+      .from('app_settings')
+      .update({ photo_retention: next })
+      .eq('org_id', orgId)
+    setSaving(false)
+    if (error) {
+      setRetention(before)
+      setError(error.message)
+    }
+  }
+
   if (loading) return <p className="muted">Loading…</p>
   if (!isAdmin) {
     return (
@@ -405,6 +460,23 @@ export default function Settings() {
                     if (s === 'hidden') void chooseMode('off', 'license_mode')
                     else void enableWithDrive(s, 'license_mode')
                   }}
+                />
+              </div>
+            )}
+
+            {/* Retention — one policy for both the photo and the licence, shown
+                once there is something being stored to retain. An hourly sweep
+                deletes images older than the chosen window. */}
+            {tab === 'visitor' && (selfieMode !== 'off' || licenseMode !== 'off') && (
+              <div className="field-row">
+                <div className="field-row-label">
+                  Delete stored images after
+                  <span className="muted small"> · applies to photos and licenses</span>
+                </div>
+                <RetentionControl
+                  value={retention}
+                  disabled={saving}
+                  onChange={(r) => void chooseRetention(r)}
                 />
               </div>
             )}

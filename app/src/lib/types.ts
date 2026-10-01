@@ -329,14 +329,15 @@ export interface FormEntry {
   shulcloud_error: string | null
   /** 'skipped' means no photo reached us; 'failed' means it did and could not
    *  be stored, with the reason in selfie_error. */
-  /** Where the photograph ended up, when one was stored. */
+  /** Where the photograph ended up, when one was stored. 'deleted' means it was
+   *  stored and later removed by the organization's retention policy. */
   selfie_link: string | null
-  selfie_status: 'pending' | 'sent' | 'failed' | 'skipped'
+  selfie_status: 'pending' | 'sent' | 'failed' | 'skipped' | 'deleted'
   selfie_error: string | null
   /** The visitor's driver's-licence photo, stored in its own Drive folder.
    *  Same status vocabulary as the selfie; 'skipped' means none reached us. */
   license_link: string | null
-  license_status: 'pending' | 'sent' | 'failed' | 'skipped'
+  license_status: 'pending' | 'sent' | 'failed' | 'skipped' | 'deleted'
   license_error: string | null
   google_synced_at: string | null
   google_error: string | null

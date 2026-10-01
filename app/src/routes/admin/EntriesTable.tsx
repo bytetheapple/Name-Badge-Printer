@@ -19,7 +19,7 @@ const personName = (e: FormEntry) => {
   return `${e.first_name} ${e.last_name ?? ''}`.trim() + (notes ? ` (${notes})` : '')
 }
 
-type SyncStatus = 'pending' | 'sent' | 'failed' | 'skipped'
+type SyncStatus = 'pending' | 'sent' | 'failed' | 'skipped' | 'deleted'
 
 /**
  * One destination's state, with a way to try it again.

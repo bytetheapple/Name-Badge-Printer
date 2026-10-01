@@ -242,6 +242,9 @@ Deno.serve(async (req) => {
         headers: restHeaders,
         body: JSON.stringify({
           selfie_link: upData.webViewLink,
+          // The Drive file id, so a retention sweep can delete the file later —
+          // the view link cannot be deleted through, only opened.
+          selfie_file_id: upData.id ?? null,
           selfie_status: "sent",
           selfie_error: null,
         }),

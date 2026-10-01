@@ -195,6 +195,8 @@ Deno.serve(async (req) => {
         headers: restHeaders,
         body: JSON.stringify({
           license_link: upData.webViewLink,
+          // The Drive file id, so a retention sweep can delete the file later.
+          license_file_id: upData.id ?? null,
           license_status: "sent",
           license_error: null,
         }),
