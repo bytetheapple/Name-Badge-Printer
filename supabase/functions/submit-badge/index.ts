@@ -61,6 +61,10 @@ Deno.serve(async (req) => {
   // A visitor asking to hear more. Coerced rather than trusted: an absent box
   // and an unticked box are the same answer, and that answer is no.
   const wantsFollowup = body.wants_followup === true && visitorType === "visitor";
+  // The visitor opened the external form (e.g. a guest waiver) and came back.
+  // We cannot verify completion, only that they went through the step, so this
+  // marks the badge rather than asserting the waiver is on file.
+  const waiverNote = body.waiver_ack === true && visitorType === "visitor" ? "Waiver" : null;
 
   // Additional family/party members: name-only, no contact, no selfie, no sync.
   const additional: Array<{
@@ -183,6 +187,7 @@ Deno.serve(async (req) => {
       printer_id: printerId,
       type: "badge",
       status: "queued",
+      waiver_note: waiverNote,
     }),
   });
   if (!jobRes.ok) {
@@ -222,6 +227,7 @@ Deno.serve(async (req) => {
       printer_id: printerId,
       type: "badge",
       status: "queued",
+      waiver_note: waiverNote,
     }));
     const mjRes = await fetch(`${SUPABASE_URL}/rest/v1/print_jobs`, {
       method: "POST",

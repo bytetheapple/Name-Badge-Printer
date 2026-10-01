@@ -335,6 +335,7 @@ def render_badge(
     pronouns: str = "",
     visitor: bool = False,
     corner: str = "",
+    waiver_note: str = "",
 ) -> Image.Image:
     """Render one badge.
 
@@ -349,6 +350,10 @@ def render_badge(
     badge that is handed over and one that is handed over after payment. The
     slot is shared rather than duplicated: one corner that carries whichever
     word applies beats a second corner per case.
+
+    `waiver_note` is a separate word in the BOTTOM-right of the band, for a
+    visitor who went through the optional external form before printing. It is
+    its own corner so a visitor badge shows both "Visitor" (top-right) and it.
     """
     t = template or {}
     header = t.get("header", "WELCOME")
@@ -429,6 +434,19 @@ def render_badge(
             font=vf,
             fill=("white" if visitor else "black"),
             anchor="ra",
+        )
+
+    # The waiver mark, bottom-right of the same band. Its own corner so it can
+    # sit alongside the top-right word rather than replacing it.
+    wnote = (waiver_note or "").strip()
+    if wnote and banner_h:
+        wf = _load_font(round(float(t.get("visitor_mm", 2.4)) * MM), bold=True)
+        draw.text(
+            (width - margin, banner_h - round(2 * MM)),
+            wnote,
+            font=wf,
+            fill=("white" if visitor else "black"),
+            anchor="rd",
         )
 
     if subtitle:

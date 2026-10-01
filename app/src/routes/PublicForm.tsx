@@ -49,6 +49,9 @@ export default function PublicForm() {
   //: before the badge prints. Empty when the org has not configured one.
   const [waiverUrl, setWaiverUrl] = useState<string | null>(null)
   const [waiverLabel, setWaiverLabel] = useState<string | null>(null)
+  //: Whether the visitor opened the external form. Not proof they finished it
+  //: (we can't know), but it marks the badge when they went through the step.
+  const [waiverOpened, setWaiverOpened] = useState(false)
   const [fieldConfig, setFieldConfig] = useState<FieldConfig>(() => defaultFieldConfig(false))
   //: Asked of visitors only, and named after the congregation — "learn more
   //: about us" is a worse question than one with the name in it.
@@ -155,6 +158,7 @@ export default function PublicForm() {
         phone,
         email,
         wants_followup: wantsFollowup,
+        waiver_ack: waiverOpened,
         ...kiosk,
         additional,
       })
@@ -227,6 +231,7 @@ export default function PublicForm() {
     setMessage(null)
     setSelfieImage(undefined)
     setLicenseImage(undefined)
+    setWaiverOpened(false)
     setStage('choose')
   }
 
@@ -330,6 +335,7 @@ export default function PublicForm() {
             href={waiverUrl ?? '#'}
             target="_blank"
             rel="noopener noreferrer"
+            onClick={() => setWaiverOpened(true)}
           >
             Open the {label} ↗
           </a>

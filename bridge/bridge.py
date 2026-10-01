@@ -158,6 +158,9 @@ def handle_job(client, job: dict, cfg: dict, printers: list):
                 pronouns=pronouns or "",
                 visitor=visitor,
                 corner=str(job.get("corner_note") or ""),
+                # Bottom-right of the header: set when the visitor went through
+                # the optional external form (e.g. a guest waiver) before this.
+                waiver_note=str(job.get("waiver_note") or ""),
             )
 
         printer.print_image(

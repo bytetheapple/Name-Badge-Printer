@@ -35,6 +35,9 @@ export async function submitBadge(input: {
   phone: string
   email: string
   wants_followup?: boolean
+  /** The visitor went through the optional external form (e.g. a guest waiver)
+   *  before printing — marks the badge; completion itself can't be verified. */
+  waiver_ack?: boolean
   additional?: AdditionalPerson[]
 } & KioskRef): Promise<SubmitResult> {
   const { data, error } = await supabase.functions.invoke('submit-badge', { body: input })
