@@ -1,10 +1,18 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
 import { useParams, useSearchParams } from 'react-router-dom'
-import { getJobStatus, getPublicConfig, submitBadge, uploadSelfie, type SelfieMode } from '../lib/api'
+import {
+  getJobStatus,
+  getPublicConfig,
+  submitBadge,
+  uploadSelfie,
+  uploadLicense,
+  type SelfieMode,
+  type CaptureMode,
+} from '../lib/api'
 import { defaultFieldConfig, type FieldConfig } from '../lib/formConfig'
-import { SelfieCapture } from '../components/SelfieCapture'
+import { PhotoCapture } from '../components/PhotoCapture'
 
-type Stage = 'choose' | 'form' | 'selfie' | 'submitting' | 'printing' | 'done' | 'error'
+type Stage = 'choose' | 'form' | 'selfie' | 'license' | 'submitting' | 'printing' | 'done' | 'error'
 
 const POLL_MS = 1500
 const TIMEOUT_MS = 30000
@@ -33,6 +41,9 @@ export default function PublicForm() {
   const [printCount, setPrintCount] = useState(1)
   const [message, setMessage] = useState<string | null>(null)
   const [selfieMode, setSelfieMode] = useState<SelfieMode>('off')
+  const [licenseMode, setLicenseMode] = useState<CaptureMode>('off')
+  //: The selfie, held while the licence is captured, so both reach doSubmit.
+  const [capturedSelfie, setCapturedSelfie] = useState<string | undefined>(undefined)
   const [fieldConfig, setFieldConfig] = useState<FieldConfig>(() => defaultFieldConfig(false))
   //: Asked of visitors only, and named after the congregation — "learn more
   //: about us" is a worse question than one with the name in it.
@@ -73,6 +84,7 @@ export default function PublicForm() {
   useEffect(() => {
     void getPublicConfig(kiosk).then((c) => {
       setSelfieMode(c.selfie_mode)
+      setLicenseMode(c.license_mode)
       setFieldConfig(c.field_config)
       setOrgName(c.org_name ?? null)
     })
@@ -94,15 +106,29 @@ export default function PublicForm() {
 
   function onFormSubmit(e: FormEvent) {
     e.preventDefault()
-    // Visitors get the selfie step (when enabled); members always print directly.
+    // Visitors get the photo steps (each only when enabled), in order: selfie,
+    // then driver's licence. Members always print directly.
     if (visitorType === 'visitor' && selfieMode !== 'off') {
       setStage('selfie')
+    } else if (visitorType === 'visitor' && licenseMode !== 'off') {
+      setStage('license')
     } else {
       void doSubmit()
     }
   }
 
-  async function doSubmit(selfie?: string) {
+  // After the selfie step (taken or skipped): on to the licence if it is asked
+  // for, otherwise submit with whatever selfie we have.
+  function afterSelfie(selfie?: string) {
+    if (licenseMode !== 'off') {
+      setCapturedSelfie(selfie)
+      setStage('license')
+    } else {
+      void doSubmit(selfie)
+    }
+  }
+
+  async function doSubmit(selfie?: string, license?: string) {
     setStage('submitting')
     setMessage(null)
     try {
@@ -127,13 +153,21 @@ export default function PublicForm() {
         additional,
       })
       setPrintCount(job_ids.length)
-      // Upload the primary's selfie in the background — never block the badges.
+      // Upload the primary's photos in the background — never block the badges.
       if (selfie) {
         void uploadSelfie({
           entry_id,
           first_name: firstName,
           last_name: lastName,
           image: selfie,
+        }).catch(() => {})
+      }
+      if (license) {
+        void uploadLicense({
+          entry_id,
+          first_name: firstName,
+          last_name: lastName,
+          image: license,
         }).catch(() => {})
       }
       setStage('printing')
@@ -185,6 +219,7 @@ export default function PublicForm() {
     setPeople([])
     setPrintCount(1)
     setMessage(null)
+    setCapturedSelfie(undefined)
     setStage('choose')
   }
 
@@ -208,12 +243,30 @@ export default function PublicForm() {
 
   if (stage === 'selfie') {
     return (
-      <SelfieCapture
+      <PhotoCapture
         optional={selfieMode === 'optional'}
         orgName={orgName}
-        onAccept={(img) => void doSubmit(img)}
-        onSkip={() => void doSubmit()}
+        title="Take a selfie"
+        onAccept={(img) => afterSelfie(img)}
+        onSkip={() => afterSelfie()}
         onBack={() => setStage('form')}
+      />
+    )
+  }
+
+  if (stage === 'license') {
+    return (
+      <PhotoCapture
+        optional={licenseMode === 'optional'}
+        orgName={orgName}
+        facingMode="environment"
+        title="Scan your driver's license"
+        altText="Your driver's license"
+        caption={`Your driver's license photo will be saved by ${orgName ?? 'this congregation'}.`}
+        onAccept={(img) => void doSubmit(capturedSelfie, img)}
+        onSkip={() => void doSubmit(capturedSelfie)}
+        // Back to the selfie step if there was one, otherwise the form.
+        onBack={() => setStage(selfieMode !== 'off' ? 'selfie' : 'form')}
       />
     )
   }
@@ -436,7 +489,7 @@ export default function PublicForm() {
         </div>
 
         <button type="submit">
-          {visitorType === 'visitor' && selfieMode !== 'off'
+          {visitorType === 'visitor' && (selfieMode !== 'off' || licenseMode !== 'off')
             ? 'Continue'
             : badgeCount > 1
               ? `Print ${badgeCount} badges`

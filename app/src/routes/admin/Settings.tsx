@@ -77,6 +77,7 @@ function FieldRow({
 export default function Settings() {
   const { orgId, isAdmin, isOwner } = useOrg()
   const [selfieMode, setSelfieMode] = useState<SelfieMode>('off')
+  const [licenseMode, setLicenseMode] = useState<SelfieMode>('off')
   //: Whether anything can write to this organization's Drive — a connected
   //: Google account, or the service account that path is replacing. An admin
   //: cannot read the integration itself (it belongs to the owner), so this is
@@ -129,6 +130,7 @@ export default function Settings() {
       }
       const mode = (data?.selfie_mode ?? 'off') as SelfieMode
       setSelfieMode(mode)
+      setLicenseMode((data?.license_mode ?? 'off') as SelfieMode)
       // pronouns_enabled seeds only the default for a row that has never been
       // edited; once field_config is set it is the authority.
       setFieldConfig(resolveFieldConfig(data?.field_config, Boolean(data?.pronouns_enabled)))
@@ -229,7 +231,7 @@ export default function Settings() {
    * owner's job; an admin is told that rather than sent to a page that will
    * refuse them.
    */
-  async function enableWithDrive(next: SelfieMode) {
+  async function enableWithDrive(next: SelfieMode, column: 'selfie_mode' | 'license_mode') {
     if (!isOwner) {
       setError(
         'Photographs need a connected Google account, and connecting one is an owner’s job. ' +
@@ -269,27 +271,29 @@ export default function Settings() {
       setError(res.error ?? 'Could not prepare the photographs destination.')
       return
     }
-    void chooseSelfieMode(next)
+    void chooseMode(next, column)
   }
 
-  /** Written on change, like the pronouns switch. There is nothing left for a
-   *  Save button to coordinate: the folder used to be saved alongside this and
-   *  had to agree with it, and the folder is now made by the connected account
-   *  rather than typed in. */
-  async function chooseSelfieMode(next: SelfieMode) {
-    const before = selfieMode
-    setSelfieMode(next)
+  /** Written on change, like the pronouns switch. One function for both the
+   *  selfie and the driver's-licence requirement — the same three-way setting,
+   *  stored in its own column. The Drive destination is shared, so there is
+   *  nothing else to coordinate. */
+  async function chooseMode(next: SelfieMode, column: 'selfie_mode' | 'license_mode') {
+    const isSelfie = column === 'selfie_mode'
+    const before = isSelfie ? selfieMode : licenseMode
+    const setLocal = isSelfie ? setSelfieMode : setLicenseMode
+    setLocal(next)
     setError(null)
     setSaving(true)
     const { error } = await supabase
       .from('app_settings')
-      .update({ selfie_mode: next })
+      .update({ [column]: next })
       .eq('org_id', orgId)
     setSaving(false)
     if (error) {
       // Back where it was: a control showing a state the database does not
       // hold is worse than the failure.
-      setSelfieMode(before)
+      setLocal(before)
       setError(error.message)
       return
     }
@@ -378,8 +382,28 @@ export default function Settings() {
                     setError(null)
                     // Switching photos on is what asks for the Google connection
                     // and makes the folder; switching them off needs neither.
-                    if (s === 'hidden') void chooseSelfieMode('off')
-                    else void enableWithDrive(s)
+                    if (s === 'hidden') void chooseMode('off', 'selfie_mode')
+                    else void enableWithDrive(s, 'selfie_mode')
+                  }}
+                />
+              </div>
+            )}
+
+            {/* Driver's licence — visitor-only, same shape as Photo, stored in
+                its own folder in the same Google Drive. */}
+            {tab === 'visitor' && (
+              <div className="field-row">
+                <div className="field-row-label">
+                  Driver's license
+                  <span className="muted small"> · saved in a separate Drive folder</span>
+                </div>
+                <StateControl
+                  value={licenseMode === 'off' ? 'hidden' : licenseMode}
+                  disabled={saving}
+                  onChange={(s) => {
+                    setError(null)
+                    if (s === 'hidden') void chooseMode('off', 'license_mode')
+                    else void enableWithDrive(s, 'license_mode')
                   }}
                 />
               </div>
@@ -428,11 +452,11 @@ export default function Settings() {
 
               {/* Already asking for photos, and Drive has gone away underneath
                   it — the one case where something is actively failing. */}
-              {!driveConnected && selfieMode !== 'off' && (
+              {!driveConnected && (selfieMode !== 'off' || licenseMode !== 'off') && (
                 <p className="warn" style={{ marginTop: 10 }}>
                   Visitors are being asked for a photo, but no Google account is connected, so every
-                  upload is failing. Set Photo to <strong>Hidden</strong> here, or ask an owner to
-                  connect one under Integrations.
+                  upload is failing. Set Photo and Driver's license to <strong>Hidden</strong> here,
+                  or ask an owner to connect one under Integrations.
                 </p>
               )}
             </div>

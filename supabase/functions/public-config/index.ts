@@ -8,6 +8,7 @@ import { defaultFieldConfig, resolveFieldConfig } from "../_shared/formConfig.ts
 
 const DEFAULTS = {
   selfie_mode: "off",
+  license_mode: "off",
   field_config: defaultFieldConfig(false),
   org_name: null,
 };
@@ -34,7 +35,7 @@ Deno.serve(async (req) => {
     // the organization is public.
     const [res, orgRes] = await Promise.all([
       fetch(
-        `${REST}/app_settings?org_id=eq.${kiosk.org_id}&select=selfie_mode,pronouns_enabled,field_config`,
+        `${REST}/app_settings?org_id=eq.${kiosk.org_id}&select=selfie_mode,license_mode,pronouns_enabled,field_config`,
         { headers: restHeaders },
       ),
       fetch(`${REST}/organizations?id=eq.${kiosk.org_id}&select=name`, {
@@ -47,6 +48,7 @@ Deno.serve(async (req) => {
     return json({
       ok: true,
       selfie_mode: s.selfie_mode ?? DEFAULTS.selfie_mode,
+      license_mode: s.license_mode ?? DEFAULTS.license_mode,
       // The whole thing, both audiences: the form lets someone switch between
       // Member and Visitor, so it needs both to re-shape itself when they do.
       field_config: resolveFieldConfig(s.field_config, Boolean(s.pronouns_enabled)),

@@ -1,12 +1,25 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 
-/** Live front-camera capture. Calls onAccept with a JPEG data URL. */
-export function SelfieCapture({
+/**
+ * Live camera capture, returning a JPEG data URL via onAccept.
+ *
+ * One component for both visitor photos: a selfie from the front camera
+ * (mirrored, like a mirror) and a driver's licence from the back camera (not
+ * mirrored, so the text reads the right way round while it is lined up). The
+ * saved image is never mirrored either way — the flip is only on the live
+ * preview — so `mirror` is purely what the person sees while aiming.
+ */
+export function PhotoCapture({
   optional,
   orgName,
   onAccept,
   onSkip,
   onBack,
+  facingMode = 'user',
+  title = 'Take a selfie',
+  mirror = facingMode === 'user',
+  altText = 'Your photo',
+  caption,
 }: {
   optional: boolean
   /** The congregation this kiosk belongs to. Null when it could not be
@@ -15,6 +28,11 @@ export function SelfieCapture({
   onAccept: (image: string) => void
   onSkip: () => void
   onBack: () => void
+  facingMode?: 'user' | 'environment'
+  title?: string
+  mirror?: boolean
+  altText?: string
+  caption?: string
 }) {
   const videoRef = useRef<HTMLVideoElement>(null)
   const streamRef = useRef<MediaStream | null>(null)
@@ -30,7 +48,7 @@ export function SelfieCapture({
     setError(null)
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: 'user' },
+        video: { facingMode },
         audio: false,
       })
       streamRef.current = stream
@@ -41,7 +59,7 @@ export function SelfieCapture({
     } catch {
       setError('Could not access the camera. Please allow camera access and try again.')
     }
-  }, [])
+  }, [facingMode])
 
   useEffect(() => {
     void startCamera()
@@ -66,10 +84,13 @@ export function SelfieCapture({
     void startCamera()
   }
 
+  // Inline, so it overrides the stylesheet's mirror for the back-camera case.
+  const flip = { transform: mirror ? 'scaleX(-1)' : 'none' }
+
   return (
     <main className="page">
       <h1>{orgName ?? 'Guest Badges'}</h1>
-      <p className="big">Take a selfie</p>
+      <p className="big">{title}</p>
 
       {error ? (
         <>
@@ -89,7 +110,7 @@ export function SelfieCapture({
       ) : photo ? (
         <>
           <div className="selfie-frame">
-            <img src={photo} alt="Your selfie" />
+            <img src={photo} alt={altText} />
           </div>
           <div className="actions">
             <button onClick={() => onAccept(photo)}>Use this photo</button>
@@ -101,7 +122,7 @@ export function SelfieCapture({
       ) : (
         <>
           <div className="selfie-frame">
-            <video ref={videoRef} playsInline muted />
+            <video ref={videoRef} playsInline muted style={flip} />
           </div>
           <div className="actions">
             <button onClick={capture}>Capture</button>
@@ -118,7 +139,7 @@ export function SelfieCapture({
       )}
 
       <p className="muted small">
-        Your photo will be saved by {orgName ?? 'this congregation'}.
+        {caption ?? `Your photo will be saved by ${orgName ?? 'this congregation'}.`}
       </p>
     </main>
   )

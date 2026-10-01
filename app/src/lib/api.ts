@@ -43,11 +43,16 @@ export async function submitBadge(input: {
   return { entry_id: data.entry_id, job_ids: data.job_ids ?? [data.job_id] }
 }
 
+// Off / optional / required — shared by the selfie and the driver's-licence
+// capture, which ask the same three-way question.
 export type SelfieMode = 'off' | 'optional' | 'required'
+export type CaptureMode = SelfieMode
 
 /** Public config the visitor/member form needs. */
 export async function getPublicConfig(kiosk: KioskRef): Promise<{
   selfie_mode: SelfieMode
+  /** Whether visitors are asked to photograph their driver's licence. */
+  license_mode: CaptureMode
   /** Which fields each audience answers, and whether each is required. */
   field_config: FieldConfig
   /** The congregation's display name, for the wording of the follow-up
@@ -59,11 +64,17 @@ export async function getPublicConfig(kiosk: KioskRef): Promise<{
     const { data } = await supabase.functions.invoke('public-config', { body: kiosk })
     return {
       selfie_mode: (data?.selfie_mode ?? 'off') as SelfieMode,
+      license_mode: (data?.license_mode ?? 'off') as CaptureMode,
       field_config: resolveFieldConfig(data?.field_config, false),
       org_name: (data?.org_name as string | null) ?? null,
     }
   } catch {
-    return { selfie_mode: 'off', field_config: defaultFieldConfig(false), org_name: null }
+    return {
+      selfie_mode: 'off',
+      license_mode: 'off',
+      field_config: defaultFieldConfig(false),
+      org_name: null,
+    }
   }
 }
 
@@ -75,6 +86,17 @@ export async function uploadSelfie(input: {
   image: string
 }): Promise<void> {
   await supabase.functions.invoke('upload-selfie', { body: input })
+}
+
+/** Upload a visitor's driver's-licence photo (fire-and-forget), stored in its
+ *  own Drive folder, separate from selfies. */
+export async function uploadLicense(input: {
+  entry_id: string
+  first_name: string
+  last_name: string
+  image: string
+}): Promise<void> {
+  await supabase.functions.invoke('upload-license', { body: input })
 }
 
 export type JobStatus = 'queued' | 'printing' | 'printed' | 'failed'

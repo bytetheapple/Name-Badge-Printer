@@ -87,7 +87,11 @@ function SyncCell({
   const showGoogle = kinds.has('google_sheet')
   const showShul = kinds.has('shulcloud')
   const showPhoto = Boolean(entry.selfie_link) || kinds.has('google_drive')
-  if (!showGoogle && !showShul && !showPhoto) return <span className="muted">—</span>
+  // A licence shares the google_drive connection, so it has no kind of its own —
+  // show it only for entries that actually involved one.
+  const showLicense = Boolean(entry.license_link) || entry.license_status !== 'skipped'
+  if (!showGoogle && !showShul && !showPhoto && !showLicense)
+    return <span className="muted">—</span>
 
   return (
     <>
@@ -120,6 +124,20 @@ function SyncCell({
           </a>
         ) : (
           <SyncPill label="Photo" status={entry.selfie_status} title={entry.selfie_error} />
+        ))}
+      {showLicense &&
+        (entry.license_link ? (
+          <a
+            href={entry.license_link}
+            target="_blank"
+            rel="noreferrer noopener"
+            className="pill pill-sync-sent"
+            title="Open this visitor's driver's license in Google Drive"
+          >
+            License
+          </a>
+        ) : (
+          <SyncPill label="License" status={entry.license_status} title={entry.license_error} />
         ))}
     </>
   )

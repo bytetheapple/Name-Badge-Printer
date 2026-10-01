@@ -333,6 +333,11 @@ export interface FormEntry {
   selfie_link: string | null
   selfie_status: 'pending' | 'sent' | 'failed' | 'skipped'
   selfie_error: string | null
+  /** The visitor's driver's-licence photo, stored in its own Drive folder.
+   *  Same status vocabulary as the selfie; 'skipped' means none reached us. */
+  license_link: string | null
+  license_status: 'pending' | 'sent' | 'failed' | 'skipped'
+  license_error: string | null
   google_synced_at: string | null
   google_error: string | null
   created_at: string
