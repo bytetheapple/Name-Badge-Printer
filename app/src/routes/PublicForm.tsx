@@ -10,9 +10,9 @@ import {
   type CaptureMode,
 } from '../lib/api'
 import { defaultFieldConfig, type FieldConfig } from '../lib/formConfig'
-import { PhotoCapture } from '../components/PhotoCapture'
+import { PhotoButton } from '../components/PhotoButton'
 
-type Stage = 'choose' | 'form' | 'selfie' | 'license' | 'submitting' | 'printing' | 'done' | 'error'
+type Stage = 'choose' | 'form' | 'photos' | 'submitting' | 'printing' | 'done' | 'error'
 
 const POLL_MS = 1500
 const TIMEOUT_MS = 30000
@@ -42,8 +42,9 @@ export default function PublicForm() {
   const [message, setMessage] = useState<string | null>(null)
   const [selfieMode, setSelfieMode] = useState<SelfieMode>('off')
   const [licenseMode, setLicenseMode] = useState<CaptureMode>('off')
-  //: The selfie, held while the licence is captured, so both reach doSubmit.
-  const [capturedSelfie, setCapturedSelfie] = useState<string | undefined>(undefined)
+  //: Each photo, taken on the one hub screen before printing.
+  const [selfieImage, setSelfieImage] = useState<string | undefined>(undefined)
+  const [licenseImage, setLicenseImage] = useState<string | undefined>(undefined)
   const [fieldConfig, setFieldConfig] = useState<FieldConfig>(() => defaultFieldConfig(false))
   //: Asked of visitors only, and named after the congregation — "learn more
   //: about us" is a worse question than one with the name in it.
@@ -104,27 +105,17 @@ export default function PublicForm() {
     setStage('form')
   }
 
+  // The primary plus any additional people with both names — used for the print
+  // button's wording on both the form and the photo hub.
+  const badgeCount = 1 + people.filter((p) => p.first.trim() && p.last.trim()).length
+
   function onFormSubmit(e: FormEvent) {
     e.preventDefault()
-    // Visitors get the photo steps (each only when enabled), in order: selfie,
-    // then driver's licence. Members always print directly.
-    if (visitorType === 'visitor' && selfieMode !== 'off') {
-      setStage('selfie')
-    } else if (visitorType === 'visitor' && licenseMode !== 'off') {
-      setStage('license')
+    // Visitors with a photo step go to the one hub screen; members print direct.
+    if (visitorType === 'visitor' && (selfieMode !== 'off' || licenseMode !== 'off')) {
+      setStage('photos')
     } else {
       void doSubmit()
-    }
-  }
-
-  // After the selfie step (taken or skipped): on to the licence if it is asked
-  // for, otherwise submit with whatever selfie we have.
-  function afterSelfie(selfie?: string) {
-    if (licenseMode !== 'off') {
-      setCapturedSelfie(selfie)
-      setStage('license')
-    } else {
-      void doSubmit(selfie)
     }
   }
 
@@ -219,7 +210,8 @@ export default function PublicForm() {
     setPeople([])
     setPrintCount(1)
     setMessage(null)
-    setCapturedSelfie(undefined)
+    setSelfieImage(undefined)
+    setLicenseImage(undefined)
     setStage('choose')
   }
 
@@ -241,33 +233,62 @@ export default function PublicForm() {
     )
   }
 
-  if (stage === 'selfie') {
+  if (stage === 'photos') {
+    const needSelfie = selfieMode === 'required' && !selfieImage
+    const needLicense = licenseMode === 'required' && !licenseImage
+    const canPrint = !needSelfie && !needLicense
     return (
-      <PhotoCapture
-        optional={selfieMode === 'optional'}
-        orgName={orgName}
-        title="Take a selfie"
-        onAccept={(img) => afterSelfie(img)}
-        onSkip={() => afterSelfie()}
-        onBack={() => setStage('form')}
-      />
-    )
-  }
+      <main className="page">
+        <h1>{orgName ?? 'Guest Badges'}</h1>
+        <p className="big">A couple of photos before your badge</p>
 
-  if (stage === 'license') {
-    return (
-      <PhotoCapture
-        optional={licenseMode === 'optional'}
-        orgName={orgName}
-        facingMode="environment"
-        title="Scan your driver's license"
-        altText="Your driver's license"
-        caption={`Your driver's license photo will be saved by ${orgName ?? 'this congregation'}.`}
-        onAccept={(img) => void doSubmit(capturedSelfie, img)}
-        onSkip={() => void doSubmit(capturedSelfie)}
-        // Back to the selfie step if there was one, otherwise the form.
-        onBack={() => setStage(selfieMode !== 'off' ? 'selfie' : 'form')}
-      />
+        <div className="capture-hub">
+          {selfieMode !== 'off' && (
+            <PhotoButton
+              label="Take a selfie"
+              retakeLabel="Retake selfie"
+              capture="user"
+              value={selfieImage}
+              onCapture={setSelfieImage}
+              required={selfieMode === 'required'}
+              altText="Your selfie"
+            />
+          )}
+          {licenseMode !== 'off' && (
+            <PhotoButton
+              label="Take a picture of your driver's license"
+              retakeLabel="Retake driver's license"
+              capture="environment"
+              value={licenseImage}
+              onCapture={setLicenseImage}
+              required={licenseMode === 'required'}
+              altText="Your driver's license"
+            />
+          )}
+        </div>
+
+        <div className="actions">
+          <button disabled={!canPrint} onClick={() => void doSubmit(selfieImage, licenseImage)}>
+            {badgeCount > 1 ? `Print ${badgeCount} badges` : 'Print my badge'}
+          </button>
+          <button className="secondary" onClick={() => setStage('form')}>
+            Back
+          </button>
+        </div>
+
+        {!canPrint && (
+          <p className="muted small">
+            {needSelfie && needLicense
+              ? 'A selfie and a driver’s license photo are required before printing.'
+              : needSelfie
+                ? 'A selfie is required before printing.'
+                : 'A driver’s license photo is required before printing.'}
+          </p>
+        )}
+        <p className="muted small">
+          Your photos will be saved by {orgName ?? 'this congregation'}.
+        </p>
+      </main>
     )
   }
 
@@ -314,7 +335,6 @@ export default function PublicForm() {
   const fc = fieldConfig[visitorType]
   const suffix = (state: 'hidden' | 'optional' | 'required') =>
     state === 'required' ? ' *' : ' (optional)'
-  const badgeCount = 1 + people.filter((p) => p.first.trim() && p.last.trim()).length
   return (
     <main className="page">
       {/* The congregation's own name, not the one this was first built for.

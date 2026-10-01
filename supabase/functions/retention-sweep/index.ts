@@ -51,77 +51,86 @@ Deno.serve(async (req) => {
     return json({ ok: false, error: "Not authorized" }, 401);
   }
 
-  // Every org on a finite retention policy.
+  // Every org with a finite window on either kind of image.
   const setRes = await fetch(
-    `${REST}/app_settings?select=org_id,photo_retention&photo_retention=in.(24h,7d)`,
+    `${REST}/app_settings?select=org_id,photo_retention,license_retention` +
+      `&or=(photo_retention.in.(24h,7d),license_retention.in.(24h,7d))`,
     { headers: restHeaders },
   );
   if (!setRes.ok) return json({ ok: false, error: "Could not read settings" }, 500);
-  const orgs: Array<{ org_id: string; photo_retention: string }> = await setRes.json();
+  const orgs: Array<{ org_id: string; photo_retention: string; license_retention: string }> =
+    await setRes.json();
 
   let deleted = 0;
   const report: Record<string, number> = {};
 
-  for (const { org_id: orgId, photo_retention: policy } of orgs) {
-    const windowMs = WINDOW_MS[policy];
-    if (!windowMs || !orgId) continue;
-    const cutoff = new Date(Date.now() - windowMs).toISOString();
+  for (const { org_id: orgId, photo_retention: photoPolicy, license_retention: licensePolicy } of orgs) {
+    if (!orgId) continue;
 
-    // Rows for this org that still hold a file and are past the cutoff.
-    const rowsRes = await fetch(
-      `${REST}/form_entries?org_id=eq.${orgId}&created_at=lt.${encodeURIComponent(cutoff)}` +
-        `&or=(selfie_file_id.not.is.null,license_file_id.not.is.null)` +
-        `&select=id,selfie_file_id,license_file_id&order=created_at.asc&limit=${MAX_PER_RUN}`,
-      { headers: restHeaders },
-    );
-    if (!rowsRes.ok) continue;
-    const rows: Array<{ id: string; selfie_file_id: string | null; license_file_id: string | null }> =
-      await rowsRes.json();
-    if (!rows.length) continue;
-
-    // One Drive credential for the org, reused across its rows.
-    const integ = await integrationFor(orgId, "google_drive");
-    if (!integ || !integ.enabled) continue;
-    let token: string;
-    try {
-      const ga = await googleAuthFor(
-        orgId,
-        integ.config,
-        integ.secret,
-        "https://www.googleapis.com/auth/drive",
-      );
-      token = ga.token;
-    } catch (e) {
-      console.error(
-        `retention-sweep: ${orgId} auth failed: ${e instanceof GoogleAuthError ? e.message : e}`,
-      );
-      continue;
-    }
-
-    for (const row of rows) {
-      const patch: Record<string, unknown> = {};
-      if (row.selfie_file_id && (await deleteDriveFile(token, row.selfie_file_id))) {
-        patch.selfie_file_id = null;
-        patch.selfie_link = null;
-        patch.selfie_status = "deleted";
-        patch.selfie_error = null;
+    // One Drive credential for the org, fetched once and reused across both
+    // kinds, and only when there is actually something to sweep.
+    let token: string | null = null;
+    const auth = async (): Promise<string | null> => {
+      if (token) return token;
+      const integ = await integrationFor(orgId, "google_drive");
+      if (!integ || !integ.enabled) return null;
+      try {
+        token = (await googleAuthFor(
+          orgId,
+          integ.config,
+          integ.secret,
+          "https://www.googleapis.com/auth/drive",
+        )).token;
+        return token;
+      } catch (e) {
+        console.error(
+          `retention-sweep: ${orgId} auth failed: ${e instanceof GoogleAuthError ? e.message : e}`,
+        );
+        return null;
       }
-      if (row.license_file_id && (await deleteDriveFile(token, row.license_file_id))) {
-        patch.license_file_id = null;
-        patch.license_link = null;
-        patch.license_status = "deleted";
-        patch.license_error = null;
+    };
+
+    // One kind of image, with its own window and columns.
+    const sweepKind = async (
+      policy: string,
+      fileCol: "selfie_file_id" | "license_file_id",
+      linkCol: "selfie_link" | "license_link",
+      statusCol: "selfie_status" | "license_status",
+      errorCol: "selfie_error" | "license_error",
+    ) => {
+      const windowMs = WINDOW_MS[policy];
+      if (!windowMs) return;
+      const cutoff = new Date(Date.now() - windowMs).toISOString();
+      const rowsRes = await fetch(
+        `${REST}/form_entries?org_id=eq.${orgId}&created_at=lt.${encodeURIComponent(cutoff)}` +
+          `&${fileCol}=not.is.null&select=id,${fileCol}&order=created_at.asc&limit=${MAX_PER_RUN}`,
+        { headers: restHeaders },
+      );
+      if (!rowsRes.ok) return;
+      const rows: Array<Record<string, string>> = await rowsRes.json();
+      if (!rows.length) return;
+      const t = await auth();
+      if (!t) return;
+      for (const row of rows) {
+        if (!(await deleteDriveFile(t, row[fileCol]))) continue;
+        await fetch(`${REST}/form_entries?id=eq.${row.id}&org_id=eq.${orgId}`, {
+          method: "PATCH",
+          headers: restHeaders,
+          body: JSON.stringify({
+            [fileCol]: null,
+            [linkCol]: null,
+            [statusCol]: "deleted",
+            [errorCol]: null,
+          }),
+        });
+        deleted++;
       }
-      if (!Object.keys(patch).length) continue;
-      await fetch(`${REST}/form_entries?id=eq.${row.id}&org_id=eq.${orgId}`, {
-        method: "PATCH",
-        headers: restHeaders,
-        body: JSON.stringify(patch),
-      });
-      deleted++;
-    }
-    report[orgId] = rows.length;
+      report[`${orgId}:${fileCol}`] = rows.length;
+    };
+
+    await sweepKind(photoPolicy, "selfie_file_id", "selfie_link", "selfie_status", "selfie_error");
+    await sweepKind(licensePolicy, "license_file_id", "license_link", "license_status", "license_error");
   }
 
-  return json({ ok: true, deleted, orgs: report });
+  return json({ ok: true, deleted, swept: report });
 });

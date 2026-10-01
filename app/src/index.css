@@ -733,6 +733,50 @@ a.pill:hover {
   transform: scaleX(-1); /* mirror the live preview like a selfie */
 }
 
+/* The photo hub: one card per photo the visitor is asked for, then Print. */
+.capture-hub {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  width: 100%;
+  max-width: 420px;
+  margin: 8px auto 4px;
+}
+.photo-button {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 16px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  text-align: left;
+}
+.photo-button-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+.photo-button-label {
+  font-weight: 600;
+  color: var(--text-h);
+}
+.photo-button-tag {
+  flex: 0 0 auto;
+  font-size: 0.8rem;
+  color: var(--muted);
+  padding: 2px 10px;
+  border-radius: 999px;
+  background: var(--pending-bg);
+}
+.photo-button-tag.done {
+  background: var(--ok-bg);
+  color: var(--ok-text);
+}
+.photo-button .selfie-frame {
+  margin: 0;
+}
+
 .section-head {
   display: flex;
   align-items: center;

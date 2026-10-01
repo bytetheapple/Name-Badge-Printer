@@ -114,7 +114,8 @@ export default function Settings() {
   const { orgId, isAdmin, isOwner } = useOrg()
   const [selfieMode, setSelfieMode] = useState<SelfieMode>('off')
   const [licenseMode, setLicenseMode] = useState<SelfieMode>('off')
-  const [retention, setRetention] = useState<RetentionPolicy>('never')
+  const [photoRetention, setPhotoRetention] = useState<RetentionPolicy>('never')
+  const [licenseRetention, setLicenseRetention] = useState<RetentionPolicy>('never')
   //: Whether anything can write to this organization's Drive — a connected
   //: Google account, or the service account that path is replacing. An admin
   //: cannot read the integration itself (it belongs to the owner), so this is
@@ -168,7 +169,8 @@ export default function Settings() {
       const mode = (data?.selfie_mode ?? 'off') as SelfieMode
       setSelfieMode(mode)
       setLicenseMode((data?.license_mode ?? 'off') as SelfieMode)
-      setRetention((data?.photo_retention ?? 'never') as RetentionPolicy)
+      setPhotoRetention((data?.photo_retention ?? 'never') as RetentionPolicy)
+      setLicenseRetention((data?.license_retention ?? 'never') as RetentionPolicy)
       // pronouns_enabled seeds only the default for a row that has never been
       // edited; once field_config is set it is the authority.
       setFieldConfig(resolveFieldConfig(data?.field_config, Boolean(data?.pronouns_enabled)))
@@ -337,19 +339,24 @@ export default function Settings() {
     }
   }
 
-  /** How long stored visitor images are kept. The hourly sweep reads this. */
-  async function chooseRetention(next: RetentionPolicy) {
-    const before = retention
-    setRetention(next)
+  /** How long stored images are kept, per kind. The hourly sweep reads both. */
+  async function chooseRetention(
+    next: RetentionPolicy,
+    column: 'photo_retention' | 'license_retention',
+  ) {
+    const isPhoto = column === 'photo_retention'
+    const before = isPhoto ? photoRetention : licenseRetention
+    const setLocal = isPhoto ? setPhotoRetention : setLicenseRetention
+    setLocal(next)
     setError(null)
     setSaving(true)
     const { error } = await supabase
       .from('app_settings')
-      .update({ photo_retention: next })
+      .update({ [column]: next })
       .eq('org_id', orgId)
     setSaving(false)
     if (error) {
-      setRetention(before)
+      setLocal(before)
       setError(error.message)
     }
   }
@@ -464,19 +471,31 @@ export default function Settings() {
               </div>
             )}
 
-            {/* Retention — one policy for both the photo and the licence, shown
-                once there is something being stored to retain. An hourly sweep
-                deletes images older than the chosen window. */}
-            {tab === 'visitor' && (selfieMode !== 'off' || licenseMode !== 'off') && (
+            {/* Retention, per kind — each shown once that kind is being stored.
+                An hourly sweep deletes images older than the chosen window. */}
+            {tab === 'visitor' && selfieMode !== 'off' && (
               <div className="field-row">
                 <div className="field-row-label">
-                  Delete stored images after
-                  <span className="muted small"> · applies to photos and licenses</span>
+                  Delete photos after
+                  <span className="muted small"> · visitor selfies</span>
                 </div>
                 <RetentionControl
-                  value={retention}
+                  value={photoRetention}
                   disabled={saving}
-                  onChange={(r) => void chooseRetention(r)}
+                  onChange={(r) => void chooseRetention(r, 'photo_retention')}
+                />
+              </div>
+            )}
+            {tab === 'visitor' && licenseMode !== 'off' && (
+              <div className="field-row">
+                <div className="field-row-label">
+                  Delete licenses after
+                  <span className="muted small"> · driver's license photos</span>
+                </div>
+                <RetentionControl
+                  value={licenseRetention}
+                  disabled={saving}
+                  onChange={(r) => void chooseRetention(r, 'license_retention')}
                 />
               </div>
             )}
