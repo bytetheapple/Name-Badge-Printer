@@ -330,15 +330,15 @@ export default function PublicForm() {
     return (
       <main className="page">
         <h1>{orgName ?? 'Guest Badges'}</h1>
-        <p className="big">One last step — the {label}</p>
+        <p className="big">Will you be using the gym today?</p>
         <p className="muted">
-          Your {badgeCount > 1 ? 'badges print' : 'badge prints'} at the desk, then this screen
-          continues to {orgName ? `${orgName}'s` : 'the'} {label}. Please complete it to finish
-          checking in.
+          Using the gym prints your badge and continues to {orgName ? `${orgName}'s` : 'the'} {label}.
+          If not, we'll just print your badge.
         </p>
 
-        <div className="actions">
+        <div className="choice">
           <button
+            className="choice-btn"
             onClick={() =>
               void doSubmit(selfieImage, licenseImage, {
                 redirectTo: waiverUrl ?? undefined,
@@ -346,10 +346,17 @@ export default function PublicForm() {
               })
             }
           >
-            {badgeCount > 1
-              ? `Print ${badgeCount} badges & open the ${label}`
-              : `Print my badge & open the ${label}`}
+            I will be using the gym today
           </button>
+          <button
+            className="choice-btn"
+            onClick={() => void doSubmit(selfieImage, licenseImage)}
+          >
+            I will not be using the gym today
+          </button>
+        </div>
+
+        <div className="actions">
           <button className="secondary" onClick={() => setStage(back)}>
             Back
           </button>
