@@ -474,7 +474,7 @@ export default function Settings() {
             {/* Retention, per kind — each shown once that kind is being stored.
                 An hourly sweep deletes images older than the chosen window. */}
             {tab === 'visitor' && selfieMode !== 'off' && (
-              <div className="field-row">
+              <div className="field-row attached">
                 <div className="field-row-label">
                   Delete photos after
                   <span className="muted small"> · visitor selfies</span>
@@ -487,7 +487,7 @@ export default function Settings() {
               </div>
             )}
             {tab === 'visitor' && licenseMode !== 'off' && (
-              <div className="field-row">
+              <div className="field-row attached">
                 <div className="field-row-label">
                   Delete licenses after
                   <span className="muted small"> · driver's license photos</span>

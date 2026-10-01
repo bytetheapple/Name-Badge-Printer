@@ -963,6 +963,12 @@ a.pill:hover {
 .field-row:first-child {
   border-top: none;
 }
+/* A row that belongs with the one above it (a photo and its retention policy):
+   no dividing line, and snug beneath its parent. */
+.field-row.attached {
+  border-top: none;
+  padding-top: 0;
+}
 .field-row-label {
   font-weight: 500;
   color: var(--text-h);

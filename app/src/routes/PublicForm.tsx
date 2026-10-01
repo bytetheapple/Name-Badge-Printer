@@ -251,7 +251,6 @@ export default function PublicForm() {
               value={selfieImage}
               onCapture={setSelfieImage}
               required={selfieMode === 'required'}
-              altText="Your selfie"
             />
           )}
           {licenseMode !== 'off' && (
@@ -262,7 +261,6 @@ export default function PublicForm() {
               value={licenseImage}
               onCapture={setLicenseImage}
               required={licenseMode === 'required'}
-              altText="Your driver's license"
             />
           )}
         </div>

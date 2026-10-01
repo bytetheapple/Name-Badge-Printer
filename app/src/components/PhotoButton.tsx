@@ -16,7 +16,6 @@ export function PhotoButton({
   value,
   onCapture,
   required,
-  altText = 'Captured photo',
 }: {
   label: string
   retakeLabel: string
@@ -25,7 +24,6 @@ export function PhotoButton({
   value: string | undefined
   onCapture: (dataUrl: string) => void
   required?: boolean
-  altText?: string
 }) {
   const inputRef = useRef<HTMLInputElement>(null)
   const [busy, setBusy] = useState(false)
@@ -51,12 +49,6 @@ export function PhotoButton({
           {value ? '✓ Taken' : required ? 'Required' : 'Optional'}
         </span>
       </div>
-
-      {value && (
-        <div className="selfie-frame">
-          <img src={value} alt={altText} />
-        </div>
-      )}
 
       <button type="button" className={value ? 'secondary' : ''} disabled={busy} onClick={() => inputRef.current?.click()}>
         {busy ? 'Working…' : value ? retakeLabel : label}
