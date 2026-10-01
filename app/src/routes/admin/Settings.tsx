@@ -451,8 +451,9 @@ export default function Settings() {
               </div>
             )}
 
-            {/* Each retention policy sits directly under the capture it governs,
-                attached with no dividing line between them. */}
+            {/* Each retention policy sits directly under the capture it governs
+                (Photo → Delete photos after, Driver's license → Delete licenses
+                after), attached with no dividing line between them. */}
             {tab === 'visitor' && selfieMode !== 'off' && (
               <div className="field-row attached">
                 <div className="field-row-label">
