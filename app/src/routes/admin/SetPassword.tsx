@@ -39,6 +39,15 @@ export default function SetPassword() {
   const [resent, setResent] = useState(false)
   const navigate = useNavigate()
 
+  //: Whether we arrived on a fresh auth link — its tokens are in the URL hash.
+  //: Captured in render, before supabase-js consumes and clears the hash. This
+  //: is the one signal that a session on this page belongs to the person who
+  //: just followed the email, rather than to whoever was already signed in.
+  const [fromLink] = useState(() => {
+    const h = new URLSearchParams(window.location.hash.replace(/^#/, ''))
+    return Boolean(h.get('access_token') || h.get('type'))
+  })
+
   useEffect(() => {
     // A rejected link comes back as error parameters in the hash, and
     // supabase-js simply never produces a session — no throw, no event. The
@@ -56,14 +65,26 @@ export default function SetPassword() {
       )
     }
 
-    supabase.auth.getSession().then(({ data }) => {
-      if (data.session) setReady(true)
-    })
-    const { data: sub } = supabase.auth.onAuthStateChange((_event, session) => {
-      if (session) setReady(true)
+    // Unlock the form only for a session this page itself established: one the
+    // link just handed us, or one a typed code is about to (its SIGNED_IN /
+    // PASSWORD_RECOVERY event below). A session that was already signed in — an
+    // operator with another tab open, say — must not count, or following an
+    // invite in that browser would show a form bound to the account already in
+    // use and set the wrong account's password.
+    if (fromLink) {
+      // getSession resolves after supabase-js has read the hash, so this is the
+      // invited (or recovering) account, not the one that was signed in before.
+      supabase.auth.getSession().then(({ data }) => {
+        if (data.session) setReady(true)
+      })
+    }
+    const { data: sub } = supabase.auth.onAuthStateChange((event, session) => {
+      if (session && (event === 'PASSWORD_RECOVERY' || event === 'SIGNED_IN')) {
+        setReady(true)
+      }
     })
     return () => sub.subscription.unsubscribe()
-  }, [])
+  }, [fromLink])
 
   async function useCode(e: FormEvent) {
     e.preventDefault()
