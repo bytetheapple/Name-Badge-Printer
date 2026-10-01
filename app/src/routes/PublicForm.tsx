@@ -120,13 +120,14 @@ export default function PublicForm() {
   function afterForm() {
     if (visitorType === 'visitor') {
       if (selfieMode !== 'off' || licenseMode !== 'off') return setStage('photos')
-      if (waiverUrl) return setStage('waiver')
+      // Visitors finish on the gym step: the gym choice when the waiver is on,
+      // otherwise a single Print button there.
+      return setStage('waiver')
     }
     void doSubmit()
   }
   function afterPhotos() {
-    if (waiverUrl) return setStage('waiver')
-    void doSubmit(selfieImage, licenseImage)
+    setStage('waiver')
   }
 
   function onFormSubmit(e: FormEvent) {
@@ -296,11 +297,7 @@ export default function PublicForm() {
 
         <div className="actions">
           <button disabled={!canPrint} onClick={afterPhotos}>
-            {waiverUrl
-              ? 'Continue'
-              : badgeCount > 1
-                ? `Print ${badgeCount} badges`
-                : 'Print my badge'}
+            Continue
           </button>
           <button className="secondary" onClick={() => setStage('form')}>
             Back
@@ -327,34 +324,48 @@ export default function PublicForm() {
     const label = waiverLabel?.trim() || 'guest form'
     // Back to the photo hub if there was one, otherwise the form.
     const back = selfieMode !== 'off' || licenseMode !== 'off' ? 'photos' : 'form'
+    // With the external form on, the visitor chooses; without it, just print.
     return (
       <main className="page">
         <h1>{orgName ?? 'Guest Badges'}</h1>
-        <p className="big">Will you be using the gym today?</p>
-        <p className="muted">
-          Using the gym prints your badge and continues to {orgName ? `${orgName}'s` : 'the'} {label}.
-          If not, we'll just print your badge.
-        </p>
 
-        <div className="choice">
-          <button
-            className="choice-btn"
-            onClick={() =>
-              void doSubmit(selfieImage, licenseImage, {
-                redirectTo: waiverUrl ?? undefined,
-                waiverAck: true,
-              })
-            }
-          >
-            I will be using the gym today
-          </button>
-          <button
-            className="choice-btn"
-            onClick={() => void doSubmit(selfieImage, licenseImage)}
-          >
-            I will not be using the gym today
-          </button>
-        </div>
+        {waiverUrl ? (
+          <>
+            <p className="big">Will you be using the gym today?</p>
+            <p className="muted">
+              Using the gym prints your badge and continues to {orgName ? `${orgName}'s` : 'the'}{' '}
+              {label}. If not, we'll just print your badge.
+            </p>
+            <div className="choice">
+              <button
+                className="choice-btn"
+                onClick={() =>
+                  void doSubmit(selfieImage, licenseImage, {
+                    redirectTo: waiverUrl,
+                    waiverAck: true,
+                  })
+                }
+              >
+                I will be using the gym today
+              </button>
+              <button
+                className="choice-btn"
+                onClick={() => void doSubmit(selfieImage, licenseImage)}
+              >
+                I will not be using the gym today
+              </button>
+            </div>
+          </>
+        ) : (
+          <>
+            <p className="big">Ready to print</p>
+            <div className="actions">
+              <button onClick={() => void doSubmit(selfieImage, licenseImage)}>
+                {badgeCount > 1 ? `Print ${badgeCount} badges` : 'Print my badge'}
+              </button>
+            </div>
+          </>
+        )}
 
         <div className="actions">
           <button className="secondary" onClick={() => setStage(back)}>
@@ -582,7 +593,7 @@ export default function PublicForm() {
         </div>
 
         <button type="submit">
-          {visitorType === 'visitor' && (selfieMode !== 'off' || licenseMode !== 'off')
+          {visitorType === 'visitor'
             ? 'Continue'
             : badgeCount > 1
               ? `Print ${badgeCount} badges`
