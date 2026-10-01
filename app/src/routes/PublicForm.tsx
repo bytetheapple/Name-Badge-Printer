@@ -49,9 +49,6 @@ export default function PublicForm() {
   //: before the badge prints. Empty when the org has not configured one.
   const [waiverUrl, setWaiverUrl] = useState<string | null>(null)
   const [waiverLabel, setWaiverLabel] = useState<string | null>(null)
-  //: Whether the visitor opened the external form. Not proof they finished it
-  //: (we can't know), but it marks the badge when they went through the step.
-  const [waiverOpened, setWaiverOpened] = useState(false)
   const [fieldConfig, setFieldConfig] = useState<FieldConfig>(() => defaultFieldConfig(false))
   //: Asked of visitors only, and named after the congregation — "learn more
   //: about us" is a worse question than one with the name in it.
@@ -137,7 +134,11 @@ export default function PublicForm() {
     afterForm()
   }
 
-  async function doSubmit(selfie?: string, license?: string) {
+  async function doSubmit(
+    selfie?: string,
+    license?: string,
+    opts?: { redirectTo?: string; waiverAck?: boolean },
+  ) {
     setStage('submitting')
     setMessage(null)
     try {
@@ -158,27 +159,36 @@ export default function PublicForm() {
         phone,
         email,
         wants_followup: wantsFollowup,
-        waiver_ack: waiverOpened,
+        waiver_ack: opts?.waiverAck === true,
         ...kiosk,
         additional,
       })
       setPrintCount(job_ids.length)
-      // Upload the primary's photos in the background — never block the badges.
+      // The photos. Normally fire-and-forget so a slow upload never holds up a
+      // badge — but when we are about to hand this window to another site, wait
+      // for them, or navigating away would cancel them mid-flight.
+      const uploads: Promise<void>[] = []
       if (selfie) {
-        void uploadSelfie({
-          entry_id,
-          first_name: firstName,
-          last_name: lastName,
-          image: selfie,
-        }).catch(() => {})
+        uploads.push(
+          uploadSelfie({ entry_id, first_name: firstName, last_name: lastName, image: selfie }).catch(
+            () => {},
+          ),
+        )
       }
       if (license) {
-        void uploadLicense({
-          entry_id,
-          first_name: firstName,
-          last_name: lastName,
-          image: license,
-        }).catch(() => {})
+        uploads.push(
+          uploadLicense({ entry_id, first_name: firstName, last_name: lastName, image: license }).catch(
+            () => {},
+          ),
+        )
+      }
+
+      if (opts?.redirectTo) {
+        // The badge is queued and will print at the desk; send this same window
+        // on to the external form as the final step. No return trip is needed.
+        await Promise.all(uploads)
+        window.location.assign(opts.redirectTo)
+        return
       }
       setStage('printing')
       startPolling(job_ids)
@@ -231,7 +241,6 @@ export default function PublicForm() {
     setMessage(null)
     setSelfieImage(undefined)
     setLicenseImage(undefined)
-    setWaiverOpened(false)
     setStage('choose')
   }
 
@@ -321,38 +330,30 @@ export default function PublicForm() {
     return (
       <main className="page">
         <h1>{orgName ?? 'Guest Badges'}</h1>
-        <p className="big">One more step — the {label}</p>
+        <p className="big">One last step — the {label}</p>
         <p className="muted">
-          Please complete {orgName ? `${orgName}'s` : 'the'} {label}. It opens in a new tab;
-          when you are done, come back here and print your badge.
+          Your {badgeCount > 1 ? 'badges print' : 'badge prints'} at the desk, then this screen
+          continues to {orgName ? `${orgName}'s` : 'the'} {label}. Please complete it to finish
+          checking in.
         </p>
 
         <div className="actions">
-          {/* A real link rather than window.open, so phone browsers never block
-              it. noreferrer keeps our URL off the third-party page. */}
-          <a
-            className="choice-btn"
-            href={waiverUrl ?? '#'}
-            target="_blank"
-            rel="noopener noreferrer"
-            onClick={() => setWaiverOpened(true)}
+          <button
+            onClick={() =>
+              void doSubmit(selfieImage, licenseImage, {
+                redirectTo: waiverUrl ?? undefined,
+                waiverAck: true,
+              })
+            }
           >
-            Open the {label} ↗
-          </a>
-        </div>
-
-        <div className="actions">
-          <button onClick={() => void doSubmit(selfieImage, licenseImage)}>
-            {badgeCount > 1 ? `I'm done — print ${badgeCount} badges` : "I'm done — print my badge"}
+            {badgeCount > 1
+              ? `Print ${badgeCount} badges & open the ${label}`
+              : `Print my badge & open the ${label}`}
           </button>
           <button className="secondary" onClick={() => setStage(back)}>
             Back
           </button>
         </div>
-
-        <p className="muted small">
-          Tap “Open the {label}” first, complete it, then return here to print.
-        </p>
       </main>
     )
   }
