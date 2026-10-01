@@ -921,6 +921,11 @@ a.pill:hover {
 .field-row-label {
   font-weight: 500;
   color: var(--text-h);
+  /* Take the row's spare width and shrink when needed, so the control stays on
+     the same line and lines up with the others even when the label is long
+     (e.g. "Driver's license · saved in a separate Drive folder"). */
+  flex: 1;
+  min-width: 0;
 }
 .seg {
   display: inline-flex;
