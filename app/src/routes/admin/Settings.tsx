@@ -451,6 +451,22 @@ export default function Settings() {
               </div>
             )}
 
+            {/* Each retention policy sits directly under the capture it governs,
+                attached with no dividing line between them. */}
+            {tab === 'visitor' && selfieMode !== 'off' && (
+              <div className="field-row attached">
+                <div className="field-row-label">
+                  Delete photos after
+                  <span className="muted small"> · visitor selfies</span>
+                </div>
+                <RetentionControl
+                  value={photoRetention}
+                  disabled={saving}
+                  onChange={(r) => void chooseRetention(r, 'photo_retention')}
+                />
+              </div>
+            )}
+
             {/* Driver's licence — visitor-only, same shape as Photo, stored in
                 its own folder in the same Google Drive. */}
             {tab === 'visitor' && (
@@ -471,21 +487,6 @@ export default function Settings() {
               </div>
             )}
 
-            {/* Retention, per kind — each shown once that kind is being stored.
-                An hourly sweep deletes images older than the chosen window. */}
-            {tab === 'visitor' && selfieMode !== 'off' && (
-              <div className="field-row attached">
-                <div className="field-row-label">
-                  Delete photos after
-                  <span className="muted small"> · visitor selfies</span>
-                </div>
-                <RetentionControl
-                  value={photoRetention}
-                  disabled={saving}
-                  onChange={(r) => void chooseRetention(r, 'photo_retention')}
-                />
-              </div>
-            )}
             {tab === 'visitor' && licenseMode !== 'off' && (
               <div className="field-row attached">
                 <div className="field-row-label">
