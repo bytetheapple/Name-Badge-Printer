@@ -46,6 +46,12 @@ export default function AdminLayout() {
     )
   }
 
+  // A greeter belongs only in the greeter portal — none of the admin exists for
+  // them. Bounce them there rather than show an admin chrome they cannot use.
+  if (role === 'greeter') {
+    return <Navigate to="/greeter" replace />
+  }
+
   // Presentation rather than access control — platform_overview() returns
   // nothing to anyone else, so reaching these by URL would show empty tables
   // rather than another org's data. But Operations hides the org nav, and

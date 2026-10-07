@@ -14,6 +14,7 @@ import Privacy from './routes/public/Privacy'
 import Terms from './routes/public/Terms'
 import Login from './routes/admin/Login'
 import SetPassword from './routes/admin/SetPassword'
+import GreeterPortal from './routes/GreeterPortal'
 import AdminLayout from './routes/admin/AdminLayout'
 import EntriesTable from './routes/admin/EntriesTable'
 import StatusPanel from './routes/admin/StatusPanel'
@@ -53,6 +54,16 @@ const router = createBrowserRouter([
   { path: '/e/:token', element: <EventForm /> },
   { path: '/admin/login', element: <Login /> },
   { path: '/admin/set-password', element: <SetPassword /> },
+  // The greeter desk: its own top-level route, not under the admin layout, so a
+  // greeter sees only this. Admins may open it too, to see what the desk sees.
+  {
+    path: '/greeter',
+    element: (
+      <RequireAuth>
+        <GreeterPortal />
+      </RequireAuth>
+    ),
+  },
   {
     path: '/admin',
     element: (

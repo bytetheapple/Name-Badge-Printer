@@ -10,6 +10,7 @@ const ROLE_HELP: Record<Role, string> = {
   owner: 'Everything, including managing owners and renaming the organization.',
   admin: 'Manage printers, settings and staff. Cannot change owners.',
   staff: 'View sign-ins, reprint badges and run test prints.',
+  greeter: 'The greeter desk only — recent guests and their photos to verify. Nothing else.',
 }
 
 export default function Members() {
@@ -213,6 +214,7 @@ export default function Members() {
             Role
             <select value={role} onChange={(e) => setRole(e.target.value as Role)}>
               <option value="staff">Staff</option>
+              <option value="greeter">Greeter</option>
               {isOwner && <option value="admin">Admin</option>}
               {isOwner && <option value="owner">Owner</option>}
             </select>
@@ -256,6 +258,7 @@ export default function Members() {
                         onChange={(e) => void changeRole(m, e.target.value as Role)}
                       >
                         <option value="staff">Staff</option>
+                        <option value="greeter">Greeter</option>
                         {isOwner && <option value="admin">Admin</option>}
                         {isOwner && <option value="owner">Owner</option>}
                       </select>

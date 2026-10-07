@@ -15,6 +15,8 @@ interface OrgState {
   /** Owner or admin — the line most of the UI actually cares about. */
   isAdmin: boolean
   isOwner: boolean
+  /** A greeter: the door/desk role, confined to the greeter portal. */
+  isGreeter: boolean
   /**
    * The operator, not a tenant role at all.
    *
@@ -151,6 +153,7 @@ export function OrgProvider({ children }: { children: ReactNode }) {
       role,
       isAdmin: role === 'owner' || role === 'admin',
       isOwner: role === 'owner',
+      isGreeter: role === 'greeter',
       isPlatformAdmin,
       isMember: orgId !== null && memberOrgIds.has(orgId),
       loading: loading || authLoading,

@@ -2633,3 +2633,108 @@ button.danger:disabled {
   0%, 100% { opacity: 0.3; }
   50%      { opacity: 1; }
 }
+
+/* ---- Greeter portal -------------------------------------------------------
+   A desk screen: large, tappable rows of recent guests with their photos, and
+   a blown-up detail view for verifying against the person at the door. */
+.gp-head {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-bottom: 16px;
+}
+.gp-empty {
+  margin-top: 32px;
+  text-align: center;
+}
+.gp-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.gp-row {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  width: 100%;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--bg);
+  text-align: left;
+  cursor: pointer;
+}
+.gp-row:hover {
+  border-color: var(--accent);
+}
+.gp-thumbs {
+  display: flex;
+  gap: 8px;
+  flex: 0 0 auto;
+}
+.gp-row-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.gp-row-name {
+  font-size: 1.3rem;
+  font-weight: 700;
+  color: var(--text-h);
+}
+.gp-img {
+  width: 72px;
+  height: 72px;
+  flex: 0 0 auto;
+  border-radius: 10px;
+  object-fit: cover;
+  background: var(--pending-bg);
+  display: grid;
+  place-items: center;
+  font-size: 0.7rem;
+  color: var(--muted);
+  text-align: center;
+  overflow: hidden;
+}
+.gp-img-none {
+  border: 1px dashed var(--border);
+}
+.gp-img-big {
+  width: 100%;
+  max-width: 460px;
+  height: auto;
+  aspect-ratio: 4 / 3;
+  border-radius: 14px;
+  object-fit: contain;
+  background: var(--pending-bg);
+  font-size: 1rem;
+}
+/* detail */
+.gp-back {
+  align-self: flex-start;
+  margin-bottom: 8px;
+}
+.gp-name {
+  font-size: clamp(2rem, 7vw, 3rem);
+  margin: 0 0 20px;
+  text-wrap: balance;
+}
+.gp-detail-images {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  align-items: center;
+}
+.gp-detail-block {
+  width: 100%;
+  max-width: 460px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.gp-label {
+  font-weight: 700;
+  color: var(--text-h);
+  letter-spacing: 0.02em;
+}
