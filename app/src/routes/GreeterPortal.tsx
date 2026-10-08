@@ -146,30 +146,31 @@ export default function GreeterPortal() {
   if (current) {
     return (
       <div className="gp-zoom" role="dialog" aria-modal="true">
+        {/* Flat banner: a grid places Back, the name and the nav arrows. On a
+            phone/portrait it's Back + arrows on one row with the name below; in
+            landscape the name is centred with the arrows centred beneath it. */}
         <div className="gp-zoom-top">
-          <div className="gp-zoom-controls">
-            <button className="secondary btn-sm" onClick={() => setSelected(null)}>
-              ← Back
+          <button className="gp-zoom-back secondary btn-sm" onClick={() => setSelected(null)}>
+            ← Back
+          </button>
+          <div className="gp-nav-arrows">
+            {/* The feed is newest-first, so the sign-in chronologically BEFORE
+                this one (older) sits at the next index, and the one after
+                (newer) at the previous index. */}
+            <button
+              className="secondary btn-sm"
+              disabled={index >= visitors.length - 1}
+              onClick={() => setSelected(visitors[index + 1]?.id ?? null)}
+            >
+              ‹ Previous
             </button>
-            <div className="gp-nav-arrows">
-              {/* The feed is newest-first, so the sign-in chronologically BEFORE
-                  this one (older) sits at the next index, and the one after
-                  (newer) at the previous index. */}
-              <button
-                className="secondary btn-sm"
-                disabled={index >= visitors.length - 1}
-                onClick={() => setSelected(visitors[index + 1]?.id ?? null)}
-              >
-                ‹ Previous
-              </button>
-              <button
-                className="secondary btn-sm"
-                disabled={index <= 0}
-                onClick={() => setSelected(visitors[index - 1]?.id ?? null)}
-              >
-                Next ›
-              </button>
-            </div>
+            <button
+              className="secondary btn-sm"
+              disabled={index <= 0}
+              onClick={() => setSelected(visitors[index - 1]?.id ?? null)}
+            >
+              Next ›
+            </button>
           </div>
           <h1 className="gp-zoom-name">
             {current.first_name} {current.last_name}

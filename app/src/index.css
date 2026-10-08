@@ -2697,21 +2697,32 @@ button.danger:disabled {
   /* Nothing in the overlay should ever be draggable sideways on a phone. */
   overflow-x: hidden;
 }
+/* Banner grid. Portrait/phone: Back (left) and the nav arrows (right) share the
+   top row, the name sits below, full width and left-aligned — the original
+   mobile look. The landscape override re-places these three items. */
 .gp-zoom-top {
   flex: 0 0 auto;
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  column-gap: 10px;
+  row-gap: 10px;
   padding: 14px 16px;
   border-bottom: 1px solid var(--border);
 }
-.gp-zoom-controls {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
+.gp-zoom-back {
+  grid-column: 1;
+  grid-row: 1;
+  justify-self: start;
+}
+.gp-zoom-top .gp-nav-arrows {
+  grid-column: 3;
+  grid-row: 1;
+  justify-self: end;
 }
 .gp-zoom-name {
+  grid-column: 1 / -1;
+  grid-row: 2;
   margin: 0;
   font-size: clamp(1.6rem, 6vw, 2.4rem);
   line-height: 1.1;
@@ -2744,6 +2755,28 @@ button.danger:disabled {
    images stacked on the right. Width-and-orientation gated so phones (any
    orientation) and tablets held in portrait keep the vertical stack. */
 @media (min-width: 820px) and (orientation: landscape) {
+  /* Banner: name centred, the nav arrows centred on a row beneath it, Back
+     kept at the top-left corner. */
+  .gp-zoom-top {
+    grid-template-columns: 1fr auto 1fr;
+  }
+  .gp-zoom-back {
+    grid-column: 1;
+    grid-row: 1;
+  }
+  .gp-zoom-name {
+    grid-column: 2;
+    grid-row: 1;
+    justify-self: center;
+    text-align: center;
+  }
+  .gp-zoom-top .gp-nav-arrows {
+    grid-column: 1 / -1;
+    grid-row: 2;
+    justify-self: center;
+  }
+
+  /* Warning card on the left, images stacked on the right. */
   .gp-zoom-body {
     flex-direction: row;
     align-items: flex-start;
@@ -2761,6 +2794,11 @@ button.danger:disabled {
     flex: 1 1 420px;
     max-width: 560px;
     width: auto;
+  }
+  /* No warning card (visitor not flagged): the images are the only column, so
+     centre them rather than leaving them off to one side. */
+  .gp-zoom-media:only-child {
+    flex: 0 1 560px;
   }
 }
 .gp-zoom-foot {
