@@ -217,8 +217,10 @@ export default function GreeterPortal() {
               </dl>
             </div>
           )}
-          <VisitorImage entryId={current.id} kind="selfie" available={current.has_selfie} big />
-          <VisitorImage entryId={current.id} kind="license" available={current.has_license} big />
+          <div className="gp-zoom-media">
+            <VisitorImage entryId={current.id} kind="selfie" available={current.has_selfie} big />
+            <VisitorImage entryId={current.id} kind="license" available={current.has_license} big />
+          </div>
         </div>
 
         <div className="gp-zoom-foot">
