@@ -341,6 +341,7 @@ button.secondary {
 }
 .admin-nav {
   display: flex;
+  flex-wrap: wrap;
   gap: 4px;
 }
 .admin-nav a {
@@ -2693,6 +2694,8 @@ button.danger:disabled {
   background: var(--bg);
   padding-top: env(safe-area-inset-top, 0px);
   padding-bottom: env(safe-area-inset-bottom, 0px);
+  /* Nothing in the overlay should ever be draggable sideways on a phone. */
+  overflow-x: hidden;
 }
 .gp-zoom-top {
   flex: 0 0 auto;
@@ -2718,6 +2721,7 @@ button.danger:disabled {
   flex: 1 1 auto;
   min-height: 0;
   overflow-y: auto;
+  overflow-x: hidden;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -2786,6 +2790,9 @@ button.danger:disabled {
   align-items: center;
   gap: 16px;
   width: 100%;
+  /* Border and padding inside the 100% width, or the row runs ~26px wider than
+     the screen and the whole page can be dragged sideways on a phone. */
+  box-sizing: border-box;
   padding: 12px;
   border: 1px solid var(--border);
   border-radius: 14px;
@@ -2832,6 +2839,7 @@ button.danger:disabled {
 .gp-img-big {
   width: 100%;
   max-width: 560px;
+  box-sizing: border-box;
   height: auto;
   aspect-ratio: 4 / 3;
   border-radius: 14px;
@@ -2905,6 +2913,7 @@ button.danger:disabled {
 .gp-alert {
   width: 100%;
   max-width: 560px;
+  box-sizing: border-box;
   border: 2px solid;
   border-radius: 14px;
   padding: 14px 16px;
@@ -2955,4 +2964,7 @@ button.danger:disabled {
   margin: 0;
   color: #1a1a1a;
   font-weight: 600;
+  /* A long email or licence number wraps instead of widening the panel. */
+  overflow-wrap: anywhere;
+  min-width: 0;
 }
