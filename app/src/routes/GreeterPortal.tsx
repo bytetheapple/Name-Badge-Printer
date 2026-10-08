@@ -1,13 +1,15 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react'
+import { useNavigate } from 'react-router-dom'
+import { supabase } from '../lib/supabase'
+import { useAuth } from '../lib/auth'
 import { useOrg } from '../lib/org'
-import { greeterFeed, fetchVisitorImage, type GreeterVisitor } from '../lib/greeter'
+import { greeterFeed, greeterCheckIn, fetchVisitorImage, type GreeterVisitor } from '../lib/greeter'
 
 const REFRESH_MS = 8000
 
 // One fetch per image for the life of the page: a blob URL cached by entry+kind,
 // so the 8-second refresh and the tap-through never re-hit Drive for an image we
-// already have. Object URLs are left to the page's lifetime (a desk screen),
-// which is simpler than reference-counting a handful of small images.
+// already have. Object URLs live for the page's lifetime (a desk screen).
 const imageCache = new Map<string, Promise<string | null>>()
 function cachedImage(entryId: string, kind: 'selfie' | 'license') {
   const key = `${entryId}:${kind}`
@@ -75,11 +77,15 @@ function timeAgo(iso: string): string {
 
 export default function GreeterPortal() {
   const { orgId, isGreeter, isAdmin, loading: orgLoading } = useOrg()
+  const { signOut } = useAuth()
+  const navigate = useNavigate()
   const [orgName, setOrgName] = useState<string | null>(null)
   const [visitors, setVisitors] = useState<GreeterVisitor[]>([])
   const [error, setError] = useState<string | null>(null)
   const [loaded, setLoaded] = useState(false)
   const [selected, setSelected] = useState<string | null>(null)
+  const [menuOpen, setMenuOpen] = useState(false)
+  const [pwOpen, setPwOpen] = useState(false)
   const timer = useRef<number | null>(null)
 
   const load = useCallback(async () => {
@@ -104,6 +110,22 @@ export default function GreeterPortal() {
     }
   }, [load])
 
+  async function toggleCheckIn(entryId: string, next: boolean) {
+    // Optimistic: reflect it at once, revert if the write fails.
+    setVisitors((vs) => vs.map((v) => (v.id === entryId ? { ...v, checked_in: next } : v)))
+    try {
+      await greeterCheckIn(entryId, next)
+    } catch (e) {
+      setVisitors((vs) => vs.map((v) => (v.id === entryId ? { ...v, checked_in: !next } : v)))
+      setError((e as Error).message)
+    }
+  }
+
+  async function doSignOut() {
+    await signOut()
+    navigate('/admin/login', { replace: true })
+  }
+
   if (orgLoading) return <main className="page" />
   if (!isGreeter && !isAdmin) {
     return (
@@ -114,18 +136,50 @@ export default function GreeterPortal() {
     )
   }
 
-  const current = visitors.find((v) => v.id === selected) ?? null
+  const index = selected ? visitors.findIndex((v) => v.id === selected) : -1
+  const current = index >= 0 ? visitors[index] : null
 
   // ---- detail view ----------------------------------------------------------
   if (current) {
     return (
       <main className="page gp-detail">
-        <button className="secondary gp-back" onClick={() => setSelected(null)}>
-          ← Back to list
-        </button>
+        <div className="gp-nav">
+          <button className="secondary gp-back" onClick={() => setSelected(null)}>
+            ← Back
+          </button>
+          <div className="gp-nav-arrows">
+            <button
+              className="secondary"
+              disabled={index <= 0}
+              onClick={() => setSelected(visitors[index - 1]?.id ?? null)}
+              aria-label="Previous guest"
+            >
+              ‹ Prev
+            </button>
+            <button
+              className="secondary"
+              disabled={index >= visitors.length - 1}
+              onClick={() => setSelected(visitors[index + 1]?.id ?? null)}
+              aria-label="Next guest"
+            >
+              Next ›
+            </button>
+          </div>
+        </div>
+
         <h1 className="gp-name">
           {current.first_name} {current.last_name}
         </h1>
+
+        <label className="gp-checkin">
+          <input
+            type="checkbox"
+            checked={current.checked_in}
+            onChange={(e) => void toggleCheckIn(current.id, e.target.checked)}
+          />
+          I checked this person in
+        </label>
+
         <div className="gp-detail-images">
           <div className="gp-detail-block">
             <div className="gp-label">Selfie</div>
@@ -145,9 +199,34 @@ export default function GreeterPortal() {
   return (
     <main className="page gp-list-page">
       <div className="gp-head">
-        <h1>{orgName ?? 'Greeter desk'}</h1>
-        <span className="muted small">Recent guest sign-ins</span>
+        <div className="gp-head-titles">
+          <h1>{orgName ?? 'Greeter desk'}</h1>
+          <span className="muted small">Recent guest sign-ins</span>
+        </div>
+        <div className="gp-account">
+          <button className="secondary btn-sm" onClick={() => setMenuOpen((o) => !o)}>
+            Account ▾
+          </button>
+          {menuOpen && (
+            <div className="gp-menu">
+              <button
+                className="linkish"
+                onClick={() => {
+                  setMenuOpen(false)
+                  setPwOpen(true)
+                }}
+              >
+                Change password
+              </button>
+              <button className="linkish" onClick={() => void doSignOut()}>
+                Sign out
+              </button>
+            </div>
+          )}
+        </div>
       </div>
+
+      {pwOpen && <ChangePassword onClose={() => setPwOpen(false)} />}
 
       {error && <div className="error">{error}</div>}
 
@@ -168,9 +247,66 @@ export default function GreeterPortal() {
               </span>
               <span className="muted small">{timeAgo(v.created_at)}</span>
             </div>
+            {v.checked_in && <span className="gp-checked">✓ Checked in</span>}
           </button>
         ))}
       </div>
     </main>
+  )
+}
+
+/** Set a new password for the signed-in greeter, in place. */
+function ChangePassword({ onClose }: { onClose: () => void }) {
+  const [password, setPassword] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [done, setDone] = useState(false)
+
+  async function onSubmit(e: FormEvent) {
+    e.preventDefault()
+    setBusy(true)
+    setError(null)
+    const { error } = await supabase.auth.updateUser({ password })
+    setBusy(false)
+    if (error) {
+      setError(error.message)
+      return
+    }
+    setDone(true)
+  }
+
+  return (
+    <div className="gp-pw">
+      {done ? (
+        <div className="gp-pw-inner">
+          <p className="notice">Password changed.</p>
+          <button onClick={onClose}>Done</button>
+        </div>
+      ) : (
+        <form className="gp-pw-inner" onSubmit={onSubmit}>
+          <label className="field">
+            New password
+            <input
+              type="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              required
+              minLength={8}
+              autoComplete="new-password"
+              autoFocus
+            />
+          </label>
+          {error && <p className="error">{error}</p>}
+          <div className="modal-actions">
+            <button type="button" className="secondary" onClick={onClose} disabled={busy}>
+              Cancel
+            </button>
+            <button type="submit" disabled={busy}>
+              {busy ? 'Saving…' : 'Set password'}
+            </button>
+          </div>
+        </form>
+      )}
+    </div>
   )
 }

@@ -76,7 +76,7 @@ Deno.serve(async (req) => {
     `${REST}/form_entries?org_id=eq.${orgId}&visitor_type=eq.visitor` +
       `&order=created_at.desc&limit=60` +
       `&select=id,first_name,last_name,created_at,selfie_file_id,license_file_id,` +
-      `selfie_status,license_status`,
+      `selfie_status,license_status,checked_in_at`,
     { headers: restHeaders },
   );
   if (!res.ok) return json({ ok: false, error: "Could not read sign-ins" }, 500);
@@ -93,6 +93,7 @@ Deno.serve(async (req) => {
     has_license: r.license_file_id != null,
     selfie_status: String(r.selfie_status ?? "skipped"),
     license_status: String(r.license_status ?? "skipped"),
+    checked_in: r.checked_in_at != null,
   }));
 
   return json({ ok: true, org_name: orgName, visitors });

@@ -2638,10 +2638,99 @@ button.danger:disabled {
    A desk screen: large, tappable rows of recent guests with their photos, and
    a blown-up detail view for verifying against the person at the door. */
 .gp-head {
+  position: sticky;
+  top: env(safe-area-inset-top, 0px);
+  z-index: 5;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 0;
+  margin-bottom: 8px;
+  background: var(--bg);
+  border-bottom: 1px solid var(--border);
+}
+.gp-head-titles {
   display: flex;
   flex-direction: column;
   gap: 2px;
-  margin-bottom: 16px;
+  min-width: 0;
+}
+.gp-account {
+  position: relative;
+  flex: 0 0 auto;
+}
+.gp-menu {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 4px);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 170px;
+  padding: 6px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.14);
+  z-index: 10;
+}
+.gp-menu .linkish {
+  text-align: left;
+  padding: 9px 10px;
+  border-radius: 6px;
+}
+.gp-menu .linkish:hover {
+  background: var(--pending-bg);
+}
+.gp-pw {
+  margin: 0 0 16px;
+}
+.gp-pw-inner {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  max-width: 360px;
+  padding: 16px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+}
+.gp-nav {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+.gp-nav-arrows {
+  display: flex;
+  gap: 8px;
+}
+.gp-checkin {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 0 0 20px;
+  font-size: 1.15rem;
+  font-weight: 600;
+  color: var(--text-h);
+  cursor: pointer;
+}
+.gp-checkin input {
+  width: 26px;
+  height: 26px;
+  flex: 0 0 auto;
+  accent-color: var(--accent);
+}
+.gp-checked {
+  margin-left: auto;
+  flex: 0 0 auto;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: var(--ok-bg);
+  color: var(--ok-text);
+  font-size: 0.8rem;
+  font-weight: 700;
 }
 .gp-empty {
   margin-top: 32px;

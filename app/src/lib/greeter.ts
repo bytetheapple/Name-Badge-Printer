@@ -9,6 +9,16 @@ export interface GreeterVisitor {
   has_license: boolean
   selfie_status: 'pending' | 'sent' | 'failed' | 'skipped' | 'deleted'
   license_status: 'pending' | 'sent' | 'failed' | 'skipped' | 'deleted'
+  checked_in: boolean
+}
+
+/** Record (or clear) that a greeter checked this guest in. */
+export async function greeterCheckIn(entryId: string, checkedIn: boolean): Promise<void> {
+  const { data, error } = await supabase.functions.invoke('greeter-checkin', {
+    body: { entry_id: entryId, checked_in: checkedIn },
+  })
+  if (error) throw new Error('Could not reach the server.')
+  if (!data?.ok) throw new Error(data?.error ?? 'Could not record the check-in.')
 }
 
 /** The recent visitor sign-ins for the greeter desk. */
