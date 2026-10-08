@@ -2845,10 +2845,20 @@ button.danger:disabled {
    likely a different person (a supplied contact disagreed). A warning for the
    greeter to verify — never an automatic block. Bright, saturated colours so a
    flag is unmistakable at a glance on a desk screen. */
+/* These flag panels keep their bright light tint in both light and dark mode —
+   a safety alert should read the same at any hour — so their text uses fixed
+   dark colours, never the theme variables (which invert to white in night mode
+   and vanish on the pale background). */
 .gp-row-red,
 .gp-row-yellow,
 .gp-row-green {
   border-width: 2px;
+  color: #2b2b2b;
+}
+.gp-row-red .muted,
+.gp-row-yellow .muted,
+.gp-row-green .muted {
+  color: #6a6a6a;
 }
 .gp-row-red {
   border-color: #d11;
@@ -2867,6 +2877,9 @@ button.danger:disabled {
 .gp-row-green {
   border-color: #2e9e5b;
   background: #eafaf0;
+}
+.gp-row-green .gp-row-name {
+  color: #1e6b3d;
 }
 
 .gp-prohibited-badge {
@@ -2923,7 +2936,7 @@ button.danger:disabled {
 }
 .gp-alert-text {
   margin: 6px 0 0;
-  color: var(--text-h);
+  color: #3a3a3a;
   font-size: 0.98rem;
   line-height: 1.4;
 }
@@ -2935,11 +2948,11 @@ button.danger:disabled {
 }
 .gp-alert-facts dt {
   font-weight: 700;
-  color: var(--muted);
+  color: #6a6a6a;
   font-size: 0.85rem;
 }
 .gp-alert-facts dd {
   margin: 0;
-  color: var(--text-h);
+  color: #1a1a1a;
   font-weight: 600;
 }
