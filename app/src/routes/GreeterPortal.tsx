@@ -62,6 +62,34 @@ function VisitorImage({
   return <img className={cls} src={url} alt={`Visitor ${noun}`} />
 }
 
+type Level = 'red' | 'yellow' | 'green'
+
+// How each match level reads on the row and in the alert. Red/yellow mean
+// "verify before admitting"; green means "probably a different person, but
+// here's the data to confirm". Never an automatic block.
+const LEVEL_UI: Record<Level, { badge: string; alertTitle: string }> = {
+  red: { badge: '⚠ Prohibited', alertTitle: '⚠ Prohibited visitor' },
+  yellow: { badge: '⚠ Possible match', alertTitle: '⚠ Possible match — verify' },
+  green: { badge: 'Name on list', alertTitle: 'Name on the list — likely a different person' },
+}
+
+/** Plain-language reason, e.g. "phone number and email address", or "name". */
+function matchedOnText(on: string[]): string {
+  const words = on.map((k) =>
+    k === 'phone' ? 'phone number' : k === 'email' ? 'email address' : 'name',
+  )
+  if (words.length <= 1) return words[0] ?? 'name'
+  return `${words.slice(0, -1).join(', ')} and ${words[words.length - 1]}`
+}
+
+function alertText(level: Level, on: string[]): string {
+  if (level === 'red')
+    return `The ${matchedOnText(on)} on this sign-in matches the prohibited-visitors list. Verify against the photo and licence — do not hand over a badge if this is the listed person.`
+  if (level === 'yellow')
+    return 'This name matches the prohibited-visitors list and nothing on the sign-in rules it out. Verify identity against the photo and licence before admitting.'
+  return 'This name matches the list, but a phone number or email the guest gave does not match the listed one — so this is probably someone else. Check the details below to be sure.'
+}
+
 function timeAgo(iso: string): string {
   const t = Date.parse(iso)
   if (Number.isNaN(t)) return ''
@@ -149,30 +177,41 @@ export default function GreeterPortal() {
         </div>
 
         <div className="gp-zoom-body">
-          {current.prohibited && (
-            <div className="gp-alert">
-              <div className="gp-alert-title">⚠ Prohibited visitor</div>
+          {current.prohibited_level && current.prohibited_info && (
+            <div className={`gp-alert gp-alert-${current.prohibited_level}`}>
+              <div className="gp-alert-title">{LEVEL_UI[current.prohibited_level].alertTitle}</div>
               <p className="gp-alert-text">
-                This name matches the prohibited-visitors list. Verify identity against the photo
-                and license before admitting — do not hand over a badge if it is this person.
+                {alertText(current.prohibited_level, current.prohibited_info.matched_on)}
               </p>
               <dl className="gp-alert-facts">
-                {current.prohibited_info?.matched_name && (
+                {current.prohibited_info.matched_name && (
                   <>
                     <dt>Listed name</dt>
                     <dd>{current.prohibited_info.matched_name}</dd>
                   </>
                 )}
-                {current.prohibited_info?.dl_number && (
+                {current.prohibited_info.dl_number && (
                   <>
                     <dt>License #</dt>
                     <dd>{current.prohibited_info.dl_number}</dd>
                   </>
                 )}
-                {current.prohibited_info?.birthdate && (
+                {current.prohibited_info.birthdate && (
                   <>
                     <dt>Birthdate</dt>
                     <dd>{current.prohibited_info.birthdate}</dd>
+                  </>
+                )}
+                {current.prohibited_info.phone && (
+                  <>
+                    <dt>Listed phone</dt>
+                    <dd>{current.prohibited_info.phone}</dd>
+                  </>
+                )}
+                {current.prohibited_info.email && (
+                  <>
+                    <dt>Listed email</dt>
+                    <dd>{current.prohibited_info.email}</dd>
                   </>
                 )}
               </dl>
@@ -212,7 +251,7 @@ export default function GreeterPortal() {
         {visitors.map((v) => (
           <button
             key={v.id}
-            className={`gp-row${v.prohibited ? ' gp-row-prohibited' : ''}`}
+            className={`gp-row${v.prohibited_level ? ` gp-row-${v.prohibited_level}` : ''}`}
             onClick={() => setSelected(v.id)}
           >
             <div className="gp-thumbs">
@@ -226,7 +265,11 @@ export default function GreeterPortal() {
               <span className="muted small">{timeAgo(v.created_at)}</span>
             </div>
             <div className="gp-row-badges">
-              {v.prohibited && <span className="gp-prohibited-badge">⚠ Prohibited</span>}
+              {v.prohibited_level && (
+                <span className={`gp-prohibited-badge gp-badge-${v.prohibited_level}`}>
+                  {LEVEL_UI[v.prohibited_level].badge}
+                </span>
+              )}
               {v.checked_in && <span className="gp-checked">✓ Checked in</span>}
             </div>
           </button>

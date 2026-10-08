@@ -3,9 +3,10 @@
 -- facility, matched against guest sign-ins so the greeter desk is warned.
 --
 -- A new integration kind. The owner creates it (a spreadsheet in the org's
--- Drive with First name / Last name / Driver's license number / Birthdate
--- columns) and fills it; the greeter-feed function matches sign-ins against it
--- by name and flags a match for the greeter to verify.
+-- Drive with First name / Last name / Driver's license number / Birthdate /
+-- Phone / Email columns) and fills it; the greeter-feed function matches
+-- sign-ins against it (phone/email = definitive, name = verify) and flags a
+-- match for the greeter to verify.
 --
 -- Additive and idempotent.
 -- ============================================================================

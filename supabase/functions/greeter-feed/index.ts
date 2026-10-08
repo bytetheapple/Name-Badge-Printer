@@ -7,7 +7,7 @@
 import { corsHeaders, json } from "../_shared/cors.ts";
 import { googleAuthFor } from "../_shared/google.ts";
 import {
-  normName,
+  classifyProhibited,
   readProhibitedEntries,
   type ProhibitedEntry,
 } from "../_shared/prohibited.ts";
@@ -128,7 +128,7 @@ Deno.serve(async (req) => {
   const res = await fetch(
     `${REST}/form_entries?org_id=eq.${orgId}&visitor_type=eq.visitor` +
       `&order=created_at.desc&limit=60` +
-      `&select=id,first_name,last_name,created_at,selfie_file_id,license_file_id,` +
+      `&select=id,first_name,last_name,phone,email,created_at,selfie_file_id,license_file_id,` +
       `selfie_status,license_status,checked_in_at`,
     { headers: restHeaders },
   );
@@ -139,6 +139,8 @@ Deno.serve(async (req) => {
     id: String(r.id),
     first_name: String(r.first_name ?? ""),
     last_name: String(r.last_name ?? ""),
+    phone: String(r.phone ?? ""),
+    email: String(r.email ?? ""),
     created_at: String(r.created_at ?? ""),
     // A file id present means the image is still in Drive (retention nulls it
     // on deletion). The status tells a pending/failed upload from a real one.
@@ -150,24 +152,21 @@ Deno.serve(async (req) => {
   }));
 
   // Match each visitor against the prohibited list, if the org has one. A match
-  // is a warning for the greeter to verify (by photo/licence), not a verdict —
-  // the matched name and verification fields are returned so they can.
+  // is a warning for the greeter to verify (by photo/licence/contact), not a
+  // verdict — the level and the listed row's fields are returned so they can.
+  // The guest's own phone/email are used only to match and are not returned.
   const prohibited = await prohibitedEntriesFor(orgId);
-  const byName = new Map<string, ProhibitedEntry>();
-  for (const e of prohibited) byName.set(`${normName(e.first)}|${normName(e.last)}`, e);
 
   const flagged = visitors.map((v) => {
-    const hit = byName.get(`${normName(v.first_name)}|${normName(v.last_name)}`);
-    if (!hit) return { ...v, prohibited: false };
-    return {
-      ...v,
-      prohibited: true,
-      prohibited_info: {
-        matched_name: `${hit.first} ${hit.last}`.trim(),
-        dl_number: hit.dl_number,
-        birthdate: hit.birthdate,
-      },
-    };
+    const { phone: _p, email: _e, ...pub } = v;
+    const match = prohibited.length
+      ? classifyProhibited(
+        { first_name: v.first_name, last_name: v.last_name, phone: v.phone, email: v.email },
+        prohibited,
+      )
+      : null;
+    if (!match) return { ...pub, prohibited_level: null };
+    return { ...pub, prohibited_level: match.level, prohibited_info: match };
   });
 
   return json({ ok: true, org_name: orgName, visitors: flagged });

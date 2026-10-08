@@ -10,13 +10,22 @@ export interface GreeterVisitor {
   selfie_status: 'pending' | 'sent' | 'failed' | 'skipped' | 'deleted'
   license_status: 'pending' | 'sent' | 'failed' | 'skipped' | 'deleted'
   checked_in: boolean
-  /** True when this guest's name matches the prohibited-visitors list — a
-   *  warning for the greeter to verify, not a verdict. */
-  prohibited: boolean
+  /** How this guest matched the prohibited-visitors list, if at all:
+   *   - 'red'    a phone/email matched — definitive.
+   *   - 'yellow' the name matched and nothing ruled it out — verify.
+   *   - 'green'  the name matched but a supplied phone/email disagreed — likely
+   *              a different person.
+   *  null when there is no list or no match. A match is always a warning for the
+   *  greeter to verify, never an automatic verdict. */
+  prohibited_level: 'red' | 'yellow' | 'green' | null
   prohibited_info?: {
+    level: 'red' | 'yellow' | 'green'
     matched_name: string
+    matched_on: string[]
     dl_number: string
     birthdate: string
+    phone: string
+    email: string
   }
 }
 

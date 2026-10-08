@@ -2840,38 +2840,86 @@ button.danger:disabled {
   font-size: 1rem;
 }
 
-/* Prohibited-visitor flagging: a red row in the list, a loud alert in the zoom
-   view. A warning for the greeter to verify — not a block. */
-.gp-row-prohibited {
-  border-color: var(--danger, #d11);
+/* Prohibited-visitor flagging, by match level: red = definitive (phone/email
+   matched), yellow = possible (name matched, nothing ruled it out), green =
+   likely a different person (a supplied contact disagreed). A warning for the
+   greeter to verify — never an automatic block. Bright, saturated colours so a
+   flag is unmistakable at a glance on a desk screen. */
+.gp-row-red,
+.gp-row-yellow,
+.gp-row-green {
   border-width: 2px;
-  background: var(--danger-bg, #fdecec);
 }
-.gp-row-prohibited .gp-row-name {
-  color: var(--danger, #d11);
+.gp-row-red {
+  border-color: #d11;
+  background: #fdecec;
 }
+.gp-row-red .gp-row-name {
+  color: #b00;
+}
+.gp-row-yellow {
+  border-color: #e6a700;
+  background: #fff7df;
+}
+.gp-row-yellow .gp-row-name {
+  color: #8a6400;
+}
+.gp-row-green {
+  border-color: #2e9e5b;
+  background: #eafaf0;
+}
+
 .gp-prohibited-badge {
   flex: 0 0 auto;
   padding: 4px 10px;
   border-radius: 999px;
-  background: var(--danger, #d11);
   color: #fff;
   font-size: 0.8rem;
   font-weight: 800;
   letter-spacing: 0.02em;
 }
+.gp-badge-red {
+  background: #d11;
+}
+.gp-badge-yellow {
+  background: #e6a700;
+  color: #3a2c00;
+}
+.gp-badge-green {
+  background: #2e9e5b;
+}
+
 .gp-alert {
   width: 100%;
   max-width: 560px;
-  border: 2px solid var(--danger, #d11);
+  border: 2px solid;
   border-radius: 14px;
-  background: var(--danger-bg, #fdecec);
   padding: 14px 16px;
+}
+.gp-alert-red {
+  border-color: #d11;
+  background: #fdecec;
+}
+.gp-alert-yellow {
+  border-color: #e6a700;
+  background: #fff7df;
+}
+.gp-alert-green {
+  border-color: #2e9e5b;
+  background: #eafaf0;
 }
 .gp-alert-title {
   font-size: 1.25rem;
   font-weight: 800;
-  color: var(--danger, #d11);
+}
+.gp-alert-red .gp-alert-title {
+  color: #b00;
+}
+.gp-alert-yellow .gp-alert-title {
+  color: #8a6400;
+}
+.gp-alert-green .gp-alert-title {
+  color: #1e6b3d;
 }
 .gp-alert-text {
   margin: 6px 0 0;

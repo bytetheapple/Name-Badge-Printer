@@ -721,11 +721,13 @@ export default function Settings() {
           <section className="card">
             <h2>Prohibited visitors</h2>
             <p className="muted small" style={{ marginBottom: 14 }}>
-              A private Google Sheet in your Drive listing people barred from entry. When a guest
-              signs in whose name matches the list, the greeter desk shows them in red with an
-              alert, so a badge is not handed over. Add a driver’s-license number and birthdate to a
-              row and the greeter can check them against the licence image too. Matching is a warning
-              to verify by photo and licence — never a certain identification.
+              A private Google Sheet in your Drive listing people barred from entry. Each row has
+              First name, Last name, Driver’s license number, Birthdate, Phone and Email — only the
+              name is required. A sign-in whose <strong>phone or email</strong> matches a row is
+              flagged red (definitive). A name-only match is yellow, or green if a phone/email the
+              guest gave disagrees with the row. The license number and birthdate aren’t captured at
+              sign-in, so the greeter checks those against the license image. Every flag is a warning
+              to verify — never a certain identification or an automatic block.
             </p>
 
             {!prohibitedId ? (
@@ -759,8 +761,8 @@ export default function Settings() {
                     <a href={prohibitedUrl} target="_blank" rel="noopener noreferrer">
                       Open the list in Google Sheets →
                     </a>{' '}
-                    Add names in the “First name” and “Last name” columns; license number and
-                    birthdate are optional. Changes show at the desk within a minute.
+                    Fill the First and Last name columns; phone, email, license number and birthdate
+                    are optional but sharpen the match. Changes show at the desk within a minute.
                   </p>
                 )}
               </>

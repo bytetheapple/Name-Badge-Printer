@@ -25,7 +25,7 @@
 import { corsHeaders, json } from "../_shared/cors.ts";
 import { createSpreadsheet } from "../_shared/gsheets.ts";
 import { createEventSpreadsheet, renameEventSpreadsheet } from "../_shared/eventsheet.ts";
-import { createProhibitedSheet } from "../_shared/prohibited.ts";
+import { createProhibitedSheet, writeProhibitedHeaders } from "../_shared/prohibited.ts";
 import { googleAuthFor, GoogleAuthError } from "../_shared/google.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
@@ -213,6 +213,17 @@ Deno.serve(async (req) => {
     const row = rowRes.ok ? (await rowRes.json())[0] : null;
     const config = (row?.config ?? {}) as Record<string, unknown>;
     if (config.sheet_is_ours === true && config.spreadsheet_id) {
+      // Best-effort: re-write the header row so a list made before the Phone and
+      // Email columns existed gets them labelled. A broken connection must not
+      // stop us handing back the existing sheet's URL, so failures are ignored.
+      try {
+        const auth = await googleAuthFor(orgId, config, null, "");
+        if (auth.kind === "oauth") {
+          await writeProhibitedHeaders(auth.token, String(config.spreadsheet_id));
+        }
+      } catch (_) {
+        // ignore — the sheet still exists and opens; headers are cosmetic.
+      }
       return json({
         ok: true,
         already: true,
