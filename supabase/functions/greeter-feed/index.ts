@@ -40,7 +40,7 @@ async function roleInOrg(userId: string, orgId: string): Promise<string | null> 
   return rows.length ? String(rows[0].role) : null;
 }
 
-const MAY_SEE = new Set(["greeter", "admin", "owner"]);
+const MAY_SEE = new Set(["greeter", "staff", "admin", "owner"]);
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });

@@ -54,16 +54,8 @@ const router = createBrowserRouter([
   { path: '/e/:token', element: <EventForm /> },
   { path: '/admin/login', element: <Login /> },
   { path: '/admin/set-password', element: <SetPassword /> },
-  // The greeter desk: its own top-level route, not under the admin layout, so a
-  // greeter sees only this. Admins may open it too, to see what the desk sees.
-  {
-    path: '/greeter',
-    element: (
-      <RequireAuth>
-        <GreeterPortal />
-      </RequireAuth>
-    ),
-  },
+  // Old top-level link, kept working: the desk now lives as a tab in the shell.
+  { path: '/greeter', element: <Navigate to="/admin/greeter" replace /> },
   {
     path: '/admin',
     element: (
@@ -79,6 +71,7 @@ const router = createBrowserRouter([
       { path: 'settings', element: <Settings /> },
       { path: 'integrations', element: <IntegrationsPage /> },
       { path: 'members', element: <Members /> },
+      { path: 'greeter', element: <GreeterPortal /> },
       // Operations: the cross-tenant context, reached from the switcher
       // rather than from this nav. Its own tabs, because none of the ones
       // above mean anything without an organization.

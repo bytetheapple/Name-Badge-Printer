@@ -1,6 +1,8 @@
+import { useState } from 'react'
 import { Navigate, NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { useAuth } from '../../lib/auth'
 import { useOrg } from '../../lib/org'
+import { ChangePassword } from '../../components/ChangePassword'
 
 /** The switcher's value for the Operations context. Not a real org id, and
  *  deliberately not shaped like one. */
@@ -15,6 +17,7 @@ export default function AdminLayout() {
   } = useOrg()
   const location = useLocation()
   const navigate = useNavigate()
+  const [pwOpen, setPwOpen] = useState(false)
 
   // Which "place" the admin is in, taken from the route rather than held in
   // state — so a refresh, a bookmark and the back button all agree.
@@ -46,10 +49,10 @@ export default function AdminLayout() {
     )
   }
 
-  // A greeter belongs only in the greeter portal — none of the admin exists for
-  // them. Bounce them there rather than show an admin chrome they cannot use.
-  if (role === 'greeter') {
-    return <Navigate to="/greeter" replace />
+  // A greeter sees only the Greeter tab. Keep them on it — any other admin route
+  // holds nothing for them (the role has no data access).
+  if (role === 'greeter' && !location.pathname.startsWith('/admin/greeter')) {
+    return <Navigate to="/admin/greeter" replace />
   }
 
   // Presentation rather than access control — platform_overview() returns
@@ -158,6 +161,9 @@ export default function AdminLayout() {
               <NavLink to="/admin/ops/operators">Operators</NavLink>
               <NavLink to="/admin/ops/activity">Activity</NavLink>
             </>
+          ) : role === 'greeter' ? (
+            // The only tab a greeter has.
+            <NavLink to="/admin/greeter">Greeter</NavLink>
           ) : (
             <>
               <NavLink to="/admin/entries">Entries</NavLink>
@@ -168,6 +174,8 @@ export default function AdminLayout() {
                   Settings stay with admin — the equipment. */}
               {isOwner && <NavLink to="/admin/integrations">Integrations</NavLink>}
               {isOwner && <NavLink to="/admin/members">Members</NavLink>}
+              {/* The greeter desk, visible to all staff too. */}
+              <NavLink to="/admin/greeter">Greeter</NavLink>
             </>
           )}
         </nav>
@@ -176,12 +184,16 @@ export default function AdminLayout() {
             {session?.user.email}
             {role && !inOps && <span className="role-badge">{role}</span>}
           </span>
+          <button className="secondary btn-sm" onClick={() => setPwOpen(true)}>
+            Change password
+          </button>
           <button className="secondary btn-sm" onClick={() => void signOut()}>
             Sign out
           </button>
         </div>
       </header>
       </div>
+      {pwOpen && <ChangePassword onClose={() => setPwOpen(false)} />}
       <main className="admin-main">
         <Outlet />
       </main>

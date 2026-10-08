@@ -1,7 +1,4 @@
-import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react'
-import { useNavigate } from 'react-router-dom'
-import { supabase } from '../lib/supabase'
-import { useAuth } from '../lib/auth'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { useOrg } from '../lib/org'
 import { greeterFeed, greeterCheckIn, fetchVisitorImage, type GreeterVisitor } from '../lib/greeter'
 
@@ -76,23 +73,17 @@ function timeAgo(iso: string): string {
 }
 
 export default function GreeterPortal() {
-  const { orgId, isGreeter, isAdmin, loading: orgLoading } = useOrg()
-  const { signOut } = useAuth()
-  const navigate = useNavigate()
-  const [orgName, setOrgName] = useState<string | null>(null)
+  const { orgId } = useOrg()
   const [visitors, setVisitors] = useState<GreeterVisitor[]>([])
   const [error, setError] = useState<string | null>(null)
   const [loaded, setLoaded] = useState(false)
   const [selected, setSelected] = useState<string | null>(null)
-  const [menuOpen, setMenuOpen] = useState(false)
-  const [pwOpen, setPwOpen] = useState(false)
   const timer = useRef<number | null>(null)
 
   const load = useCallback(async () => {
     if (!orgId) return
     try {
-      const { org_name, visitors } = await greeterFeed(orgId)
-      setOrgName(org_name)
+      const { visitors } = await greeterFeed(orgId)
       setVisitors(visitors)
       setError(null)
     } catch (e) {
@@ -111,7 +102,6 @@ export default function GreeterPortal() {
   }, [load])
 
   async function toggleCheckIn(entryId: string, next: boolean) {
-    // Optimistic: reflect it at once, revert if the write fails.
     setVisitors((vs) => vs.map((v) => (v.id === entryId ? { ...v, checked_in: next } : v)))
     try {
       await greeterCheckIn(entryId, next)
@@ -121,28 +111,13 @@ export default function GreeterPortal() {
     }
   }
 
-  async function doSignOut() {
-    await signOut()
-    navigate('/admin/login', { replace: true })
-  }
-
-  if (orgLoading) return <main className="page" />
-  if (!isGreeter && !isAdmin) {
-    return (
-      <main className="page">
-        <h1>Greeter desk</h1>
-        <p className="muted">This page is for the greeter desk.</p>
-      </main>
-    )
-  }
-
   const index = selected ? visitors.findIndex((v) => v.id === selected) : -1
   const current = index >= 0 ? visitors[index] : null
 
   // ---- detail view ----------------------------------------------------------
   if (current) {
     return (
-      <main className="page gp-detail">
+      <div className="gp-detail">
         <div className="gp-nav">
           <button className="secondary gp-back" onClick={() => setSelected(null)}>
             ← Back
@@ -152,7 +127,6 @@ export default function GreeterPortal() {
               className="secondary"
               disabled={index <= 0}
               onClick={() => setSelected(visitors[index - 1]?.id ?? null)}
-              aria-label="Previous guest"
             >
               ‹ Prev
             </button>
@@ -160,7 +134,6 @@ export default function GreeterPortal() {
               className="secondary"
               disabled={index >= visitors.length - 1}
               onClick={() => setSelected(visitors[index + 1]?.id ?? null)}
-              aria-label="Next guest"
             >
               Next ›
             </button>
@@ -191,42 +164,15 @@ export default function GreeterPortal() {
           </div>
         </div>
         <p className="muted small">Signed in {timeAgo(current.created_at)}.</p>
-      </main>
+      </div>
     )
   }
 
   // ---- list view ------------------------------------------------------------
   return (
-    <main className="page gp-list-page">
-      <div className="gp-head">
-        <div className="gp-head-titles">
-          <h1>{orgName ?? 'Greeter desk'}</h1>
-          <span className="muted small">Recent guest sign-ins</span>
-        </div>
-        <div className="gp-account">
-          <button className="secondary btn-sm" onClick={() => setMenuOpen((o) => !o)}>
-            Account ▾
-          </button>
-          {menuOpen && (
-            <div className="gp-menu">
-              <button
-                className="linkish"
-                onClick={() => {
-                  setMenuOpen(false)
-                  setPwOpen(true)
-                }}
-              >
-                Change password
-              </button>
-              <button className="linkish" onClick={() => void doSignOut()}>
-                Sign out
-              </button>
-            </div>
-          )}
-        </div>
-      </div>
-
-      {pwOpen && <ChangePassword onClose={() => setPwOpen(false)} />}
+    <>
+      <h1>Greeter desk</h1>
+      <p className="muted">Recent guest sign-ins — tap a guest to verify before handing out a badge.</p>
 
       {error && <div className="error">{error}</div>}
 
@@ -251,62 +197,6 @@ export default function GreeterPortal() {
           </button>
         ))}
       </div>
-    </main>
-  )
-}
-
-/** Set a new password for the signed-in greeter, in place. */
-function ChangePassword({ onClose }: { onClose: () => void }) {
-  const [password, setPassword] = useState('')
-  const [busy, setBusy] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-  const [done, setDone] = useState(false)
-
-  async function onSubmit(e: FormEvent) {
-    e.preventDefault()
-    setBusy(true)
-    setError(null)
-    const { error } = await supabase.auth.updateUser({ password })
-    setBusy(false)
-    if (error) {
-      setError(error.message)
-      return
-    }
-    setDone(true)
-  }
-
-  return (
-    <div className="gp-pw">
-      {done ? (
-        <div className="gp-pw-inner">
-          <p className="notice">Password changed.</p>
-          <button onClick={onClose}>Done</button>
-        </div>
-      ) : (
-        <form className="gp-pw-inner" onSubmit={onSubmit}>
-          <label className="field">
-            New password
-            <input
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              required
-              minLength={8}
-              autoComplete="new-password"
-              autoFocus
-            />
-          </label>
-          {error && <p className="error">{error}</p>}
-          <div className="modal-actions">
-            <button type="button" className="secondary" onClick={onClose} disabled={busy}>
-              Cancel
-            </button>
-            <button type="submit" disabled={busy}>
-              {busy ? 'Saving…' : 'Set password'}
-            </button>
-          </div>
-        </form>
-      )}
-    </div>
+    </>
   )
 }

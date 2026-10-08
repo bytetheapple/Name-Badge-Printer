@@ -15,7 +15,7 @@ const restHeaders = {
   "Content-Type": "application/json",
 };
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-const MAY_SEE = new Set(["greeter", "admin", "owner"]);
+const MAY_SEE = new Set(["greeter", "staff", "admin", "owner"]);
 
 async function callerOf(req: Request): Promise<string | null> {
   const auth = req.headers.get("Authorization") ?? "";
