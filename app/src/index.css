@@ -2832,22 +2832,18 @@ button.danger:disabled {
   flex: 0 0 auto;
   accent-color: var(--accent);
 }
-.gp-row-badges {
-  margin-left: auto;
-  flex: 0 0 auto;
-  display: flex;
-  flex-direction: column;
-  align-items: flex-end;
-  gap: 6px;
-}
-.gp-checked {
-  flex: 0 0 auto;
-  padding: 4px 10px;
-  border-radius: 999px;
-  background: var(--ok-bg);
-  color: var(--ok-text);
-  font-size: 0.8rem;
-  font-weight: 700;
+/* Check-in shown as a bold green check in the bottom-right corner, not a
+   full-width pill — the pill competed with the name and wrapped the time on a
+   phone. Absolutely placed so it takes no row width at all. */
+.gp-check-corner {
+  position: absolute;
+  right: 12px;
+  bottom: 9px;
+  color: #1a8f4f;
+  font-weight: 900;
+  font-size: 1.35rem;
+  line-height: 1;
+  pointer-events: none;
 }
 .gp-empty {
   margin-top: 32px;
@@ -2859,6 +2855,7 @@ button.danger:disabled {
   gap: 12px;
 }
 .gp-row {
+  position: relative;
   display: flex;
   align-items: center;
   gap: 16px;
@@ -2886,11 +2883,17 @@ button.danger:disabled {
   flex-direction: column;
   gap: 2px;
   min-width: 0;
+  flex: 1 1 auto;
 }
 .gp-row-name {
   font-size: 1.3rem;
   font-weight: 700;
   color: var(--text-h);
+}
+/* The time sits on its own line below the name and never wraps — the corner
+   check no longer steals the width that used to push it onto two lines. */
+.gp-row-time {
+  white-space: nowrap;
 }
 .gp-img {
   width: 72px;
@@ -2964,13 +2967,21 @@ button.danger:disabled {
 }
 
 .gp-prohibited-badge {
-  flex: 0 0 auto;
-  padding: 4px 10px;
+  /* A pill under the name, sized to its text and left-aligned, so it fits in
+     the narrow column beside the thumbnails instead of overrunning the name.
+     Kept clear of the bottom-right check with a little right margin. */
+  align-self: flex-start;
+  max-width: calc(100% - 28px);
+  margin-top: 4px;
+  padding: 3px 10px;
   border-radius: 999px;
   color: #fff;
-  font-size: 0.8rem;
+  font-size: 0.78rem;
   font-weight: 800;
   letter-spacing: 0.02em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .gp-badge-red {
   background: #d11;

@@ -68,8 +68,10 @@ type Level = 'red' | 'yellow' | 'green'
 // "verify before admitting"; green means "probably a different person, but
 // here's the data to confirm". Never an automatic block.
 const LEVEL_UI: Record<Level, { badge: string; alertTitle: string }> = {
+  // `badge` is the short list-row pill (room is tight beside two thumbnails);
+  // `alertTitle` is the full heading in the zoom view.
   red: { badge: '⚠ Prohibited', alertTitle: '⚠ Prohibited visitor' },
-  yellow: { badge: '⚠ Possible match', alertTitle: '⚠ Possible match — verify' },
+  yellow: { badge: '⚠ Possible', alertTitle: '⚠ Possible match — verify' },
   green: { badge: 'Name on list', alertTitle: 'Name on the list — likely a different person' },
 }
 
@@ -265,16 +267,22 @@ export default function GreeterPortal() {
               <span className="gp-row-name">
                 {v.first_name} {v.last_name}
               </span>
-              <span className="muted small">{timeAgo(v.created_at)}</span>
-            </div>
-            <div className="gp-row-badges">
+              <span className="gp-row-time muted small">{timeAgo(v.created_at)}</span>
+              {/* The flag sits under the name, where it has room to fit — on the
+                  right it collided with the name beside two thumbnails. */}
               {v.prohibited_level && (
                 <span className={`gp-prohibited-badge gp-badge-${v.prohibited_level}`}>
                   {LEVEL_UI[v.prohibited_level].badge}
                 </span>
               )}
-              {v.checked_in && <span className="gp-checked">✓ Checked in</span>}
             </div>
+            {/* A bold green check in the corner, not a full-width pill that
+                crowds the name and wraps the time on a narrow screen. */}
+            {v.checked_in && (
+              <span className="gp-check-corner" aria-label="Checked in" title="Checked in">
+                ✓
+              </span>
+            )}
           </button>
         ))}
       </div>
