@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Navigate, NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { useAuth } from '../../lib/auth'
 import { useOrg } from '../../lib/org'
@@ -18,6 +18,20 @@ export default function AdminLayout() {
   const location = useLocation()
   const navigate = useNavigate()
   const [pwOpen, setPwOpen] = useState(false)
+  const [userMenu, setUserMenu] = useState(false)
+  const userMenuRef = useRef<HTMLDivElement>(null)
+
+  // Close the account menu on a click anywhere outside it.
+  useEffect(() => {
+    if (!userMenu) return
+    function onDown(e: MouseEvent) {
+      if (userMenuRef.current && !userMenuRef.current.contains(e.target as Node)) {
+        setUserMenu(false)
+      }
+    }
+    document.addEventListener('mousedown', onDown)
+    return () => document.removeEventListener('mousedown', onDown)
+  }, [userMenu])
 
   // Which "place" the admin is in, taken from the route rather than held in
   // state — so a refresh, a bookmark and the back button all agree.
@@ -179,17 +193,36 @@ export default function AdminLayout() {
             </>
           )}
         </nav>
-        <div className="admin-user">
-          <span className="muted">
-            {session?.user.email}
+        <div className="admin-user" ref={userMenuRef}>
+          <button
+            className="user-menu-btn"
+            onClick={() => setUserMenu((o) => !o)}
+            aria-haspopup="menu"
+            aria-expanded={userMenu}
+          >
+            <span className="muted">{session?.user.email}</span>
             {role && !inOps && <span className="role-badge">{role}</span>}
-          </span>
-          <button className="secondary btn-sm" onClick={() => setPwOpen(true)}>
-            Change password
+            <span className="user-menu-caret" aria-hidden="true">
+              ▾
+            </span>
           </button>
-          <button className="secondary btn-sm" onClick={() => void signOut()}>
-            Sign out
-          </button>
+          {userMenu && (
+            <div className="user-menu" role="menu">
+              <button
+                className="linkish"
+                role="menuitem"
+                onClick={() => {
+                  setUserMenu(false)
+                  setPwOpen(true)
+                }}
+              >
+                Change password
+              </button>
+              <button className="linkish" role="menuitem" onClick={() => void signOut()}>
+                Sign out
+              </button>
+            </div>
+          )}
         </div>
       </header>
       </div>

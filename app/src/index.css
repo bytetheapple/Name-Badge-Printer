@@ -357,10 +357,55 @@ button.secondary {
   color: var(--accent);
 }
 .admin-user {
+  position: relative;
   margin-left: auto;
   display: flex;
   align-items: center;
   gap: 12px;
+}
+/* The account dropdown: the username (with role) is the trigger; Change password
+   and Sign out live inside it rather than sitting out as action buttons. */
+.user-menu-btn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  border: none;
+  border-radius: 8px;
+  background: none;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+.user-menu-btn:hover {
+  background: var(--pending-bg);
+}
+.user-menu-caret {
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+.user-menu {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 4px);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 180px;
+  padding: 6px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.14);
+  z-index: 50;
+}
+.user-menu .linkish {
+  text-align: left;
+  padding: 9px 10px;
+  border-radius: 6px;
+}
+.user-menu .linkish:hover {
+  background: var(--pending-bg);
 }
 .admin-main {
   padding: 24px 20px;

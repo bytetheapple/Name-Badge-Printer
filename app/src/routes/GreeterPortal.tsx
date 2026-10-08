@@ -124,17 +124,20 @@ export default function GreeterPortal() {
               ← Back
             </button>
             <div className="gp-nav-arrows">
-              <button
-                className="secondary btn-sm"
-                disabled={index <= 0}
-                onClick={() => setSelected(visitors[index - 1]?.id ?? null)}
-              >
-                ‹ Prev
-              </button>
+              {/* The feed is newest-first, so the sign-in chronologically BEFORE
+                  this one (older) sits at the next index, and the one after
+                  (newer) at the previous index. */}
               <button
                 className="secondary btn-sm"
                 disabled={index >= visitors.length - 1}
                 onClick={() => setSelected(visitors[index + 1]?.id ?? null)}
+              >
+                ‹ Previous
+              </button>
+              <button
+                className="secondary btn-sm"
+                disabled={index <= 0}
+                onClick={() => setSelected(visitors[index - 1]?.id ?? null)}
               >
                 Next ›
               </button>
