@@ -25,6 +25,7 @@
 import { corsHeaders, json } from "../_shared/cors.ts";
 import { createSpreadsheet } from "../_shared/gsheets.ts";
 import { createEventSpreadsheet, renameEventSpreadsheet } from "../_shared/eventsheet.ts";
+import { createProhibitedSheet } from "../_shared/prohibited.ts";
 import { googleAuthFor, GoogleAuthError } from "../_shared/google.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
@@ -86,6 +87,33 @@ async function ensureDrive(orgId: string): Promise<string | null> {
   return created.length ? String(created[0].id) : null;
 }
 
+/** The prohibited-visitors list, made if this organization has none. */
+async function ensureProhibited(orgId: string): Promise<string | null> {
+  const found = await fetch(
+    `${SUPABASE_URL}/rest/v1/integrations?org_id=eq.${orgId}&kind=eq.prohibited` +
+      `&select=id&order=created_at.asc&limit=1`,
+    { headers: restHeaders },
+  );
+  const rows = found.ok ? await found.json() : [];
+  if (rows.length) return String(rows[0].id);
+
+  const made = await fetch(`${SUPABASE_URL}/rest/v1/integrations`, {
+    method: "POST",
+    headers: { ...restHeaders, Prefer: "return=representation" },
+    body: JSON.stringify({
+      org_id: orgId,
+      kind: "prohibited",
+      name: "Prohibited visitors",
+      enabled: true,
+      default_enabled: true,
+      config: {},
+    }),
+  });
+  if (!made.ok) return null;
+  const created = await made.json();
+  return created.length ? String(created[0].id) : null;
+}
+
 /**
  * Why an owner is needed, in terms of the thing being attempted.
  *
@@ -105,6 +133,10 @@ function ownerMessage(what: string, body: Record<string, unknown>): string {
     return "A Google Sheet destination needs the organization's Google " +
       "account, and connecting or using that is an owner's job. " + ask +
       " Nothing has been created.";
+  }
+  if (subject === "prohibited") {
+    return "Setting up the prohibited-visitors list needs the organization's Google " +
+      "account, which only an owner can connect or spend. " + ask;
   }
   if (subject === "drive") {
     return "Connecting a Google account is an owner's job. " + ask +
@@ -167,6 +199,38 @@ Deno.serve(async (req) => {
     const id = await ensureDrive(orgId);
     if (!id) return json({ ok: false, error: "Could not prepare the photographs destination" }, 500);
     return json({ ok: true, integration_id: id });
+  }
+
+  if (what === "prohibited") {
+    const integrationId = await ensureProhibited(orgId);
+    if (!integrationId) {
+      return json({ ok: false, error: "Could not prepare the prohibited-visitors list" }, 500);
+    }
+    const rowRes = await fetch(
+      `${SUPABASE_URL}/rest/v1/integrations?id=eq.${integrationId}&org_id=eq.${orgId}&select=id,config`,
+      { headers: restHeaders },
+    );
+    const row = rowRes.ok ? (await rowRes.json())[0] : null;
+    const config = (row?.config ?? {}) as Record<string, unknown>;
+    if (config.sheet_is_ours === true && config.spreadsheet_id) {
+      return json({
+        ok: true,
+        already: true,
+        integration_id: integrationId,
+        url: config.spreadsheet_url ?? null,
+      });
+    }
+    try {
+      const auth = await googleAuthFor(orgId, config, null, "");
+      if (auth.kind !== "oauth") {
+        return json({ ok: false, needs_connect: true, error: "This needs a connected Google account." }, 400);
+      }
+      const made = await createProhibitedSheet(auth.token, integrationId, config);
+      return json({ ok: true, integration_id: integrationId, url: made.url });
+    } catch (e) {
+      const msg = e instanceof GoogleAuthError ? e.message : String(e);
+      return json({ ok: false, needs_connect: e instanceof GoogleAuthError, error: msg });
+    }
   }
 
   if (what === "sheet") {

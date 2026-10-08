@@ -120,6 +120,12 @@ export default function Settings() {
   const [waiverEnabled, setWaiverEnabled] = useState(false)
   const [waiverUrl, setWaiverUrl] = useState('')
   const [waiverLabel, setWaiverLabel] = useState('')
+  //: The prohibited-visitors list (greeter alerts): its integration row, if set
+  //: up, whether it is on, and a link to the Drive sheet.
+  const [prohibitedId, setProhibitedId] = useState<string | null>(null)
+  const [prohibitedUrl, setProhibitedUrl] = useState<string | null>(null)
+  const [prohibitedEnabled, setProhibitedEnabled] = useState(false)
+  const [provisioningProhibited, setProvisioningProhibited] = useState(false)
   //: Whether anything can write to this organization's Drive — a connected
   //: Google account, or the service account that path is replacing. An admin
   //: cannot read the integration itself (it belongs to the owner), so this is
@@ -200,6 +206,24 @@ export default function Settings() {
         p_kind: 'google_drive',
       })
       setDriveConnected(Boolean(ready))
+
+      // The prohibited-visitors list, if set up. Owner-only to read (the row
+      // belongs to the owner) — an admin gets null here, and the section that
+      // uses it is owner-only, so that is fine.
+      const { data: prohibited } = await supabase
+        .from('integrations')
+        .select('id, enabled, config')
+        .eq('org_id', orgId)
+        .eq('kind', 'prohibited')
+        .order('created_at', { ascending: true })
+        .limit(1)
+        .maybeSingle()
+      if (prohibited) {
+        setProhibitedId(prohibited.id as string)
+        setProhibitedEnabled(Boolean(prohibited.enabled))
+        const url = (prohibited.config as Record<string, unknown> | null)?.spreadsheet_url
+        setProhibitedUrl(typeof url === 'string' ? url : null)
+      }
       setLoading(false)
     })()
   }, [orgId])
@@ -373,6 +397,49 @@ export default function Settings() {
       })
       .eq('org_id', orgId)
     if (error) setError(error.message)
+  }
+
+  /** Create the prohibited-visitors list: a Google Sheet in the org's Drive the
+   *  facility fills with barred names, matched against sign-ins for the greeter
+   *  desk. Needs a connected Google account, and connecting is an owner's job —
+   *  the same path photographs take. Enables the list on creation. */
+  async function createProhibited() {
+    if (!isOwner) {
+      setError('Setting up the prohibited-visitors list is an owner’s job.')
+      return
+    }
+    if (!driveConnected) {
+      setError('Connect a Google account first (choose a selfie or licence requirement above).')
+      return
+    }
+    setProvisioningProhibited(true)
+    setError(null)
+    const res = await invokeFn('google-provision', { org_id: orgId, what: 'prohibited' })
+    setProvisioningProhibited(false)
+    if (!res.ok) {
+      setError(res.error ?? 'Could not create the prohibited-visitors list.')
+      return
+    }
+    if (typeof res.integration_id === 'string') setProhibitedId(res.integration_id)
+    if (typeof res.url === 'string') setProhibitedUrl(res.url)
+    setProhibitedEnabled(true)
+  }
+
+  /** Turn greeter alerts on or off without deleting the sheet. Off means the
+   *  greeter desk stops matching against the list (names show normally). */
+  async function toggleProhibited(next: boolean) {
+    if (!prohibitedId) return
+    const before = prohibitedEnabled
+    setProhibitedEnabled(next)
+    setError(null)
+    const { error } = await supabase
+      .from('integrations')
+      .update({ enabled: next })
+      .eq('id', prohibitedId)
+    if (error) {
+      setProhibitedEnabled(before)
+      setError(error.message)
+    }
   }
 
   /** How long stored images are kept, per kind. The hourly sweep reads both. */
@@ -645,6 +712,61 @@ export default function Settings() {
             </div>
           )}
         </section>
+
+        {/* The prohibited-visitors list — a Google Sheet the facility fills with
+            barred names, matched against sign-ins so the greeter desk shows them
+            in red. Owner-only: it creates a sheet in the org's Drive, and only
+            an owner can read or set up the integration. */}
+        {isOwner && (
+          <section className="card">
+            <h2>Prohibited visitors</h2>
+            <p className="muted small" style={{ marginBottom: 14 }}>
+              A private Google Sheet in your Drive listing people barred from entry. When a guest
+              signs in whose name matches the list, the greeter desk shows them in red with an
+              alert, so a badge is not handed over. Add a driver’s-license number and birthdate to a
+              row and the greeter can check them against the licence image too. Matching is a warning
+              to verify by photo and licence — never a certain identification.
+            </p>
+
+            {!prohibitedId ? (
+              <>
+                {!driveConnected && (
+                  <p className="warn" style={{ marginTop: 0 }}>
+                    This needs a connected Google account. Choose a selfie or licence requirement
+                    above to connect one, then set up the list here.
+                  </p>
+                )}
+                <button
+                  className="primary"
+                  disabled={!driveConnected || provisioningProhibited}
+                  onClick={() => void createProhibited()}
+                >
+                  {provisioningProhibited ? 'Creating…' : 'Create the list'}
+                </button>
+              </>
+            ) : (
+              <>
+                <label className="checkline" style={{ margin: '4px 0 12px' }}>
+                  <input
+                    type="checkbox"
+                    checked={prohibitedEnabled}
+                    onChange={(e) => void toggleProhibited(e.target.checked)}
+                  />
+                  Alert the greeter desk when a sign-in matches this list
+                </label>
+                {prohibitedUrl && (
+                  <p className="muted small" style={{ marginTop: 0 }}>
+                    <a href={prohibitedUrl} target="_blank" rel="noopener noreferrer">
+                      Open the list in Google Sheets →
+                    </a>{' '}
+                    Add names in the “First name” and “Last name” columns; license number and
+                    birthdate are optional. Changes show at the desk within a minute.
+                  </p>
+                )}
+              </>
+            )}
+          </section>
+        )}
 
       {/* In the column too. Outside it the name mark ran to the full width of
           the page against two narrower panes, and picked up none of the

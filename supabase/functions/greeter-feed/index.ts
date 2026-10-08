@@ -5,6 +5,16 @@
 // needs — name, when, and whether a photo/licence is available to view — and
 // checks the caller is a greeter, admin or owner of the org it is asked about.
 import { corsHeaders, json } from "../_shared/cors.ts";
+import { googleAuthFor } from "../_shared/google.ts";
+import {
+  normName,
+  readProhibitedEntries,
+  type ProhibitedEntry,
+} from "../_shared/prohibited.ts";
+
+// How long a read of the prohibited sheet is reused before re-reading it, so a
+// desk polling every few seconds does not hit the Sheets API each time.
+const PROHIBITED_TTL_MS = 60_000;
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_ROLE = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -41,6 +51,49 @@ async function roleInOrg(userId: string, orgId: string): Promise<string | null> 
 }
 
 const MAY_SEE = new Set(["greeter", "staff", "admin", "owner"]);
+
+/** The prohibited list for an org, cached ~60s in the integration config.
+ *  Empty (and no throw) when there is no enabled list or a read fails — the desk
+ *  must still load. */
+async function prohibitedEntriesFor(orgId: string): Promise<ProhibitedEntry[]> {
+  const res = await fetch(
+    `${REST}/integrations?org_id=eq.${orgId}&kind=eq.prohibited&enabled=eq.true` +
+      `&select=id,config&order=created_at.asc&limit=1`,
+    { headers: restHeaders },
+  );
+  if (!res.ok) return [];
+  const row = (await res.json())[0];
+  if (!row) return [];
+  const config = (row.config ?? {}) as Record<string, unknown>;
+  const sheetId = String(config.spreadsheet_id ?? "");
+  if (!sheetId) return [];
+
+  const cache = (config.cache ?? {}) as { entries?: ProhibitedEntry[]; synced_at?: string };
+  const fresh = cache.synced_at &&
+    Date.now() - Date.parse(cache.synced_at) < PROHIBITED_TTL_MS;
+  if (fresh && Array.isArray(cache.entries)) return cache.entries;
+
+  try {
+    const auth = await googleAuthFor(
+      orgId,
+      config,
+      null,
+      "https://www.googleapis.com/auth/spreadsheets.readonly",
+    );
+    const entries = await readProhibitedEntries(auth.token, sheetId);
+    await fetch(`${REST}/integrations?id=eq.${row.id}`, {
+      method: "PATCH",
+      headers: restHeaders,
+      body: JSON.stringify({
+        config: { ...config, cache: { entries, synced_at: new Date().toISOString() } },
+      }),
+    });
+    return entries;
+  } catch (e) {
+    console.error(`greeter-feed: prohibited read failed for ${orgId}: ${e}`);
+    return Array.isArray(cache.entries) ? cache.entries : [];
+  }
+}
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
@@ -96,5 +149,26 @@ Deno.serve(async (req) => {
     checked_in: r.checked_in_at != null,
   }));
 
-  return json({ ok: true, org_name: orgName, visitors });
+  // Match each visitor against the prohibited list, if the org has one. A match
+  // is a warning for the greeter to verify (by photo/licence), not a verdict —
+  // the matched name and verification fields are returned so they can.
+  const prohibited = await prohibitedEntriesFor(orgId);
+  const byName = new Map<string, ProhibitedEntry>();
+  for (const e of prohibited) byName.set(`${normName(e.first)}|${normName(e.last)}`, e);
+
+  const flagged = visitors.map((v) => {
+    const hit = byName.get(`${normName(v.first_name)}|${normName(v.last_name)}`);
+    if (!hit) return { ...v, prohibited: false };
+    return {
+      ...v,
+      prohibited: true,
+      prohibited_info: {
+        matched_name: `${hit.first} ${hit.last}`.trim(),
+        dl_number: hit.dl_number,
+        birthdate: hit.birthdate,
+      },
+    };
+  });
+
+  return json({ ok: true, org_name: orgName, visitors: flagged });
 });

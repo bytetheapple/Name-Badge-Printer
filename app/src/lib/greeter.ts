@@ -10,6 +10,14 @@ export interface GreeterVisitor {
   selfie_status: 'pending' | 'sent' | 'failed' | 'skipped' | 'deleted'
   license_status: 'pending' | 'sent' | 'failed' | 'skipped' | 'deleted'
   checked_in: boolean
+  /** True when this guest's name matches the prohibited-visitors list — a
+   *  warning for the greeter to verify, not a verdict. */
+  prohibited: boolean
+  prohibited_info?: {
+    matched_name: string
+    dl_number: string
+    birthdate: string
+  }
 }
 
 /** Record (or clear) that a greeter checked this guest in. */

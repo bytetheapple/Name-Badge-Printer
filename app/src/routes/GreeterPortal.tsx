@@ -149,6 +149,35 @@ export default function GreeterPortal() {
         </div>
 
         <div className="gp-zoom-body">
+          {current.prohibited && (
+            <div className="gp-alert">
+              <div className="gp-alert-title">⚠ Prohibited visitor</div>
+              <p className="gp-alert-text">
+                This name matches the prohibited-visitors list. Verify identity against the photo
+                and license before admitting — do not hand over a badge if it is this person.
+              </p>
+              <dl className="gp-alert-facts">
+                {current.prohibited_info?.matched_name && (
+                  <>
+                    <dt>Listed name</dt>
+                    <dd>{current.prohibited_info.matched_name}</dd>
+                  </>
+                )}
+                {current.prohibited_info?.dl_number && (
+                  <>
+                    <dt>License #</dt>
+                    <dd>{current.prohibited_info.dl_number}</dd>
+                  </>
+                )}
+                {current.prohibited_info?.birthdate && (
+                  <>
+                    <dt>Birthdate</dt>
+                    <dd>{current.prohibited_info.birthdate}</dd>
+                  </>
+                )}
+              </dl>
+            </div>
+          )}
           <VisitorImage entryId={current.id} kind="selfie" available={current.has_selfie} big />
           <VisitorImage entryId={current.id} kind="license" available={current.has_license} big />
         </div>
@@ -181,7 +210,11 @@ export default function GreeterPortal() {
 
       <div className="gp-list">
         {visitors.map((v) => (
-          <button key={v.id} className="gp-row" onClick={() => setSelected(v.id)}>
+          <button
+            key={v.id}
+            className={`gp-row${v.prohibited ? ' gp-row-prohibited' : ''}`}
+            onClick={() => setSelected(v.id)}
+          >
             <div className="gp-thumbs">
               <VisitorImage entryId={v.id} kind="selfie" available={v.has_selfie} />
               <VisitorImage entryId={v.id} kind="license" available={v.has_license} />
@@ -192,7 +225,10 @@ export default function GreeterPortal() {
               </span>
               <span className="muted small">{timeAgo(v.created_at)}</span>
             </div>
-            {v.checked_in && <span className="gp-checked">✓ Checked in</span>}
+            <div className="gp-row-badges">
+              {v.prohibited && <span className="gp-prohibited-badge">⚠ Prohibited</span>}
+              {v.checked_in && <span className="gp-checked">✓ Checked in</span>}
+            </div>
           </button>
         ))}
       </div>

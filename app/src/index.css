@@ -2755,8 +2755,15 @@ button.danger:disabled {
   flex: 0 0 auto;
   accent-color: var(--accent);
 }
-.gp-checked {
+.gp-row-badges {
   margin-left: auto;
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 6px;
+}
+.gp-checked {
   flex: 0 0 auto;
   padding: 4px 10px;
   border-radius: 999px;
@@ -2831,4 +2838,60 @@ button.danger:disabled {
   object-fit: contain;
   background: var(--pending-bg);
   font-size: 1rem;
+}
+
+/* Prohibited-visitor flagging: a red row in the list, a loud alert in the zoom
+   view. A warning for the greeter to verify — not a block. */
+.gp-row-prohibited {
+  border-color: var(--danger, #d11);
+  border-width: 2px;
+  background: var(--danger-bg, #fdecec);
+}
+.gp-row-prohibited .gp-row-name {
+  color: var(--danger, #d11);
+}
+.gp-prohibited-badge {
+  flex: 0 0 auto;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: var(--danger, #d11);
+  color: #fff;
+  font-size: 0.8rem;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+}
+.gp-alert {
+  width: 100%;
+  max-width: 560px;
+  border: 2px solid var(--danger, #d11);
+  border-radius: 14px;
+  background: var(--danger-bg, #fdecec);
+  padding: 14px 16px;
+}
+.gp-alert-title {
+  font-size: 1.25rem;
+  font-weight: 800;
+  color: var(--danger, #d11);
+}
+.gp-alert-text {
+  margin: 6px 0 0;
+  color: var(--text-h);
+  font-size: 0.98rem;
+  line-height: 1.4;
+}
+.gp-alert-facts {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 4px 14px;
+  margin: 12px 0 0;
+}
+.gp-alert-facts dt {
+  font-weight: 700;
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+.gp-alert-facts dd {
+  margin: 0;
+  color: var(--text-h);
+  font-weight: 600;
 }
