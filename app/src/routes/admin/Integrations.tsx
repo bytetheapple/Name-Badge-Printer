@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import EventPrinters from './EventPrinters'
+import EventHeaderGraphic from './EventHeaderGraphic'
 import EventStats from './EventStats'
 import { invokeFn } from '../../lib/functions'
 import { useOrg } from '../../lib/org'
@@ -1071,6 +1072,12 @@ export default function Integrations({
                   orgId={orgId}
                   integrationId={row.id}
                   eventName={row.name}
+                  config={config}
+                  onConfig={(key, value) =>
+                    void persist(row, { config: { ...config, [key]: value } })
+                  }
+                />
+                <EventHeaderGraphic
                   config={config}
                   onConfig={(key, value) =>
                     void persist(row, { config: { ...config, [key]: value } })

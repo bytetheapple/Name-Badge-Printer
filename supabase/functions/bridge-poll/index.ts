@@ -358,7 +358,7 @@ Deno.serve(async (req) => {
   if (job && job.type !== "test" && !job.first_name && job.entry_id) {
     const entryRes = await fetch(
       `${REST}/form_entries?id=eq.${job.entry_id}&org_id=eq.${bridge.org_id}` +
-        `&select=first_name,last_name,pronouns,visitor_type`,
+        `&select=first_name,last_name,pronouns,visitor_type,event_integration_id`,
       { headers: restHeaders },
     );
     const entry = entryRes.ok ? (await entryRes.json())[0] : null;
@@ -373,6 +373,25 @@ Deno.serve(async (req) => {
         // same badge the visitor was handed the first time.
         visitor_type: entry.visitor_type,
       };
+
+      // A sign-in that came through an event can carry its own badge header
+      // graphic, overriding the printer's or org's. The bridge already prefers
+      // job.header_image_url over the printer/logo header, so surfacing the
+      // event's graphic here (only when the job has none of its own) is all
+      // that's needed — and reprints, which re-resolve through this same path,
+      // keep the event's graphic too.
+      if (entry.event_integration_id && !job.header_image_url) {
+        const intRes = await fetch(
+          `${REST}/integrations?id=eq.${entry.event_integration_id}` +
+            `&org_id=eq.${bridge.org_id}&select=config`,
+          { headers: restHeaders },
+        );
+        const intRow = intRes.ok ? (await intRes.json())[0] : null;
+        const headerUrl = (intRow?.config ?? {}).header_image_url;
+        if (typeof headerUrl === "string" && headerUrl) {
+          job = { ...job, header_image_url: headerUrl };
+        }
+      }
     }
   }
 
