@@ -114,56 +114,52 @@ export default function GreeterPortal() {
   const index = selected ? visitors.findIndex((v) => v.id === selected) : -1
   const current = index >= 0 ? visitors[index] : null
 
-  // ---- detail view ----------------------------------------------------------
+  // ---- zoom-in view: a full-screen, mobile-first overlay --------------------
   if (current) {
     return (
-      <div className="gp-detail">
-        <div className="gp-nav">
-          <button className="secondary gp-back" onClick={() => setSelected(null)}>
-            ← Back
-          </button>
-          <div className="gp-nav-arrows">
-            <button
-              className="secondary"
-              disabled={index <= 0}
-              onClick={() => setSelected(visitors[index - 1]?.id ?? null)}
-            >
-              ‹ Prev
+      <div className="gp-zoom" role="dialog" aria-modal="true">
+        <div className="gp-zoom-top">
+          <div className="gp-zoom-controls">
+            <button className="secondary btn-sm" onClick={() => setSelected(null)}>
+              ← Back
             </button>
-            <button
-              className="secondary"
-              disabled={index >= visitors.length - 1}
-              onClick={() => setSelected(visitors[index + 1]?.id ?? null)}
-            >
-              Next ›
-            </button>
+            <div className="gp-nav-arrows">
+              <button
+                className="secondary btn-sm"
+                disabled={index <= 0}
+                onClick={() => setSelected(visitors[index - 1]?.id ?? null)}
+              >
+                ‹ Prev
+              </button>
+              <button
+                className="secondary btn-sm"
+                disabled={index >= visitors.length - 1}
+                onClick={() => setSelected(visitors[index + 1]?.id ?? null)}
+              >
+                Next ›
+              </button>
+            </div>
           </div>
+          <h1 className="gp-zoom-name">
+            {current.first_name} {current.last_name}
+          </h1>
         </div>
 
-        <h1 className="gp-name">
-          {current.first_name} {current.last_name}
-        </h1>
-
-        <label className="gp-checkin">
-          <input
-            type="checkbox"
-            checked={current.checked_in}
-            onChange={(e) => void toggleCheckIn(current.id, e.target.checked)}
-          />
-          I checked this person in
-        </label>
-
-        <div className="gp-detail-images">
-          <div className="gp-detail-block">
-            <div className="gp-label">Selfie</div>
-            <VisitorImage entryId={current.id} kind="selfie" available={current.has_selfie} big />
-          </div>
-          <div className="gp-detail-block">
-            <div className="gp-label">Driver's license</div>
-            <VisitorImage entryId={current.id} kind="license" available={current.has_license} big />
-          </div>
+        <div className="gp-zoom-body">
+          <VisitorImage entryId={current.id} kind="selfie" available={current.has_selfie} big />
+          <VisitorImage entryId={current.id} kind="license" available={current.has_license} big />
         </div>
-        <p className="muted small">Signed in {timeAgo(current.created_at)}.</p>
+
+        <div className="gp-zoom-foot">
+          <label className="gp-checkin">
+            <input
+              type="checkbox"
+              checked={current.checked_in}
+              onChange={(e) => void toggleCheckIn(current.id, e.target.checked)}
+            />
+            Confirmed
+          </label>
+        </div>
       </div>
     )
   }
