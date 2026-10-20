@@ -37,7 +37,9 @@ export default function EventQr({
       // Lazy-loaded: the QR library is only needed where a code is shown.
       const QRCode = (await import('qrcode')).default
       if (cancelled) return
-      await QRCode.toCanvas(canvas, url, { width: 480, margin: 2, errorCorrectionLevel: 'H' })
+      // 600px bitmap to match the standard printer QR exactly — same source
+      // resolution, so it prints just as crisply at the shared 2.1in size.
+      await QRCode.toCanvas(canvas, url, { width: 600, margin: 2, errorCorrectionLevel: 'H' })
       // Only the CSS size, never the width or height attributes: assigning to
       // either of those resets a canvas to blank, which is what the first
       // version of this did immediately after drawing the code. The 480px
@@ -67,7 +69,8 @@ export default function EventQr({
     const doc = new jsPDF({ unit: 'in', format: 'letter', orientation: 'portrait' })
     const pageW = 8.5
     const boxW = 5
-    const boxH = 6.5
+    // Sized to wrap the 2.1in code snugly (it was 6.5 around a 3.2in code).
+    const boxH = 5.1
     const boxX = (pageW - boxW) / 2
     const boxY = (11 - boxH) / 2
     const cx = pageW / 2
@@ -83,7 +86,9 @@ export default function EventQr({
     doc.setFontSize(16)
     doc.text('Registration', cx, boxY + 1.2, { align: 'center' })
 
-    const qrSize = 3.2
+    // Same printed size as the standard printer QR code (PrinterQr.printLabel),
+    // so a holder cut for one fits the other.
+    const qrSize = 2.1
     doc.addImage(
       canvas.toDataURL('image/png'),
       'PNG',
