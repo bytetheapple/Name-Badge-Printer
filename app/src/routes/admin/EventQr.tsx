@@ -66,47 +66,58 @@ export default function EventQr({
     if (!canvas) return
     const { jsPDF } = await import('jspdf') // lazy-loaded, it is a large dependency
 
+    // Match the standard printer label's geometry (PrinterQr.printLabel) exactly
+    // — a 3in-wide portrait card, not a wide square — so an event sign drops
+    // into the same holder. The heading is measured first so the card grows for
+    // a long event name, the way the standard one grows for a long org name.
     const doc = new jsPDF({ unit: 'in', format: 'letter', orientation: 'portrait' })
     const pageW = 8.5
-    const boxW = 5
-    // Sized to wrap the 2.1in code snugly (it was 6.5 around a 3.2in code).
-    const boxH = 5.1
+    const boxW = 3
+    const cx = pageW / 2
+
+    doc.setFont('helvetica', 'bold')
+    doc.setFontSize(20)
+    const nameLines: string[] = doc.splitTextToSize(eventName, boxW - 0.5)
+    const extra = (nameLines.length - 1) * 0.32
+    const boxH = 4.5 + extra
     const boxX = (pageW - boxW) / 2
     const boxY = (11 - boxH) / 2
-    const cx = pageW / 2
 
     doc.setLineWidth(0.03)
     doc.rect(boxX, boxY, boxW, boxH)
 
-    doc.setFont('helvetica', 'bold')
-    doc.setFontSize(24)
-    doc.text(doc.splitTextToSize(eventName, boxW - 0.8), cx, boxY + 0.75, { align: 'center' })
-
+    // Event name (headline), then the "Registration" subtitle — the two heading
+    // lines sit where the standard label's "Welcome to" / org name do.
+    doc.text(nameLines, cx, boxY + 0.6, { align: 'center' })
+    const nameHeight = nameLines.length * 0.32
     doc.setFont('helvetica', 'normal')
-    doc.setFontSize(16)
-    doc.text('Registration', cx, boxY + 1.2, { align: 'center' })
+    doc.setFontSize(14)
+    doc.text('Registration', cx, boxY + 0.6 + nameHeight + 0.05, { align: 'center' })
 
-    // Same printed size as the standard printer QR code (PrinterQr.printLabel),
-    // so a holder cut for one fits the other.
+    // The 2.1in code, at the same offset the standard label places it.
     const qrSize = 2.1
     doc.addImage(
       canvas.toDataURL('image/png'),
       'PNG',
       (pageW - qrSize) / 2,
-      boxY + 1.6,
+      boxY + 1.05 + nameHeight,
       qrSize,
       qrSize,
     )
 
-    doc.setFontSize(15)
-    doc.text('Scan to register and print your badge', cx, boxY + boxH - 0.85, {
-      align: 'center',
-    })
-    // Which desk this sign belongs to. Small, and at the bottom: it is for
-    // whoever is setting the room up, not for the person scanning it.
+    doc.setFont('helvetica', 'normal')
+    doc.setFontSize(14)
+    doc.text(
+      doc.splitTextToSize('Scan to register and print your badge', boxW - 0.5),
+      cx,
+      boxY + boxH - 0.75,
+      { align: 'center' },
+    )
+    // Which desk this sign belongs to. Small and grey, at the very bottom: it is
+    // for whoever is setting the room up, not for the person scanning it.
     doc.setFontSize(10)
     doc.setTextColor(120)
-    doc.text(printerName, cx, boxY + boxH - 0.35, { align: 'center' })
+    doc.text(printerName, cx, boxY + boxH - 0.3, { align: 'center' })
 
     doc.save(`event-code-${slugify(eventName)}-${slugify(printerName)}.pdf`)
   }
