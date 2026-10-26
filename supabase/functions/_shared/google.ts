@@ -194,6 +194,33 @@ export class GoogleAuthError extends Error {
   }
 }
 
+/**
+ * Turn a provisioning error into something an operator can act on.
+ *
+ * Two faults look different but have the same fix. A missing connection throws
+ * a GoogleAuthError; a connected account whose token lacks file access makes
+ * Google answer "Request had insufficient authentication scopes" — almost
+ * always because the Drive permission was left unchecked on the consent screen.
+ * Both are resolved by reconnecting Google and allowing file access, so both say
+ * so rather than showing Google's raw wording, which tells an owner nothing.
+ */
+export function googleFailure(e: unknown): { error: string; needs_connect: boolean } {
+  if (e instanceof GoogleAuthError) return { error: e.message, needs_connect: true };
+  const msg = String(e instanceof Error ? e.message : e);
+  if (
+    /insufficient authentication scopes|ACCESS_TOKEN_SCOPE_INSUFFICIENT|insufficient_scope|insufficientPermissions/i
+      .test(msg)
+  ) {
+    return {
+      error:
+        "Google has not granted this app permission to create files. Go to Settings, " +
+        "click Reconnect Google, and make sure you allow file access, then try again.",
+      needs_connect: true,
+    };
+  }
+  return { error: msg, needs_connect: false };
+}
+
 /** This organization's live Google connection, if it has one. */
 async function oauthConnection(
   orgId: string,

@@ -26,7 +26,7 @@ import { corsHeaders, json } from "../_shared/cors.ts";
 import { createSpreadsheet } from "../_shared/gsheets.ts";
 import { createEventSpreadsheet, renameEventSpreadsheet } from "../_shared/eventsheet.ts";
 import { createProhibitedSheet, writeProhibitedHeaders } from "../_shared/prohibited.ts";
-import { googleAuthFor, GoogleAuthError } from "../_shared/google.ts";
+import { googleAuthFor, GoogleAuthError, googleFailure } from "../_shared/google.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_ROLE = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -239,8 +239,7 @@ Deno.serve(async (req) => {
       const made = await createProhibitedSheet(auth.token, integrationId, config);
       return json({ ok: true, integration_id: integrationId, url: made.url });
     } catch (e) {
-      const msg = e instanceof GoogleAuthError ? e.message : String(e);
-      return json({ ok: false, needs_connect: e instanceof GoogleAuthError, error: msg });
+      return json({ ok: false, ...googleFailure(e) });
     }
   }
 
@@ -268,8 +267,7 @@ Deno.serve(async (req) => {
       const made = await createSpreadsheet(auth.token, integrationId, config);
       return json({ ok: true, url: made.url, spreadsheet_id: made.id });
     } catch (e) {
-      const msg = e instanceof GoogleAuthError ? e.message : String(e);
-      return json({ ok: false, needs_connect: e instanceof GoogleAuthError, error: msg });
+      return json({ ok: false, ...googleFailure(e) });
     }
   }
 
@@ -302,8 +300,7 @@ Deno.serve(async (req) => {
       );
       return json({ ok: true, url: made.url, spreadsheet_id: made.id });
     } catch (e) {
-      const msg = e instanceof GoogleAuthError ? e.message : String(e);
-      return json({ ok: false, needs_connect: e instanceof GoogleAuthError, error: msg });
+      return json({ ok: false, ...googleFailure(e) });
     }
   }
 
@@ -343,8 +340,7 @@ Deno.serve(async (req) => {
       });
       return json({ ok: true, title });
     } catch (e) {
-      const msg = e instanceof GoogleAuthError ? e.message : String(e);
-      return json({ ok: false, needs_connect: e instanceof GoogleAuthError, error: msg });
+      return json({ ok: false, ...googleFailure(e) });
     }
   }
 
