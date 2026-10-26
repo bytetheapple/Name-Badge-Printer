@@ -231,6 +231,34 @@ export async function findAttendee(
   return null;
 }
 
+/**
+ * Everyone on the pre-registration tab, for printing a badge per guest ahead of
+ * the event. Skips the header and any row with neither a first nor last name.
+ */
+export async function readPreregistered(
+  token: string,
+  spreadsheetId: string,
+): Promise<Person[]> {
+  const range = encodeURIComponent(`${PREREG_TAB}!A2:D`);
+  const body = await sheetsFetch(token, `/${spreadsheetId}/values/${range}`) as {
+    values?: string[][];
+  };
+  const rows = Array.isArray(body?.values) ? body.values : [];
+  const out: Person[] = [];
+  for (const r of rows) {
+    const first = String(r[0] ?? "").trim();
+    const last = String(r[1] ?? "").trim();
+    if (!first && !last) continue;
+    out.push({
+      first_name: first,
+      last_name: last,
+      phone: String(r[2] ?? "").trim(),
+      email: String(r[3] ?? "").trim(),
+    });
+  }
+  return out;
+}
+
 /** Stamp the arrival time beside a pre-registered guest. */
 export async function checkIn(
   token: string,
