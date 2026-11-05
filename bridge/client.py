@@ -99,7 +99,8 @@ class BridgeApiClient:
             raise RuntimeError(body.get("error", f"{fn} failed"))
         return body
 
-    def poll(self, printer_reports=None, provision_result=None, network_result=None):
+    def poll(self, printer_reports=None, provision_result=None, network_result=None,
+             diagnostics=None):
         body = self._post(
             "bridge-poll",
             {
@@ -123,6 +124,9 @@ class BridgeApiClient:
                 **({"provision_result": provision_result} if provision_result else {}),
                 # Present only on the poll after a network change was tried.
                 **({"network_result": network_result} if network_result else {}),
+                # Link-test samples collected during an operator's diagnostics
+                # session; absent when none are pending.
+                **({"diagnostics": diagnostics} if diagnostics else {}),
             },
         )
         replacement = body.get("bridge_token")

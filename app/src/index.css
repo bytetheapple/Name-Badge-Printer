@@ -1103,6 +1103,34 @@ a.pill:hover {
   background: var(--bg);
 }
 
+/* ---- Link debug: one pass/fail strip per link, label beside it ---- */
+.linkdebug-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 6px;
+}
+.linkdebug-label {
+  flex: 0 0 160px;
+  text-align: right;
+}
+.linkdebug-strip {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: 3px 6px;
+}
+@media (max-width: 640px) {
+  .linkdebug-row {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 2px;
+  }
+  .linkdebug-label {
+    flex: none;
+    text-align: left;
+  }
+}
+
 /* ---- Printers page: flat, no panels ---- */
 .printer-summary {
   display: flex;

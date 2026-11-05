@@ -12,6 +12,8 @@
 //                    wifi_radio },   // which networks this server is on
 //     provision_result?: { session_id, task, ok, next_state, data, log, error },
 //     network_result?: { id, ok, error, log },   // a wireless change was tried
+//     diagnostics?: [{ at, kind, printer_id?, ok, latency_ms?, detail? }],
+//                              // link-test samples during a diagnostics session
 //     rotation_error?: "…" }   // could not store the replacement credential
 // Response:
 //   { ok, suspended?: true, config: {...}, printers: [...], job: {...} | null,
@@ -98,12 +100,54 @@ Deno.serve(async (req) => {
     headers: { ...restHeaders, Prefer: "return=representation" },
     body: JSON.stringify(heartbeat),
   });
-  if (beat.ok && (await beat.json()).length === 0) {
-    await fetch(`${REST}/printer_status`, {
-      method: "POST",
-      headers: restHeaders,
-      body: JSON.stringify({ org_id: bridge.org_id, ...heartbeat }),
-    });
+  // The on-demand diagnostics window an operator may have armed, read off the
+  // row we just updated and handed to the bridge in `config` below.
+  let diagnosticsUntil: string | null = null;
+  if (beat.ok) {
+    const rows = await beat.json();
+    if (rows.length === 0) {
+      await fetch(`${REST}/printer_status`, {
+        method: "POST",
+        headers: restHeaders,
+        body: JSON.stringify({ org_id: bridge.org_id, ...heartbeat }),
+      });
+    } else {
+      diagnosticsUntil = rows[0]?.diagnostics_until ?? null;
+    }
+  }
+
+  // Connectivity-diagnostics samples the bridge collected during a session.
+  // Best-effort (not awaited for success): a failed batch only loses samples,
+  // it must never break a poll. Stored for the ops Link Debug timeline and
+  // pruned to a rolling ~6 hours, the way device_outages prunes itself.
+  const diag = body.diagnostics;
+  if (Array.isArray(diag) && diag.length) {
+    const rows = diag
+      .slice(0, 500)
+      .map((s: Record<string, unknown>) => ({
+        org_id: bridge.org_id,
+        at: typeof s?.at === "string" ? s.at : now,
+        kind: String(s?.kind ?? ""),
+        printer_id: typeof s?.printer_id === "string" ? s.printer_id : null,
+        ok: Boolean(s?.ok),
+        latency_ms: typeof s?.latency_ms === "number" && Number.isFinite(s.latency_ms)
+          ? Math.round(s.latency_ms)
+          : null,
+        detail: s?.detail != null ? String(s.detail).slice(0, 300) : null,
+      }))
+      .filter((r) => ["cloud", "printer_ping", "printer_tcp"].includes(r.kind));
+    if (rows.length) {
+      await fetch(`${REST}/link_samples`, {
+        method: "POST",
+        headers: restHeaders,
+        body: JSON.stringify(rows),
+      });
+      const cutoff = new Date(Date.now() - 6 * 3600 * 1000).toISOString();
+      await fetch(`${REST}/link_samples?org_id=eq.${bridge.org_id}&at=lt.${cutoff}`, {
+        method: "DELETE",
+        headers: restHeaders,
+      });
+    }
   }
 
   // The version the device says it is running, from the device itself.
@@ -266,6 +310,9 @@ Deno.serve(async (req) => {
     { headers: restHeaders },
   );
   config.logo_url = logoRes.ok ? ((await logoRes.json())[0]?.logo_url ?? null) : null;
+  // When an operator has armed a diagnostics session, the bridge runs its link
+  // tests until this time and then stops. Null/absent means off.
+  config.diagnostics_until = diagnosticsUntil;
 
   const printersRes = await fetch(
     `${REST}/printers?org_id=eq.${bridge.org_id}${printerFilter(bridge)}` +

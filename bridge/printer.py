@@ -19,6 +19,11 @@ from brother_ql.raster import BrotherQLRaster
 MODEL = "QL-820NWB"
 STATUS_REQUEST = bytes([0x1B, 0x69, 0x53])  # ESC i S
 
+# Upper bound on one print's network I/O. Generous enough for a real badge over
+# a jittery lobby link, finite enough that a sleeping printer's send cannot hang
+# the caller forever (it used to hang with no timeout at all).
+PRINT_TIMEOUT = 20.0
+
 # Brother error bitmasks (status response bytes 8 and 9).
 _ERROR_1 = {
     0x01: "No media",
@@ -154,16 +159,27 @@ def print_image(img, ip: str, port: int = 9100, label: str = "62", cut: bool = T
     # Some QL-820NWB units reject a matching roll as "wrong roll type"; disable
     # the printer-side media validation so it prints what's actually loaded.
     instructions = _relax_media_validation(instructions)
-    result = send(
-        instructions=instructions,
-        printer_identifier=f"tcp://{ip}:{int(port)}",
-        backend_identifier="network",
-        blocking=True,
-    )
-    # This unit doesn't return status over the network, so brother_ql can't
-    # confirm did_print/printer_state (both come back empty even on a successful
-    # print). Treat a completed send as success; a genuine network failure raises
-    # from send() above, or comes back with instructions_sent False.
+    # Bound the socket. brother_ql's network backend opens its own socket with no
+    # timeout, so a sleeping/half-open printer would hang the send forever — on a
+    # single-threaded caller that is what took the whole server offline. A
+    # generous default (PRINT_TIMEOUT) tolerates a slow-but-working link yet
+    # guarantees the send terminates; brother_ql's socket inherits it.
+    #
+    # blocking=False: the QL-820NWB returns no status over the network (see
+    # query_status), so blocking=True only waited for a reply that never comes
+    # and timed out on a slow link. We don't read status; a completed send is
+    # success, and a genuine network failure raises from send().
+    prev_timeout = socket.getdefaulttimeout()
+    socket.setdefaulttimeout(PRINT_TIMEOUT)
+    try:
+        result = send(
+            instructions=instructions,
+            printer_identifier=f"tcp://{ip}:{int(port)}",
+            backend_identifier="network",
+            blocking=False,
+        )
+    finally:
+        socket.setdefaulttimeout(prev_timeout)
     if isinstance(result, dict) and result.get("instructions_sent") is False:
         raise RuntimeError(f"printer send failed: {result}")
     return result

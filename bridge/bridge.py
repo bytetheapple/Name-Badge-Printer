@@ -8,7 +8,9 @@ Run from this directory:  python bridge.py
 """
 import hashlib
 import os
+import queue
 import sys
+import threading
 import time
 import traceback
 from datetime import datetime, timedelta, timezone
@@ -20,6 +22,7 @@ from PIL import Image
 import badge
 import client as client_module
 import config
+import diagnostics as diagnostics_module
 import discover
 import netjoin
 import provision_task
@@ -107,82 +110,141 @@ def badge_template_for(target: dict, cfg: dict, header_path: str | None = None) 
     return template
 
 
-def handle_job(client, job: dict, cfg: dict, printers: list):
+def _render_and_print(job: dict, cfg: dict, printers: list) -> None:
+    """Render one job's badge and send it to the printer. Raises on any failure.
+
+    Runs on the print worker, off the heartbeat path, so a slow or sleeping
+    printer cannot delay the cloud check-in. It does NOT touch the client — the
+    main loop reports the outcome through client.complete() afterwards, because
+    the client's auth state is only safe to mutate from the single poll thread.
+    """
     job_id = job["id"]
-    try:
-        # Normalised once and used for both rendering and printing, so the two
-        # cannot disagree about which roll this is.
-        label = badge.normalize_label(cfg.get("label_media", "62"))
+    # Normalised once and used for both rendering and printing, so the two
+    # cannot disagree about which roll this is.
+    label = badge.normalize_label(cfg.get("label_media", "62"))
 
-        target = next((p for p in printers if p["id"] == job.get("printer_id")), None)
-        if not target or not target.get("printer_ip"):
-            raise RuntimeError("no printer assigned to this job (or its IP is unset)")
+    target = next((p for p in printers if p["id"] == job.get("printer_id")), None)
+    if not target or not target.get("printer_ip"):
+        raise RuntimeError("no printer assigned to this job (or its IP is unset)")
 
-        # A per-job graphic (external API) beats the printer's own setting; a
-        # printer set to "image" uses the one uploaded for it; one set to
-        # "logo" uses the organization's name mark, which arrives in the config
-        # because it belongs to the org rather than to this printer.
-        header_url = job.get("header_image_url")
-        mode = target.get("badge_header_mode")
-        if not header_url and mode == "image":
-            header_url = target.get("header_image_url")
-        elif not header_url and mode == "logo":
-            header_url = cfg.get("logo_url")
-        header_path = resolve_header(header_url)
+    # A per-job graphic (external API) beats the printer's own setting; a
+    # printer set to "image" uses the one uploaded for it; one set to
+    # "logo" uses the organization's name mark, which arrives in the config
+    # because it belongs to the org rather than to this printer.
+    header_url = job.get("header_image_url")
+    mode = target.get("badge_header_mode")
+    if not header_url and mode == "image":
+        header_url = target.get("header_image_url")
+    elif not header_url and mode == "logo":
+        header_url = cfg.get("logo_url")
+    header_path = resolve_header(header_url)
 
-        template = badge_template_for(target, cfg, header_path)
+    template = badge_template_for(target, cfg, header_path)
 
-        if job.get("type") == "test":
-            image = render_test_badge(template, label)
-        else:
-            # The name arrives resolved: external API jobs carry it directly,
-            # and for form jobs the server has already looked up the entry.
-            first = job.get("first_name")
-            last = job.get("last_name")
-            pronouns = job.get("pronouns")
-            # Absent on an API job, which has no sign-in behind it and so no
-            # way to be a visitor. Absent is a member: the ordinary badge is
-            # the safe thing to print when we do not know.
-            visitor = job.get("visitor_type") == "visitor"
-            if not first:
-                raise RuntimeError("no name or form entry for this job")
-            # An event desk marks a walk-in with a word in the header corner.
-            # It is carried on the job rather than derived here: whether
-            # somebody was on a pre-registration list is a fact established
-            # when they registered, and the bridge has no way to know it.
-            image = render_badge(
-                first or "",
-                last or "",
-                template,
-                label,
-                pronouns=pronouns or "",
-                visitor=visitor,
-                corner=str(job.get("corner_note") or ""),
-                # Bottom-right of the header: set when the visitor went through
-                # the optional external form (e.g. a guest waiver) before this.
-                waiver_note=str(job.get("waiver_note") or ""),
-            )
-
-        printer.print_image(
-            image,
-            target["printer_ip"],
-            target.get("port", 9100),
+    if job.get("type") == "test":
+        image = render_test_badge(template, label)
+    else:
+        # The name arrives resolved: external API jobs carry it directly,
+        # and for form jobs the server has already looked up the entry.
+        first = job.get("first_name")
+        last = job.get("last_name")
+        pronouns = job.get("pronouns")
+        # Absent on an API job, which has no sign-in behind it and so no
+        # way to be a visitor. Absent is a member: the ordinary badge is
+        # the safe thing to print when we do not know.
+        visitor = job.get("visitor_type") == "visitor"
+        if not first:
+            raise RuntimeError("no name or form entry for this job")
+        # An event desk marks a walk-in with a word in the header corner.
+        # It is carried on the job rather than derived here: whether
+        # somebody was on a pre-registration list is a fact established
+        # when they registered, and the bridge has no way to know it.
+        image = render_badge(
+            first or "",
+            last or "",
+            template,
             label,
-            rotation=int(template.get("print_rotation", 90)),
+            pronouns=pronouns or "",
+            visitor=visitor,
+            corner=str(job.get("corner_note") or ""),
+            # Bottom-right of the header: set when the visitor went through
+            # the optional external form (e.g. a guest waiver) before this.
+            waiver_note=str(job.get("waiver_note") or ""),
         )
-        client.complete(job_id, True)
-        # The label the job was rasterised for, because a badge printed for the
-        # wrong stock looks like a printer fault and is a configuration one: a
-        # 62 mm continuous job on a die-cut roll cuts past the edge and feeds a
-        # blank label behind every badge. The journal should answer "what did
-        # it think was loaded" without anyone querying the database.
-        _log(
-            f"printed job {job_id} on '{target.get('name')}' "
-            f"(type={job.get('type')}, label={label})"
-        )
-    except Exception as e:  # noqa: BLE001 - report every failure back to the server
-        client.complete(job_id, False, e)
-        _log(f"FAILED job {job_id}: {e}", err=True)
+
+    printer.print_image(
+        image,
+        target["printer_ip"],
+        target.get("port", 9100),
+        label,
+        rotation=int(template.get("print_rotation", 90)),
+    )
+    # The label the job was rasterised for, because a badge printed for the
+    # wrong stock looks like a printer fault and is a configuration one: a
+    # 62 mm continuous job on a die-cut roll cuts past the edge and feeds a
+    # blank label behind every badge. The journal should answer "what did
+    # it think was loaded" without anyone querying the database.
+    _log(
+        f"printed job {job_id} on '{target.get('name')}' "
+        f"(type={job.get('type')}, label={label})"
+    )
+
+
+class PrintWorker:
+    """Prints off the heartbeat thread, so a slow or sleeping printer can never
+    delay the cloud check-in. One daemon thread, modelled on rehome.Rehomer.
+
+    The main loop hands each claimed job in through submit() and never blocks on
+    the print; the worker renders and prints it and records the outcome, which
+    the main loop drains() and reports through client.complete(). Completion is
+    kept on the loop deliberately: the client's auth state (token/headers) is
+    rewritten during poll and is only safe to touch from that one thread.
+    """
+
+    def __init__(self):
+        self._queue: queue.Queue = queue.Queue()
+        self._outcomes: list[tuple] = []   # (job_id, ok, error_or_None)
+        self._lock = threading.Lock()
+        self._stop = threading.Event()
+        self._thread: threading.Thread | None = None
+
+    def start(self) -> None:
+        if self._thread is not None:
+            return
+        self._thread = threading.Thread(target=self._loop, name="printer", daemon=True)
+        self._thread.start()
+
+    def stop(self) -> None:
+        self._stop.set()
+        if self._thread is not None:
+            self._thread.join(timeout=2.0)
+
+    def submit(self, job: dict, cfg: dict, printers: list) -> None:
+        """Queue a job for printing. Never blocks the caller."""
+        self._queue.put((job, cfg, printers))
+
+    def drain(self) -> list:
+        """Jobs finished since the last call, consumed on read. The main loop
+        reports each through client.complete()."""
+        with self._lock:
+            done, self._outcomes = self._outcomes, []
+        return done
+
+    def _loop(self) -> None:
+        while not self._stop.is_set():
+            try:
+                job, cfg, printers = self._queue.get(timeout=1.0)
+            except queue.Empty:
+                continue
+            job_id = job.get("id")
+            try:
+                _render_and_print(job, cfg, printers)
+                outcome = (job_id, True, None)
+            except Exception as e:  # noqa: BLE001 - every failure is reported, not raised
+                _log(f"FAILED job {job_id}: {e}", err=True)
+                outcome = (job_id, False, e)
+            with self._lock:
+                self._outcomes.append(outcome)
 
 
 def _classify_mac(ip: str, mac: str) -> str | None:
@@ -312,6 +374,15 @@ def handle_network_request(request: dict) -> dict:
 #: in the background on a backoff. Fed each heartbeat below; started in main().
 _rehomer = rehome.Rehomer()
 
+#: Prints off the heartbeat thread so a sleeping printer never bounces the
+#: server offline. Fed claimed jobs below; drained for completion each loop.
+#: Started in main().
+_print_worker = PrintWorker()
+
+#: Runs link tests (cloud/printer ping, port 9100) during an operator's
+#: diagnostics window, off the heartbeat. Dormant otherwise. Started in main().
+_diagnostics = diagnostics_module.DiagnosticsWorker(config.SUPABASE_URL)
+
 
 def _search_fields(printer_id: str) -> dict:
     """The background search's schedule for a printer, as wall-clock times the
@@ -362,6 +433,12 @@ def _probe_requested(p: dict) -> bool:
         return False
 
 
+#: Wall-clock budget for one probe cycle. Well under the 15s offline window, so
+#: probing (which runs before the check-in) can never starve the heartbeat even
+#: with several unreachable printers; any not reached in time wait a cycle.
+PROBE_BUDGET = 8.0
+
+
 def probe_printers(printers: list) -> list:
     """Ask each printer how it is, for the next poll to report upstream.
 
@@ -376,7 +453,16 @@ def probe_printers(printers: list) -> list:
     and it is adopted here just as an mDNS result is.
     """
     reports = []
+    deadline = time.monotonic() + PROBE_BUDGET
     for p in printers:
+        # A cycle must finish well inside the 15s offline window even when
+        # several printers are freshly unreachable (each can cost ~20s of
+        # relocate/diagnose). Once the budget is spent, stop and leave the rest
+        # for the next cycle — their last status stands rather than being
+        # reported stale, and the heartbeat is never starved.
+        if time.monotonic() > deadline:
+            _log(f"probe budget spent; deferring {len(printers) - len(reports)} printer(s)")
+            break
         name = p.get("name") or p["id"]
         ip = p.get("printer_ip")
         port = p.get("port", 9100)
@@ -513,9 +599,12 @@ def main():
             err=True,
         )
 
-    # The background sweep that re-finds a printer moved across a subnet. A
-    # daemon thread, so it never holds the process open past a shutdown.
+    # The background sweep that re-finds a printer moved across a subnet, and the
+    # print worker that keeps printing off the heartbeat. Both daemon threads, so
+    # neither holds the process open past a shutdown.
     _rehomer.start()
+    _print_worker.start()
+    _diagnostics.start()
 
     last_probe = 0.0
     printers = []
@@ -540,13 +629,29 @@ def main():
                 if due:
                     reports = probe_printers(due)
 
-            result = client.poll(reports, provision_result, network_result)
+            # Link-test samples the diagnostics worker collected since last poll,
+            # sent up with this check-in (empty and ignored when no session runs).
+            diag_samples = _diagnostics.drain()
+
+            result = client.poll(reports, provision_result, network_result,
+                                 diagnostics=diag_samples)
             if provision_result is not None:
                 # Delivered. Only now may an update restart us safely.
                 _mark_provisioning(False)
             provision_result = None
             network_result = None
             cfg, printers = result.config, result.printers
+
+            # Hand the diagnostics worker the current window + printers. It runs
+            # the link tests only while the window is open, then goes dormant.
+            _diagnostics.configure(cfg.get("diagnostics_until"), printers)
+
+            # Report any prints the worker finished since the last poll. Done
+            # after the heartbeat (poll) has already landed, so a slow complete()
+            # cannot delay the check-in, and on the main thread because the
+            # client's auth state is only safe to touch here.
+            for job_id, ok, err in _print_worker.drain():
+                client.complete(job_id, ok, err)
 
             if result.suspended:
                 # Said once per spell rather than every couple of seconds: this
@@ -587,8 +692,12 @@ def main():
                 continue
 
             if result.job:
-                handle_job(client, result.job, cfg, printers)
-                continue  # loop again immediately to drain the queue
+                # Hand the print to the worker and loop again immediately — the
+                # heartbeat is never blocked by a slow or sleeping printer, and
+                # the next poll claims the next queued job. Completion is
+                # reported from the drain above on a later tick.
+                _print_worker.submit(result.job, cfg, printers)
+                continue
         except Exception as e:  # noqa: BLE001 - keep the loop alive through transient errors
             _log(f"loop error: {e}", err=True)
             traceback.print_exc()
