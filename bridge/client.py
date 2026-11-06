@@ -100,7 +100,7 @@ class BridgeApiClient:
         return body
 
     def poll(self, printer_reports=None, provision_result=None, network_result=None,
-             diagnostics=None):
+             diagnostics=None, link_transitions=None):
         body = self._post(
             "bridge-poll",
             {
@@ -127,6 +127,9 @@ class BridgeApiClient:
                 # Link-test samples collected during an operator's diagnostics
                 # session; absent when none are pending.
                 **({"diagnostics": diagnostics} if diagnostics else {}),
+                # Connectivity outages (one per link recovery) the bridge records
+                # continuously, for the Connectivity history. Absent when none.
+                **({"link_transitions": link_transitions} if link_transitions else {}),
             },
         )
         replacement = body.get("bridge_token")

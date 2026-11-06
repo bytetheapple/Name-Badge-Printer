@@ -21,12 +21,37 @@ const DROP_SECONDS = 120
 
 type Device = {
   id: string
+  org_id: string
   serial: string
   customer: string | null
   last_seen: string | null
   monitoring_since: string | null
 }
 type Outage = { started_at: string; ended_at: string; seconds: number }
+
+//: A printer, for labelling its two link rows and showing a live "currently
+//: down" band on 9100 (the recorded outage itself only lands on recovery).
+type Printer = { id: string; name: string | null; reachable: boolean | null; last_checked: string | null }
+//: One recovered outage on a link below the server: the bridge→cloud path, or a
+//: printer's ping / 9100. printer_id is null for the cloud link.
+type LinkKind = 'cloud' | 'ping' | 'tcp'
+type LinkOutage = { printer_id: string | null; kind: LinkKind; started_at: string; ended_at: string; seconds: number }
+
+/** The offline spans for one link within the window, built from its recovered
+ *  outages plus an optional still-in-progress band. */
+function linkSpans(outages: LinkOutage[], windowStart: number, now: number, ongoingSince: number | null): Span[] {
+  const spans: Span[] = []
+  for (const o of outages) {
+    const s = Math.max(new Date(o.started_at).getTime(), windowStart)
+    const e = Math.min(new Date(o.ended_at).getTime(), now)
+    if (e > s) spans.push({ start: s, end: e, ongoing: false })
+  }
+  if (ongoingSince !== null) {
+    spans.push({ start: Math.max(ongoingSince, windowStart), end: now, ongoing: true })
+  }
+  spans.sort((a, b) => a.start - b.start)
+  return spans
+}
 
 type Window = 'hour' | 'day' | 'week'
 const WINDOW_MS: Record<Window, number> = {
@@ -43,6 +68,8 @@ export default function OpsConnectivity() {
   const [devices, setDevices] = useState<Device[]>([])
   const [selected, setSelected] = useState<string>('')
   const [outages, setOutages] = useState<Outage[]>([])
+  const [printers, setPrinters] = useState<Printer[]>([])
+  const [linkOutages, setLinkOutages] = useState<LinkOutage[]>([])
   const [range, setRange] = useState<Window>('day')
   const [loading, setLoading] = useState(true)
   //: A ticking clock so the current gap and the "now" edge advance on a page
@@ -52,13 +79,41 @@ export default function OpsConnectivity() {
   const loadDevices = useCallback(async () => {
     const { data } = await supabase
       .from('pi_devices')
-      .select('id, serial, customer, last_seen, monitoring_since')
+      .select('id, org_id, serial, customer, last_seen, monitoring_since')
       .order('customer', { ascending: true, nullsFirst: false })
     const rows = (data ?? []) as Device[]
     setDevices(rows)
     setSelected((s) => s || rows[0]?.id || '')
     setLoading(false)
   }, [])
+
+  //: The links below the server — bridge→cloud and each printer's ping / 9100 —
+  //: for the selected installation's org. Printers give the row labels and the
+  //: live 9100 state; link_outages is the recovered-outage history.
+  const orgId = devices.find((d) => d.id === selected)?.org_id ?? ''
+  const loadLinks = useCallback(async () => {
+    if (!orgId) {
+      setPrinters([])
+      setLinkOutages([])
+      return
+    }
+    const since = new Date(Date.now() - WINDOW_MS.week).toISOString()
+    const [pr, lo] = await Promise.all([
+      supabase
+        .from('printers')
+        .select('id, name, reachable, last_checked')
+        .eq('org_id', orgId)
+        .order('created_at', { ascending: true }),
+      supabase
+        .from('link_outages')
+        .select('printer_id, kind, started_at, ended_at, seconds')
+        .eq('org_id', orgId)
+        .gte('ended_at', since)
+        .order('ended_at', { ascending: false }),
+    ])
+    setPrinters((pr.data ?? []) as Printer[])
+    setLinkOutages((lo.data ?? []) as LinkOutage[])
+  }, [orgId])
 
   const loadOutages = useCallback(async () => {
     if (!selected) {
@@ -81,18 +136,24 @@ export default function OpsConnectivity() {
   useEffect(() => {
     void loadOutages()
   }, [loadOutages])
+  useEffect(() => {
+    void loadLinks()
+  }, [loadLinks])
 
   // Tick the clock, and re-read the outages now and then so a drop that ended
   // since the page loaded appears without a manual refresh.
   useEffect(() => {
     const tick = range === 'hour' ? 2000 : 15000
     const t = window.setInterval(() => setNow(Date.now()), tick)
-    const r = window.setInterval(() => void loadOutages(), 30000)
+    const r = window.setInterval(() => {
+      void loadOutages()
+      void loadLinks()
+    }, 30000)
     return () => {
       window.clearInterval(t)
       window.clearInterval(r)
     }
-  }, [range, loadOutages])
+  }, [range, loadOutages, loadLinks])
 
   const device = devices.find((d) => d.id === selected) ?? null
   const lastSeenMs = device?.last_seen ? new Date(device.last_seen).getTime() : null
@@ -133,6 +194,41 @@ export default function OpsConnectivity() {
       uptime: monitoredMs > 0 ? Math.max(0, Math.min(100, ((monitoredMs - downMs) / monitoredMs) * 100)) : null,
     }
   }, [spans, windowStart, monitoringStart, now])
+
+  // The links below the server, each as a labelled row over the same window.
+  // Cloud and ping show recovered-outage history only; 9100 also shows a live
+  // "currently down" band from the printer's reachable flag, since that is the
+  // one link with a trustworthy live signal (and the one that drops a badge).
+  const linkRows = useMemo(() => {
+    const rows: { key: string; label: string; spans: Span[] }[] = []
+    rows.push({
+      key: 'cloud',
+      label: 'Cloud · check-in path',
+      spans: linkSpans(linkOutages.filter((o) => o.kind === 'cloud'), windowStart, now, null),
+    })
+    for (const p of printers) {
+      const name = p.name || 'Printer'
+      rows.push({
+        key: `ping:${p.id}`,
+        label: `${name} · ping`,
+        spans: linkSpans(
+          linkOutages.filter((o) => o.kind === 'ping' && o.printer_id === p.id),
+          windowStart, now, null,
+        ),
+      })
+      const downSince =
+        p.reachable === false ? (p.last_checked ? new Date(p.last_checked).getTime() : now) : null
+      rows.push({
+        key: `tcp:${p.id}`,
+        label: `${name} · 9100`,
+        spans: linkSpans(
+          linkOutages.filter((o) => o.kind === 'tcp' && o.printer_id === p.id),
+          windowStart, now, downSince,
+        ),
+      })
+    }
+    return rows
+  }, [linkOutages, printers, windowStart, now])
 
   if (loading) return <p className="muted">Loading…</p>
 
@@ -209,6 +305,46 @@ export default function OpsConnectivity() {
             range={range}
             monitoringStart={monitoringStart}
           />
+
+          <h2 style={{ marginTop: 28, marginBottom: 4 }}>Printer &amp; cloud links</h2>
+          <p className="muted small">
+            The links below the server — its path to the cloud, and each printer's ping and print
+            port (9100) — probed every 5 seconds. A band is a recovered outage; 9100 also shows a
+            live band while a printer is unreachable now. History begins when the updated bridge
+            rolled out, and a healthy link records nothing.
+          </p>
+          {linkRows.map((r) => {
+            const downMs = r.spans.reduce((sum, s) => sum + (s.end - s.start), 0)
+            const drops = r.spans.filter((s) => !s.ongoing).length
+            const ongoing = r.spans.some((s) => s.ongoing)
+            return (
+              <div key={r.key} style={{ marginTop: 14 }}>
+                <div
+                  className="release-row"
+                  style={{ justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 2 }}
+                >
+                  <span className="small" style={{ fontWeight: 600 }}>
+                    {r.label}
+                  </span>
+                  <span className="muted small">
+                    {ongoing && <span className="tab-dot bad" aria-hidden="true" />}{' '}
+                    {drops === 0 && !ongoing
+                      ? 'no drops'
+                      : `${ongoing ? 'down now · ' : ''}${drops} drop${drops === 1 ? '' : 's'} · ${minutes(
+                          Math.round(downMs / 60000),
+                        )} down`}
+                  </span>
+                </div>
+                <ConnectivityGraph
+                  spans={r.spans}
+                  windowStart={windowStart}
+                  now={now}
+                  range={range}
+                  monitoringStart={monitoringStart}
+                />
+              </div>
+            )
+          })}
         </>
       )}
     </>

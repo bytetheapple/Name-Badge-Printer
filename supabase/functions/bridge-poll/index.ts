@@ -14,6 +14,8 @@
 //     network_result?: { id, ok, error, log },   // a wireless change was tried
 //     diagnostics?: [{ at, kind, printer_id?, ok, latency_ms?, detail? }],
 //                              // link-test samples during a diagnostics session
+//     link_transitions?: [{ kind, printer_id?, started_at, ended_at, seconds }],
+//                              // one per link recovery, for Connectivity history
 //     rotation_error?: "…" }   // could not store the replacement credential
 // Response:
 //   { ok, suspended?: true, config: {...}, printers: [...], job: {...} | null,
@@ -144,6 +146,47 @@ Deno.serve(async (req) => {
       });
       const cutoff = new Date(Date.now() - 6 * 3600 * 1000).toISOString();
       await fetch(`${REST}/link_samples?org_id=eq.${bridge.org_id}&at=lt.${cutoff}`, {
+        method: "DELETE",
+        headers: restHeaders,
+      });
+    }
+  }
+
+  // Connectivity transitions: one row when a link (cloud, printer ping, or
+  // printer 9100) recovers from an outage. Unlike the dense samples above these
+  // are written always, not only during a diagnostics session — so the ops
+  // Connectivity page has a rolling history to look back through without an
+  // operator watching live. Mirrors device_outages: a healthy link writes
+  // nothing, and the table is rolling-pruned (to 7 days). Best-effort.
+  const trans = body.link_transitions;
+  if (Array.isArray(trans) && trans.length) {
+    const rows = trans
+      .slice(0, 500)
+      .map((t: Record<string, unknown>) => ({
+        org_id: bridge.org_id,
+        printer_id: typeof t?.printer_id === "string" ? t.printer_id : null,
+        kind: String(t?.kind ?? ""),
+        started_at: isoOrNull(t?.started_at),
+        ended_at: isoOrNull(t?.ended_at),
+        seconds: typeof t?.seconds === "number" && Number.isFinite(t.seconds)
+          ? Math.max(0, Math.round(t.seconds))
+          : null,
+      }))
+      // A row is only an outage if it has both ends and a kind we know; a cloud
+      // row legitimately has no printer_id. printer_id is never trusted as
+      // authority — on_delete set null covers a stale id.
+      .filter((r) =>
+        ["cloud", "ping", "tcp"].includes(r.kind) &&
+        r.started_at !== null && r.ended_at !== null && r.seconds !== null
+      );
+    if (rows.length) {
+      await fetch(`${REST}/link_outages`, {
+        method: "POST",
+        headers: restHeaders,
+        body: JSON.stringify(rows),
+      });
+      const cutoff = new Date(Date.now() - 7 * 24 * 3600 * 1000).toISOString();
+      await fetch(`${REST}/link_outages?org_id=eq.${bridge.org_id}&ended_at=lt.${cutoff}`, {
         method: "DELETE",
         headers: restHeaders,
       });

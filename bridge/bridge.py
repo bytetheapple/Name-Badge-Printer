@@ -632,9 +632,12 @@ def main():
             # Link-test samples the diagnostics worker collected since last poll,
             # sent up with this check-in (empty and ignored when no session runs).
             diag_samples = _diagnostics.drain()
+            # Connectivity outages it recorded continuously (one per link
+            # recovery), for the Connectivity history — sent every poll.
+            link_trans = _diagnostics.drain_transitions()
 
             result = client.poll(reports, provision_result, network_result,
-                                 diagnostics=diag_samples)
+                                 diagnostics=diag_samples, link_transitions=link_trans)
             if provision_result is not None:
                 # Delivered. Only now may an update restart us safely.
                 _mark_provisioning(False)
