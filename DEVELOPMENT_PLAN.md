@@ -25,6 +25,11 @@ for the architecture; this is the order of work.
 - **B2 — Discovery & health:** mDNS discovery, "scan & add printer," and the
   **WiFi-reachability "safe to unplug"** signal.
 - **B3 — Fallbacks:** guided web-UI wizard in the admin + Wireless Direct docs.
+- **B4 — Settings reset + at-rest credentials *(designed 2026-11-05, not started)*:**
+  operator-triggered "re-apply desired settings" to a deployed printer, backed by
+  storing each printer's web password at rest in Vault, plus a manual panel-lock
+  provisioning step. Full design in
+  [docs/PRINTER_SETTINGS_RESET_DESIGN.md](docs/PRINTER_SETTINGS_RESET_DESIGN.md).
 
 Buildable/proven single-tenant now; carries into multi-tenant unchanged.
 
