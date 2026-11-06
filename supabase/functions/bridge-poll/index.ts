@@ -419,7 +419,12 @@ Deno.serve(async (req) => {
   if (allowed.length) {
     const queued = await fetch(
       `${REST}/print_jobs?org_id=eq.${bridge.org_id}&status=eq.queued` +
-        `&printer_id=in.(${allowed.join(",")})&order=created_at.asc&limit=1&select=*`,
+        `&printer_id=in.(${allowed.join(",")})` +
+        // Skip a re-queued job until its backoff has passed, so a failing
+        // printer is retried about once a minute, not on every poll. A fresh
+        // job has next_attempt_at null and is eligible at once.
+        `&or=(next_attempt_at.is.null,next_attempt_at.lte.${now})` +
+        `&order=created_at.asc&limit=1&select=*`,
       { headers: restHeaders },
     );
     const candidates = queued.ok ? await queued.json() : [];
